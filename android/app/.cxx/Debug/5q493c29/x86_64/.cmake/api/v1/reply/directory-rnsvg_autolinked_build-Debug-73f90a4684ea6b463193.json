@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "rnsvg_autolinked_build",
+		"source" : "/Users/5dplata/Desktop/rally_app/node_modules/react-native-svg/android/src/main/jni"
+	}
+}
