@@ -6,9 +6,25 @@ import {
   TouchableOpacity,
   SafeAreaView,
   Alert,
+  TextInput,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  StatusBar,
+  ScrollView,
+  Dimensions
 } from 'react-native';
 import { RotateCcw, Play, Pause, ArrowLeft } from 'lucide-react-native';
 import LinearGradient from 'react-native-linear-gradient';
+
+export interface PointLog {
+  scorer: 'A' | 'B';
+  scoreA: number;
+  scoreB: number;
+  setIndex: number;
+  timestamp: number;
+  duration: number;
+}
 
 interface ScoreTrackerProps {
   onComplete: (result: {
@@ -16,333 +32,395 @@ interface ScoreTrackerProps {
     team1Wins: number;
     team2Wins: number;
     isForced: boolean;
+    pointLogs: PointLog[];
+    team1Name: string;
+    team2Name: string;
   }) => void;
   onCancel: () => void;
 }
 
-type ScoreState = {
-  t1Score: number;
-  t2Score: number;
-  t1Wins: number;
-  t2Wins: number;
-};
-
-const SetIndicators = ({ total, wins }: { total: number, wins: number }) => (
-  <View style={styles.setIndicatorContainer}>
-    {[...Array(total)].map((_, i) => (
-      <View
-        key={i}
-        style={[
-          styles.setIndicator,
-          i < wins ? styles.setIndicatorActive : null,
-        ]}
-      />
-    ))}
-  </View>
-);
-
 export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
+  // --- 상태 관리 ---
+  const [isSetupMode, setIsSetupMode] = useState(true);
+  const [team1Name, setTeam1Name] = useState('');
+  const [team2Name, setTeam2Name] = useState('');
+
   const [team1Score, setTeam1Score] = useState(0);
   const [team2Score, setTeam2Score] = useState(0);
   const [team1SetWins, setTeam1SetWins] = useState(0);
   const [team2SetWins, setTeam2SetWins] = useState(0);
-  // 1. (핵심 수정) 3판 2선승제이므로, 승리 표기 동그라미를 2개로 수정
-  const totalSets = 2;
 
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
+
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastPointTimeRef = useRef<number>(0);
 
-  const [scoreHistory, setScoreHistory] = useState<ScoreState[]>([]);
+  const [scoreHistory, setScoreHistory] = useState<any[]>([]);
+  const [pointLogs, setPointLogs] = useState<PointLog[]>([]);
 
+  // --- 경기 시작 알림 ---
+  useEffect(() => {
+    if (!isSetupMode) {
+      const timer = setTimeout(() => {
+        Alert.alert(
+          "경기 기록 시작",
+          "지금부터 경기 기록과 타이머가 시작됩니다.",
+          [
+            {
+              text: "취소",
+              onPress: () => setIsSetupMode(true),
+              style: "cancel",
+            },
+            {
+              text: "계속하기",
+              onPress: () => {
+                setIsTimerRunning(true);
+                lastPointTimeRef.current = Date.now();
+              }
+            },
+          ]
+        );
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [isSetupMode]);
+
+  // --- 타이머 ---
   useEffect(() => {
     if (isTimerRunning) {
-      timerRef.current = setInterval(() => {
-        setElapsedTime((prevTime) => prevTime + 1);
-      }, 1000);
+      if (lastPointTimeRef.current === 0) lastPointTimeRef.current = Date.now();
+      timerRef.current = setInterval(() => setElapsedTime(prev => prev + 1), 1000);
     } else {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
+      if (timerRef.current) clearInterval(timerRef.current);
     }
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isTimerRunning]);
 
-  useEffect(() => {
-    Alert.alert(
-      "경기 기록 시작",
-      "지금부터 경기 기록과 타이머가 시작됩니다.",
-      [
-        {
-          text: "나가기",
-          onPress: () => onCancel(),
-          style: "cancel",
-        },
-        { text: "계속하기", onPress: () => setIsTimerRunning(true) },
-      ]
-    );
-  }, []); // 마운트 시 1회만 실행
-
   const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-      .toString()
-      .padStart(2, '0');
+    const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
     const secs = (seconds % 60).toString().padStart(2, '0');
     return `${mins}:${secs}`;
+  };
+
+  // --- 핸들러 ---
+  const handleStartGame = () => {
+    // 이름이 비어있으면 기본값 설정
+    if (!team1Name.trim()) setTeam1Name("TEAM 1");
+    if (!team2Name.trim()) setTeam2Name("TEAM 2");
+    Keyboard.dismiss();
+    setIsSetupMode(false);
   };
 
   const handleScore = (team: 'team1' | 'team2') => {
     if (!isTimerRunning) return;
 
-    setScoreHistory([
-      ...scoreHistory,
-      {
-        t1Score: team1Score,
-        t2Score: team2Score,
-        t1Wins: team1SetWins,
-        t2Wins: team2SetWins,
-      },
-    ]);
+    setScoreHistory([...scoreHistory, { t1Score: team1Score, t2Score: team2Score, t1Wins: team1SetWins, t2Wins: team2SetWins }]);
 
-    let newT1Score = team === 'team1' ? team1Score + 1 : team1Score;
-    let newT2Score = team === 'team2' ? team2Score + 1 : team2Score;
-    let newT1SetWins = team1SetWins;
-    let newT2SetWins = team2SetWins;
+    const now = Date.now();
+    const duration = (now - lastPointTimeRef.current) / 1000;
+    lastPointTimeRef.current = now;
 
-    let setWinner: 'team1' | 'team2' | null = null;
+    let newT1 = team === 'team1' ? team1Score + 1 : team1Score;
+    let newT2 = team === 'team2' ? team2Score + 1 : team2Score;
+    let newSet1 = team1SetWins;
+    let newSet2 = team2SetWins;
 
-    if (newT1Score >= 21 || newT2Score >= 21) {
-      if (newT1Score === 29 && newT2Score === 29) {
-        if (newT1Score === 30) setWinner = 'team1';
-        if (newT2Score === 30) setWinner = 'team2';
-      }
-      else if (newT1Score >= 21 && newT1Score >= newT2Score + 2) {
-        setWinner = 'team1';
-      } else if (newT2Score >= 21 && newT2Score >= newT1Score + 2) {
-        setWinner = 'team2';
-      }
-      else if (newT1Score === 30) {
-        setWinner = 'team1';
-      } else if (newT2Score === 30) {
-        setWinner = 'team2';
-      }
+    const currentSet = newSet1 + newSet2 + 1;
+    const newLog: PointLog = {
+      scorer: team === 'team1' ? 'A' : 'B',
+      scoreA: newT1, scoreB: newT2,
+      setIndex: currentSet,
+      timestamp: now,
+      duration: duration
+    };
+    const updatedLogs = [...pointLogs, newLog];
+    setPointLogs(updatedLogs);
+
+    let setWinner = null;
+    if ((newT1 >= 21 || newT2 >= 21) && Math.abs(newT1 - newT2) >= 2) {
+       if (newT1 > newT2) setWinner = 'team1'; else setWinner = 'team2';
     }
+    if (newT1 === 30) setWinner = 'team1';
+    if (newT2 === 30) setWinner = 'team2';
 
     if (setWinner) {
-      if (setWinner === 'team1') newT1SetWins++;
-      if (setWinner === 'team2') newT2SetWins++;
-
-      newT1Score = 0;
-      newT2Score = 0;
+      if (setWinner === 'team1') newSet1++; else newSet2++;
+      newT1 = 0; newT2 = 0;
       setScoreHistory([]);
     }
 
-    setTeam1Score(newT1Score);
-    setTeam2Score(newT2Score);
-    setTeam1SetWins(newT1SetWins);
-    setTeam2SetWins(newT2SetWins);
+    setTeam1Score(newT1); setTeam2Score(newT2);
+    setTeam1SetWins(newSet1); setTeam2SetWins(newSet2);
 
-    // 2. (로직 확인) 2세트 선취 (경기 종료) 확인 (totalSets=2 이므로 정상 작동)
-    if (newT1SetWins === 2 || newT2SetWins === 2) {
+    if (newSet1 === 2 || newSet2 === 2) {
       setIsTimerRunning(false);
       onComplete({
-        duration: elapsedTime,
-        team1Wins: newT1SetWins,
-        team2Wins: newT2SetWins,
-        isForced: false,
+        duration: elapsedTime, team1Wins: newSet1, team2Wins: newSet2, isForced: false,
+        pointLogs: updatedLogs, team1Name: team1Name || "TEAM 1", team2Name: team2Name || "TEAM 2"
       });
     }
   };
 
   const handleUndo = () => {
-    if (scoreHistory.length === 0) {
-      Alert.alert("알림", "더 이상 되돌릴 점수가 없습니다.");
-      return;
-    }
-
-    Alert.alert(
-      "점수 되돌리기",
-      "마지막 점수를 한 단계 전으로 되돌리시겠습니까?",
-      [
+    if (scoreHistory.length === 0) return;
+    Alert.alert("점수 되돌리기", "직전 점수를 취소하시겠습니까?", [
         { text: "취소", style: "cancel" },
         {
-          text: "확인",
-          onPress: () => {
-            const lastState = scoreHistory[scoreHistory.length - 1];
-            setTeam1Score(lastState.t1Score);
-            setTeam2Score(lastState.t2Score);
-            setTeam1SetWins(lastState.t1Wins);
-            setTeam2SetWins(lastState.t2Wins);
-
-            setScoreHistory(scoreHistory.slice(0, -1));
-          },
-          style: "destructive",
-        },
-      ]
-    );
-  };
-
-  const toggleTimer = () => {
-    setIsTimerRunning(!isTimerRunning);
+            text: "확인",
+            onPress: () => {
+                const last = scoreHistory[scoreHistory.length - 1];
+                setTeam1Score(last.t1Score); setTeam2Score(last.t2Score);
+                setTeam1SetWins(last.t1Wins); setTeam2SetWins(last.t2Wins);
+                setScoreHistory(scoreHistory.slice(0, -1));
+                setPointLogs(pointLogs.slice(0, -1));
+            }
+        }
+    ]);
   };
 
   const handleExit = () => {
-    const wasTimerRunning = isTimerRunning;
+    const wasRunning = isTimerRunning;
     setIsTimerRunning(false);
     Alert.alert(
       "경기 종료",
       "정말로 경기 모드를 종료하시겠습니까? 기록이 저장되지 않을 수 있습니다.",
       [
-        {
-          text: "취소",
-          onPress: () => {
-            if (wasTimerRunning) {
-              setIsTimerRunning(true);
-            }
-          },
-          style: "cancel",
-        },
-        {
-          text: "종료",
-          onPress: () =>
-            onComplete({
-              duration: elapsedTime,
-              team1Wins: team1SetWins,
-              team2Wins: team2SetWins,
-              isForced: true,
-            }),
-          style: "destructive",
-        },
+        { text: "취소", onPress: () => { if (wasRunning) setIsTimerRunning(true); }, style: "cancel" },
+        { text: "종료", onPress: () => onComplete({
+              duration: elapsedTime, team1Wins: team1SetWins, team2Wins: team2SetWins,
+              isForced: true, pointLogs: pointLogs,
+              team1Name: team1Name || "TEAM 1", team2Name: team2Name || "TEAM 2"
+            }), style: "destructive" },
       ]
     );
   };
 
+  // --- 화면 1: 매치 설정 (레이아웃 수정) ---
+  if (isSetupMode) {
+    return (
+      <View style={{flex: 1, backgroundColor: '#0f172a'}}>
+        <StatusBar barStyle="light-content" backgroundColor="#1e293b" translucent={false} />
+        <LinearGradient colors={['#1e293b', '#0f172a']} style={{flex: 1}}>
+            <SafeAreaView style={{flex: 1}}>
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === "ios" ? "padding" : "height"}
+                    style={{flex: 1}}
+                >
+                    <ScrollView contentContainerStyle={{flexGrow: 1, padding: 24}}>
+                        <TouchableOpacity onPress={onCancel} style={styles.backButton}>
+                            <ArrowLeft size={28} color="#94a3b8" />
+                        </TouchableOpacity>
+
+                        {/* 메인 컨텐츠 (헤더 + 폼) - 화면 중앙보다 살짝 위쪽 배치 */}
+                        <View style={{flex: 1, justifyContent: 'center', paddingBottom: 60}}>
+                            <View style={styles.setupHeader}>
+                                <Text style={styles.setupTitle}>MATCH SETUP</Text>
+                                <Text style={styles.setupSubtitle}>경기 참가자를 입력해주세요</Text>
+                                <View style={styles.noticeContainer}>
+                                    <Text style={styles.noticeText}>📌 위쪽 입력란이 상대편, 아래쪽 입력란이 내 편입니다.</Text>
+                                </View>
+                            </View>
+
+                            <View style={styles.formCard}>
+                                <View style={styles.inputGroup}>
+                                    <View style={[styles.colorDot, { backgroundColor: '#34D399' }]} />
+                                    <View style={{flex: 1}}>
+                                        <Text style={[styles.label, {color:'#34D399'}]}>TEAM 1 (상대)</Text>
+                                        <TextInput
+                                            style={styles.input}
+                                            placeholder="팀 이름"
+                                            placeholderTextColor="#64748b"
+                                            value={team1Name}
+                                            onChangeText={setTeam1Name}
+                                            autoCorrect={false}
+                                        />
+                                    </View>
+                                </View>
+
+                                <View style={styles.vsDivider}>
+                                    <View style={styles.line} />
+                                    <Text style={styles.vsText}>VS</Text>
+                                    <View style={styles.line} />
+                                </View>
+
+                                <View style={styles.inputGroup}>
+                                    <View style={[styles.colorDot, { backgroundColor: '#38BDF8' }]} />
+                                    <View style={{flex: 1}}>
+                                        <Text style={[styles.label, {color:'#38BDF8'}]}>TEAM 2 (나)</Text>
+                                        <TextInput
+                                            style={styles.input}
+                                            placeholder="팀 이름"
+                                            placeholderTextColor="#64748b"
+                                            value={team2Name}
+                                            onChangeText={setTeam2Name}
+                                            autoCorrect={false}
+                                        />
+                                    </View>
+                                </View>
+                            </View>
+                        </View>
+
+                        {/* 버튼 하단 고정 */}
+                        <TouchableOpacity
+                            style={styles.startButton}
+                            onPress={handleStartGame}
+                        >
+                            <Text style={styles.startButtonText}>설정 완료</Text>
+                        </TouchableOpacity>
+                    </ScrollView>
+                </KeyboardAvoidingView>
+            </SafeAreaView>
+        </LinearGradient>
+      </View>
+    );
+  }
+
+  // --- 화면 2: 경기 모드 ---
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={handleExit} style={styles.headerButton}>
-          <ArrowLeft size={28} color="white" />
-        </TouchableOpacity>
-        <Text style={styles.timerText}>{formatTime(elapsedTime)}</Text>
-        <View style={styles.headerButton} />
-      </View>
+      <StatusBar barStyle="light-content" backgroundColor="#000000" translucent={false} />
 
-      {/* Team 1 Score Area */}
-      <LinearGradient colors={['#6EE7B7', '#34D399']} style={styles.scoreArea}>
-        <TouchableOpacity
-          style={styles.touchableArea}
-          onPress={() => handleScore('team1')}
-        >
-          <Text style={styles.scoreText}>{team1Score}</Text>
-          <SetIndicators total={totalSets} wins={team1SetWins} />
-        </TouchableOpacity>
-      </LinearGradient>
+      <View style={styles.gameContainer}>
+        {/* 1팀 영역 (상단) */}
+        <LinearGradient colors={['#6EE7B7', '#34D399']} style={styles.scoreArea}>
+            <View style={styles.inGameHeader}>
+                <TouchableOpacity onPress={handleExit} style={styles.iconButton}>
+                    <ArrowLeft size={24} color="rgba(255,255,255,0.8)" />
+                </TouchableOpacity>
+                <View style={styles.timerBadge}>
+                    <Text style={styles.timerText}>{formatTime(elapsedTime)}</Text>
+                </View>
+                <View style={{width: 24}} />
+            </View>
 
-      {/* Team 2 Score Area */}
-      <LinearGradient colors={['#38BDF8', '#22D3EE']} style={styles.scoreArea}>
-        <TouchableOpacity
-          style={styles.touchableArea}
-          onPress={() => handleScore('team2')}
-        >
-          <Text style={styles.scoreText}>{team2Score}</Text>
-          <SetIndicators total={totalSets} wins={team2SetWins} />
-        </TouchableOpacity>
-      </LinearGradient>
+            <TouchableOpacity
+                style={styles.scoreTouchArea}
+                onPress={() => handleScore('team1')}
+                activeOpacity={0.8}
+            >
+                <View style={styles.playerBadge}>
+                    <Text style={styles.playerName}>{team1Name || "TEAM 1"}</Text>
+                </View>
+                <Text style={styles.bigScore}>{team1Score}</Text>
+                <View style={styles.setScoreContainer}>
+                    <Text style={styles.setScoreLabel}>SET SCORE</Text>
+                    <Text style={styles.setScoreValue}>{team1SetWins}</Text>
+                </View>
+            </TouchableOpacity>
+        </LinearGradient>
 
-      {/* Controls */}
-      <View style={styles.controlsContainer}>
-        <TouchableOpacity
-          onPress={handleUndo}
-          style={styles.controlButton}
-          disabled={scoreHistory.length === 0}
-        >
-          <RotateCcw
-            size={32}
-            color={scoreHistory.length === 0 ? "#888" : "white"}
-          />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={toggleTimer} style={styles.controlButton}>
-          {isTimerRunning ? (
-            <Pause size={32} color="white" />
-          ) : (
-            <Play size={32} color="white" />
-          )}
-        </TouchableOpacity>
+        {/* 2팀 영역 (하단) */}
+        <LinearGradient colors={['#38BDF8', '#22D3EE']} style={styles.scoreArea}>
+            <TouchableOpacity
+                style={styles.scoreTouchArea}
+                onPress={() => handleScore('team2')}
+                activeOpacity={0.8}
+            >
+                <View style={styles.setScoreContainerTop}>
+                    <Text style={styles.setScoreLabel}>SET SCORE</Text>
+                    <Text style={styles.setScoreValue}>{team2SetWins}</Text>
+                </View>
+                <Text style={styles.bigScore}>{team2Score}</Text>
+                <View style={styles.playerBadge}>
+                    <Text style={styles.playerName}>{team2Name || "TEAM 2"}</Text>
+                </View>
+            </TouchableOpacity>
+
+            <View style={styles.controlsBar}>
+                <TouchableOpacity
+                    onPress={handleUndo}
+                    style={styles.controlButtonSide}
+                    disabled={scoreHistory.length === 0}
+                >
+                    <RotateCcw size={28} color={scoreHistory.length === 0 ? "rgba(255,255,255,0.4)" : "white"} />
+                    <Text style={[styles.controlLabel, scoreHistory.length === 0 && {opacity: 0.4}]}>되돌리기</Text>
+                </TouchableOpacity>
+
+                <View style={{flex: 1}} />
+
+                <TouchableOpacity
+                    onPress={() => setIsTimerRunning(!isTimerRunning)}
+                    style={styles.controlButtonSide}
+                >
+                    {isTimerRunning ? (
+                        <Pause size={32} color="white" fill="white" />
+                    ) : (
+                        <Play size={32} color="white" fill="white" />
+                    )}
+                    <Text style={styles.controlLabel}>{isTimerRunning ? "일시정지" : "계속하기"}</Text>
+                </TouchableOpacity>
+            </View>
+        </LinearGradient>
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000',
+  container: { flex: 1, backgroundColor: '#000' },
+  gameContainer: { flex: 1 },
+
+  // Setup Styles
+  backButton: { position: 'absolute', top: 20, left: 20, padding: 8, zIndex: 10 },
+  setupHeader: { marginBottom: 30, alignItems: 'center', marginTop: 20 }, // margin 조정
+  setupTitle: { fontSize: 32, fontWeight: '900', color: 'white', letterSpacing: 2 },
+  setupSubtitle: { fontSize: 16, color: '#94a3b8', marginTop: 8 },
+  noticeContainer: { marginTop: 12, backgroundColor: 'rgba(51, 65, 85, 0.5)', padding: 8, borderRadius: 8 },
+  noticeText: { color: '#cbd5e1', fontSize: 13, textAlign: 'center' },
+
+  formCard: {
+    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+    borderRadius: 24, padding: 30, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)'
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#6EE7B7',
+  inputGroup: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
+  colorDot: { width: 12, height: 12, borderRadius: 6, marginTop: 6 },
+  label: { fontSize: 14, fontWeight: 'bold', marginBottom: 8, letterSpacing: 1 },
+  input: {
+    backgroundColor: '#0f172a', borderRadius: 12, padding: 16, color: 'white', fontSize: 18,
+    borderWidth: 1, borderColor: '#334155'
   },
-  headerButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
+  vsDivider: { flexDirection: 'row', alignItems: 'center', marginVertical: 24 },
+  line: { flex: 1, height: 1, backgroundColor: '#334155' },
+  vsText: { color: '#64748b', fontWeight: 'bold', marginHorizontal: 16, fontSize: 14 },
+
+  // 버튼 스타일 수정 (하단 고정 느낌)
+  startButton: {
+    backgroundColor: 'white', padding: 20, borderRadius: 16, alignItems: 'center',
+    marginTop: 20, // 여백
+    shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4.65, elevation: 8,
   },
-  timerText: {
-    color: 'white',
-    fontSize: 22,
-    fontWeight: 'bold',
+  startButtonText: { color: '#0f172a', fontSize: 18, fontWeight: 'bold' },
+
+  // Game Styles
+  scoreArea: { flex: 1 },
+
+  inGameHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingTop: 10, marginBottom: 10
   },
-  scoreArea: {
-    flex: 1,
+  iconButton: { padding: 8, backgroundColor: 'rgba(0,0,0,0.1)', borderRadius: 20 },
+  timerBadge: {
+    backgroundColor: 'rgba(0,0,0,0.2)', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20
   },
-  touchableArea: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: '100%',
+  timerText: { color: 'white', fontSize: 20, fontWeight: 'bold', fontVariant: ['tabular-nums'] },
+
+  scoreTouchArea: { flex: 1, justifyContent: 'center', alignItems: 'center', width: '100%' },
+  playerBadge: {
+    backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 20, paddingVertical: 8,
+    borderRadius: 100, marginBottom: 10
   },
-  scoreText: {
-    fontSize: 120,
-    color: 'white',
-    fontWeight: 'bold',
-    lineHeight: 120,
+  playerName: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  bigScore: { fontSize: 140, fontWeight: '800', color: 'white', lineHeight: 140, marginVertical: -10 },
+  setScoreContainer: { marginTop: 20, alignItems: 'center', opacity: 0.9 },
+  setScoreContainerTop: { marginBottom: 20, alignItems: 'center', opacity: 0.9 },
+  setScoreLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: 'bold', letterSpacing: 1 },
+  setScoreValue: { color: 'white', fontSize: 32, fontWeight: 'bold' },
+
+  controlsBar: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end',
+    paddingHorizontal: 30, paddingBottom: 20, paddingTop: 10
   },
-  setIndicatorContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 16,
-  },
-  setIndicator: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: 'white',
-    backgroundColor: 'transparent',
-  },
-  setIndicatorActive: {
-    backgroundColor: 'white',
-  },
-  controlsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingVertical: 20,
-    backgroundColor: '#22D3EE',
-  },
-  controlButton: {
-    width: 56,
-    height: 56,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  controlButtonSide: { alignItems: 'center', gap: 4, minWidth: 60 },
+  controlLabel: { color: 'white', fontSize: 12, fontWeight: '600' },
 });
