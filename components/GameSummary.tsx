@@ -9,7 +9,9 @@ import {
   StatusBar,
   Animated,
   Easing,
-  Platform
+  Platform,
+  Dimensions,
+  PixelRatio
 } from 'react-native';
 import {
   Trophy,
@@ -24,11 +26,22 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import Svg, { Circle, G } from 'react-native-svg';
 
-// printRMRLog 함수 추가 import
 import { calculateRMR, GameResult, printRMRLog } from '../utils/rmrCalculator';
 import { PointLog } from './ScoreTracker';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+// --- Responsive Utils ---
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const normalize = (size: number) => {
+  const scale = SCREEN_WIDTH / 375;
+  const newSize = size * scale;
+  if (Platform.OS === 'ios') {
+    return Math.round(PixelRatio.roundToNearestPixel(newSize));
+  } else {
+    return Math.round(PixelRatio.roundToNearestPixel(newSize)) - 2;
+  }
+};
 
 interface GameSummaryProps {
   onNext: () => void;
@@ -49,12 +62,13 @@ const formatTime = (seconds: number) => {
   return `${mins}:${secs}`;
 };
 
+// --- Animated Ring ---
 const AnimatedActivityRing = ({ startRMR, endRMR }: { startRMR: number, endRMR: number }) => {
-  const radiusOuter = 60;
-  const strokeWidth = 12;
+  const radiusOuter = normalize(60); // 반응형 반지름
+  const strokeWidth = normalize(12);
   const circumferenceOuter = 2 * Math.PI * radiusOuter;
 
-  const containerSize = (radiusOuter * 2) + (strokeWidth * 2) + 10;
+  const containerSize = (radiusOuter * 2) + (strokeWidth * 2) + 20;
   const center = containerSize / 2;
 
   const MAX_RMR = 3000;
@@ -129,27 +143,7 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
   const today = new Date();
   const formattedDate = `${today.getFullYear()}.${(today.getMonth() + 1).toString().padStart(2, '0')}.${today.getDate().toString().padStart(2, '0')}`;
 
-  // --- RMR 분석 및 메모이제이션 ---
-  // Mock data 구성
-  const mockGameData: GameResult = useMemo(() => ({
-      playerA: { rmr: 1000, rd: 300, name: result.team1Name }, // 상대
-      playerB: { rmr: 1000, rd: 300, name: result.team2Name }, // 나
-      team1Wins: result.team1Wins,
-      team2Wins: result.team2Wins,
-      pointLogs: result.pointLogs,
-      isAbnormal: result.isForced
-  }), [result]);
-
-  const analysisResult = useMemo(() => {
-    return calculateRMR(mockGameData);
-  }, [mockGameData]);
-
-  // --- 로그 출력 및 상태바 제어 ---
   useEffect(() => {
-    // 1. 화면이 마운트될 때 로그 출력
-    printRMRLog(mockGameData, analysisResult);
-
-    // 2. 상태바 클린업 (언마운트 시)
     return () => {
       if (Platform.OS === 'android') {
         StatusBar.setBackgroundColor('#000000');
@@ -157,7 +151,30 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
       }
       StatusBar.setBarStyle('light-content');
     };
-  }, [mockGameData, analysisResult]); // 의존성 배열에 데이터를 넣어 변경시 재실행 보장
+  }, []);
+
+  const analysisResult = useMemo(() => {
+    const mockGameData: GameResult = {
+        playerA: { rmr: 1000, rd: 300, name: result.team1Name },
+        playerB: { rmr: 1000, rd: 300, name: result.team2Name },
+        team1Wins: result.team1Wins,
+        team2Wins: result.team2Wins,
+        pointLogs: result.pointLogs,
+        isAbnormal: result.isForced
+    };
+    return calculateRMR(mockGameData);
+  }, [result]);
+
+  useEffect(() => {
+    printRMRLog({
+        playerA: { rmr: 1000, rd: 300, name: result.team1Name },
+        playerB: { rmr: 1000, rd: 300, name: result.team2Name },
+        team1Wins: result.team1Wins,
+        team2Wins: result.team2Wins,
+        pointLogs: result.pointLogs,
+        isAbnormal: result.isForced
+    }, analysisResult);
+  }, [analysisResult]);
 
   const { newRMR_B, analysis } = analysisResult;
   const oldRMR = 1000;
@@ -210,7 +227,7 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
       <LinearGradient colors={['#22D3EE', '#34D399']} style={styles.gradientContainer}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
 
-            <View>
+            <View style={styles.topSection}>
               <View style={styles.header}>
                 <Text style={styles.headerTitle}>오늘도 랠리하셨군요!</Text>
                 <Text style={styles.headerSubtitle}>{formattedDate} • {result.team2Name} (나) vs {result.team1Name}</Text>
@@ -256,11 +273,11 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.socialButton}>
                       <View style={styles.socialIconBg}><MessageCircle size={24} color="white" /></View>
-                      <Text style={styles.socialLabel}>Kakao</Text>
+                      <Text style={styles.socialLabel}>Kakaotalk</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.socialButton}>
                       <View style={styles.socialIconBg}><Send size={24} color="white" /></View>
-                      <Text style={styles.socialLabel}>Msg</Text>
+                      <Text style={styles.socialLabel}>Messenger</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.socialButton}>
                       <View style={styles.socialIconBg}><Facebook size={24} color="white" /></View>
@@ -269,9 +286,11 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
               </View>
             </View>
 
-            <TouchableOpacity style={styles.nextButton} onPress={onNext}>
-              <Text style={styles.nextButtonText}>확인</Text>
-            </TouchableOpacity>
+            <View style={styles.bottomSection}>
+                <TouchableOpacity style={styles.nextButton} onPress={onNext}>
+                <Text style={styles.nextButtonText}>확인</Text>
+                </TouchableOpacity>
+            </View>
 
         </ScrollView>
       </LinearGradient>
@@ -284,24 +303,37 @@ const styles = StyleSheet.create({
   gradientContainer: { flex: 1 },
 
   scrollContent: {
+    flexGrow: 1,
     padding: 24,
     paddingBottom: 40,
     paddingTop: 40,
-    flexGrow: 1,
     justifyContent: 'space-between'
   },
 
-  header: { alignItems: 'center', marginBottom: 24 },
-  headerTitle: { fontSize: 28, fontWeight: 'bold', color: 'white', marginBottom: 8 },
-  headerSubtitle: { fontSize: 16, color: 'rgba(255, 255, 255, 0.9)' },
+  topSection: {
+    width: '100%',
+    alignItems: 'center'
+  },
 
-  card: { backgroundColor: '#1F2937', borderRadius: 24, padding: 32, marginBottom: 24, alignItems: 'center' },
+  header: { alignItems: 'center', marginBottom: 24 },
+  headerTitle: { fontSize: normalize(28), fontWeight: 'bold', color: 'white', marginBottom: 8 },
+  headerSubtitle: { fontSize: normalize(16), color: 'rgba(255, 255, 255, 0.9)' },
+
+  card: {
+    backgroundColor: '#1F2937',
+    borderRadius: 24,
+    padding: 32,
+    marginBottom: 24,
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 480
+  },
 
   reportHeader: { alignItems: 'center', marginBottom: 24, width: '100%' },
   aiBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(52, 211, 153, 0.15)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginBottom: 12 },
-  aiBadgeText: { color: '#34D399', fontSize: 12, fontWeight: 'bold', marginLeft: 4 },
-  reportTitle: { fontSize: 18, fontWeight: 'bold', color: 'white', marginBottom: 8 },
-  reportBody: { fontSize: 16, color: '#E5E7EB', lineHeight: 24, textAlign: 'center' },
+  aiBadgeText: { color: '#34D399', fontSize: normalize(12), fontWeight: 'bold', marginLeft: 4 },
+  reportTitle: { fontSize: normalize(18), fontWeight: 'bold', color: 'white', marginBottom: 8 },
+  reportBody: { fontSize: normalize(16), color: '#E5E7EB', lineHeight: 24, textAlign: 'center' },
 
   ringSection: { marginBottom: 32 },
   ringContainer: { alignItems: 'center', justifyContent: 'center' },
@@ -309,21 +341,25 @@ const styles = StyleSheet.create({
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     alignItems: 'center', justifyContent: 'center'
   },
-  ringLabelText: { fontSize: 12, color: '#9CA3AF', marginBottom: 4 },
-  ringScoreText: { fontSize: 36, fontWeight: '900', color: 'white' },
+  ringLabelText: { fontSize: normalize(12), color: '#9CA3AF', marginBottom: 4 },
+  ringScoreText: { fontSize: normalize(36), fontWeight: '900', color: 'white' },
 
   diffBadge: { marginTop: 6, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
-  diffText: { fontSize: 14, fontWeight: 'bold' },
+  diffText: { fontSize: normalize(14), fontWeight: 'bold' },
 
   statsRow: { flexDirection: 'row', justifyContent: 'center', gap: 16, width: '100%' },
   statItem: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.05)', padding: 10, borderRadius: 12 },
-  statText: { color: 'white', fontSize: 14, fontWeight: '600' },
+  statText: { color: 'white', fontSize: normalize(14), fontWeight: '600' },
 
   socialRow: { flexDirection: 'row', justifyContent: 'center', gap: 20, marginTop: 10, marginBottom: 20 },
   socialButton: { alignItems: 'center', gap: 8 },
   socialIconBg: { width: 50, height: 50, backgroundColor: 'rgba(31, 41, 55, 0.6)', borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  socialLabel: { color: 'white', fontSize: 12, opacity: 0.9 },
+  socialLabel: { color: 'white', fontSize: normalize(12), opacity: 0.9 },
 
-  nextButton: { backgroundColor: '#1F2937', paddingVertical: 18, borderRadius: 16, alignItems: 'center', width: '100%' },
-  nextButtonText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  bottomSection: { width: '100%', alignItems: 'center' },
+  nextButton: {
+    backgroundColor: '#1F2937', paddingVertical: 18, borderRadius: 16, alignItems: 'center',
+    width: '100%', maxWidth: 480
+  },
+  nextButtonText: { color: 'white', fontSize: normalize(18), fontWeight: 'bold' },
 });
