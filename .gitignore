@@ -81,5 +81,6 @@ yarn.lock
 Thumbs.db
 *.iml
 /.idea/
+/.idea/workspace.xml
 /android/app/.cxx/Debug/
 /android/app/.cxx/tools/
