@@ -40,7 +40,7 @@ LocaleConfig.locales['kr'] = {
 };
 LocaleConfig.defaultLocale = 'kr';
 
-// --- 필터 버튼 컴포넌트 ---
+// --- 2. 필터 버튼 컴포넌트 ---
 const FilterOptionButton = ({ label, icon, isSelected, onPress, type = 'text' }: any) => {
   const IconComponent = icon;
   const color = isSelected ? 'white' : '#6B7280';
@@ -66,12 +66,13 @@ const FilterOptionButton = ({ label, icon, isSelected, onPress, type = 'text' }:
   );
 };
 
-// [수정] Props 인터페이스에 onGoToChat 추가
-interface HomeProps {
+// --- 3. Props 인터페이스 정의 ---
+export interface HomeProps {
   onStartGame: () => void;
-  onGoToChat?: () => void; // 채팅 탭으로 이동하기 위한 콜백 (선택적)
+  onGoToChat?: () => void;
 }
 
+// --- 4. 데이터 및 헬퍼 함수들 ---
 const initialMatches = [
   {
     id: 1,
@@ -91,7 +92,6 @@ const initialMatches = [
   },
 ];
 
-// 알림 데이터 타입
 interface NotificationItem {
   id: number;
   type: 'request';
@@ -137,6 +137,24 @@ const regionItems = [
   { label: '제주', value: '제주' },
 ];
 
+const getHolidays = () => {
+  const years = [2024, 2025, 2026];
+  const fixedHolidays = [
+    '01-01', '03-01', '05-05', '06-06', '08-15', '10-03', '10-09', '12-25',
+  ];
+  const lunarHolidays2025 = ['01-28', '01-29', '01-30', '10-05', '10-06', '10-07'];
+
+  let holidayList: string[] = [];
+  years.forEach(year => {
+    fixedHolidays.forEach(date => holidayList.push(`${year}-${date}`));
+    if (year === 2025) {
+      lunarHolidays2025.forEach(date => holidayList.push(`${year}-${date}`));
+    }
+  });
+  return holidayList;
+};
+
+// --- 5. Home 컴포넌트 본문 ---
 export function Home({ onStartGame, onGoToChat }: HomeProps) {
   const [startDateOffset, setStartDateOffset] = useState(0);
 
@@ -152,7 +170,8 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
       list.push({
         day: d.getDate(),
         label: dayLabels[d.getDay()],
-        fullDate: d,
+        fullDate: new Date(d),
+        dayOfWeek: d.getDay(),
       });
     }
     return list;
@@ -161,7 +180,7 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
   const [selectedDate, setSelectedDate] = useState(new Date().getDate());
   const [matches, setMatches] = useState(initialMatches);
 
-  // Modal State
+  // 모달 상태들
   const [isModalVisible, setModalVisible] = useState(false);
   const [roomName, setRoomName] = useState('');
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
@@ -173,16 +192,35 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
   const [isRegionModalVisible, setIsRegionModalVisible] = useState(false);
   const [isCalendarModalVisible, setCalendarModalVisible] = useState(false);
 
-  // 알림 모달 State
+  // 알림 모달 상태
   const [isNotifModalVisible, setIsNotifModalVisible] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications);
 
-  // Search/Filter State
+  // 검색 상태
   const [isSearching, setIsSearching] = useState(false);
   const [filterGender, setFilterGender] = useState<'무관' | '남성' | '여성'>('무관');
   const [filterCount, setFilterCount] = useState<2 | 4 | '전체'>('전체');
 
   const [lastTap, setLastTap] = useState<number | null>(null);
+
+  const holidayList = useMemo(() => getHolidays(), []);
+
+  // [공통] 날짜 텍스트 색상 결정 로직 (리스트 & 캘린더 공용)
+  const getDayTextColor = (dateString: string) => {
+    const d = new Date(dateString);
+    const dayOfWeek = d.getDay();
+
+    // 1. 공휴일 또는 일요일 -> 빨강
+    if (holidayList.includes(dateString) || dayOfWeek === 0) {
+      return '#EF4444';
+    }
+    // 2. 토요일 -> 파랑
+    if (dayOfWeek === 6) {
+      return '#3B82F6';
+    }
+    // 3. 평일 -> 검정 (기본)
+    return '#1F2937';
+  };
 
   const handleDoubleTap = () => {
     const now = Date.now();
@@ -198,13 +236,9 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
   const movePrev = () => setStartDateOffset(prev => prev - 1);
   const moveNext = () => setStartDateOffset(prev => prev + 1);
 
-  const markedDates = useMemo(() => {
+  // [수정] 캘린더 마킹 데이터 생성 (매치일만 점으로 표시)
+  const calendarMarks = useMemo(() => {
     const marks: any = {};
-    const holidays = ['2025-01-01', '2025-03-01', '2025-05-05', '2025-08-15', '2025-12-25'];
-    holidays.forEach(hDate => {
-      marks[hDate] = { marked: true, customStyles: { text: { color: 'red', fontWeight: 'bold' } } };
-    });
-
     matches.forEach((match) => {
       const parts = match.date.match(/(\d{4})년 (\d{1,2})월 (\d{1,2})일/);
       if (parts) {
@@ -212,11 +246,52 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
         const month = parts[2].padStart(2, '0');
         const day = parts[3].padStart(2, '0');
         const isoDate = `${year}-${month}-${day}`;
-        marks[isoDate] = { marked: true, customStyles: { text: { color: '#34D399', fontWeight: 'bold' } } };
+
+        marks[isoDate] = {
+          hasMatch: true, // 커스텀 로직용 플래그
+        };
       }
     });
     return marks;
   }, [matches]);
+
+  // [중요] 캘린더 내부 날짜 렌더링 커스텀 컴포넌트
+  const renderCalendarDay = ({ date, state }: any) => {
+    const dateString = date.dateString;
+    const textColor = state === 'disabled' ? '#D1D5DB' : getDayTextColor(dateString);
+    const hasMatch = calendarMarks[dateString]?.hasMatch;
+
+    // 오늘 날짜인지 확인
+    const todayStr = new Date().toISOString().split('T')[0];
+    const isToday = dateString === todayStr;
+
+    return (
+      <TouchableOpacity
+        onPress={() => {
+          console.log('선택한 날짜:', dateString);
+          // 여기에 날짜 선택 시 동작 추가 가능 (예: 해당 날짜의 매치 필터링)
+          setCalendarModalVisible(false);
+        }}
+        style={styles.calendarDayContainer}
+      >
+        <View style={[
+          styles.calendarDayTextContainer,
+          isToday && styles.todayBackground // 오늘 날짜 배경 강조
+        ]}>
+          <Text style={[
+            styles.calendarDayText,
+            { color: isToday ? 'white' : textColor }, // 오늘은 흰색, 나머지는 계산된 색상
+            (state === 'today') && { fontWeight: 'bold' }
+          ]}>
+            {date.day}
+          </Text>
+        </View>
+
+        {/* 매치가 있는 날 하단 점 표시 */}
+        {hasMatch && <View style={styles.matchDot} />}
+      </TouchableOpacity>
+    );
+  };
 
   const handleCreateRoom = () => {
     setModalVisible(true);
@@ -246,16 +321,10 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
     setIsNotifModalVisible(true);
   };
 
-  // [수정] 수락 시 알림 삭제 및 채팅 탭 이동
   const handleAccept = (id: number) => {
-    // 1. 알림 삭제
     setNotifications(prev => prev.filter(n => n.id !== id));
-    // 2. 모달 닫기
     setIsNotifModalVisible(false);
-    // 3. 채팅 탭으로 이동 (App.tsx에서 함수를 내려줘야 함)
-    if (onGoToChat) {
-      onGoToChat();
-    }
+    if (onGoToChat) onGoToChat();
   };
 
   const handleDecline = (id: number) => {
@@ -264,6 +333,7 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
 
   return (
     <View style={styles.container}>
+      {/* 헤더 */}
       <View style={styles.header}>
         <View style={styles.logoContainer}>
           <View style={styles.logoWrapper}>
@@ -309,24 +379,35 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
             </TouchableOpacity>
 
             <Pressable style={styles.dateList} onPress={handleDoubleTap}>
-              {dates.map((item) => (
-                <TouchableOpacity
-                  key={item.fullDate.toISOString()}
-                  onPress={() => {
-                    setSelectedDate(item.day);
-                    handleDoubleTap();
-                  }}
-                  activeOpacity={0.7}
-                  style={[styles.dateButton, selectedDate === item.day && styles.dateButtonSelected]}
-                >
-                  <Text style={[styles.dateButtonDay, selectedDate === item.day && styles.dateButtonTextSelected]}>
-                    {item.day}
-                  </Text>
-                  <Text style={[styles.dateButtonLabel, selectedDate === item.day && styles.dateButtonTextSelected]}>
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              {dates.map((item) => {
+                const isSelected = selectedDate === item.day;
+                // 날짜 객체를 YYYY-MM-DD 문자열로 변환하여 색상 계산
+                const year = item.fullDate.getFullYear();
+                const month = String(item.fullDate.getMonth() + 1).padStart(2, '0');
+                const day = String(item.fullDate.getDate()).padStart(2, '0');
+                const dateStr = `${year}-${month}-${day}`;
+
+                const textColor = isSelected ? 'white' : getDayTextColor(dateStr);
+
+                return (
+                  <TouchableOpacity
+                    key={item.fullDate.toISOString()}
+                    onPress={() => {
+                      setSelectedDate(item.day);
+                      handleDoubleTap();
+                    }}
+                    activeOpacity={0.7}
+                    style={[styles.dateButton, isSelected && styles.dateButtonSelected]}
+                  >
+                    <Text style={[styles.dateButtonDay, { color: textColor }]}>
+                      {item.day}
+                    </Text>
+                    <Text style={[styles.dateButtonLabel, isSelected && styles.dateButtonTextSelected]}>
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </Pressable>
 
             <TouchableOpacity style={styles.dateArrowButton} onPress={moveNext}>
@@ -367,7 +448,7 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
         </ScrollView>
       )}
 
-      {/* --- 알림 리스트 모달 --- */}
+      {/* 알림 모달 */}
       <Modal
         visible={isNotifModalVisible}
         transparent={true}
@@ -401,8 +482,6 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
                       </View>
                       <Text style={styles.notifMessage}>{item.message}</Text>
                     </View>
-
-                    {/* 수락/거절 버튼 */}
                     <View style={styles.notifActionContainer}>
                       <TouchableOpacity
                         style={[styles.actionBtn, styles.declineBtn]}
@@ -495,12 +574,28 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
         <Pressable style={styles.modalBackdrop} onPress={() => setCalendarModalVisible(false)}>
           <View style={styles.calendarModalContent}>
             <Text style={styles.modalTitle}>경기 일정 확인</Text>
+            {/* [수정] dayComponent 적용 */}
             <RNCalendar
-              markingType={'custom'}
-              markedDates={markedDates}
+              dayComponent={renderCalendarDay}
               monthFormat={'yyyy년 MM월'}
-              onDayPress={(day) => { console.log('선택한 날짜', day.dateString); setCalendarModalVisible(false); }}
-              theme={{ todayTextColor: '#34D399', arrowColor: '#1F2937', monthTextColor: '#1F2937', textMonthFontWeight: 'bold', textMonthFontSize: 18 }}
+              theme={{
+                arrowColor: '#1F2937',
+                monthTextColor: '#1F2937',
+                textMonthFontWeight: 'bold',
+                textMonthFontSize: 18,
+                textDayHeaderFontWeight: 'bold',
+                // '일'요일 헤더는 빨강으로
+                'stylesheet.calendar.header': {
+                  dayHeader: {
+                    marginTop: 2,
+                    marginBottom: 7,
+                    width: 32,
+                    textAlign: 'center',
+                    fontSize: 13,
+                    color: '#6B7280', // 기본 색
+                  }
+                }
+              }}
             />
             <TouchableOpacity style={styles.closeButton} onPress={() => setCalendarModalVisible(false)}>
               <Text style={styles.closeButtonText}>닫기</Text>
@@ -567,7 +662,6 @@ const styles = StyleSheet.create({
   closeButton: { marginTop: 15, backgroundColor: '#34D399', padding: 12, borderRadius: 10, alignItems: 'center' },
   closeButtonText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
 
-  // 알림 모달 스타일
   notifModalContent: {
     width: '90%',
     backgroundColor: 'white',
@@ -601,4 +695,32 @@ const styles = StyleSheet.create({
   actionBtn: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
   acceptBtn: { backgroundColor: '#34D399' },
   declineBtn: { backgroundColor: '#F3F4F6' },
+
+  // [추가] 캘린더 데이 커스텀 스타일
+  calendarDayContainer: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarDayTextContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarDayText: {
+    fontSize: 14,
+  },
+  todayBackground: {
+    backgroundColor: '#34D399', // 오늘 날짜 배경
+  },
+  matchDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#34D399',
+    marginTop: 2,
+  },
 });
