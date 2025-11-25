@@ -6,9 +6,9 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
-  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { Users } from 'lucide-react-native'; // [수정] 친구 아이콘 import
 
 // (임시) 채팅방 데이터
 const chatRooms = [
@@ -38,18 +38,22 @@ export default function ChatListScreen() {
       {/* 헤더 */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>대화</Text>
+        {/* [수정] 우측 상단 아이콘을 친구(Users) 아이콘으로 변경 */}
+        <TouchableOpacity style={styles.headerRightButton}>
+          <Users size={24} color="white" />
+        </TouchableOpacity>
       </View>
 
       {/* 채팅 목록 */}
       <ScrollView
         style={styles.listContainer}
-        contentContainerStyle={{ paddingBottom: 20 }} // 하단 탭바에 가려짐 방지 여유 공간
+        contentContainerStyle={{ paddingBottom: 20 }}
       >
         {chatRooms.map((room) => (
           <TouchableOpacity
             key={room.id}
             style={styles.chatItem}
-            activeOpacity={0.7} // 안드로이드 터치 피드백 개선
+            activeOpacity={0.7}
             onPress={() => navigation.navigate('ChatRoom', { title: room.matchTitle })}
           >
             <Image source={room.avatar} style={styles.avatar} />
@@ -78,17 +82,24 @@ const styles = StyleSheet.create({
     backgroundColor: '#111827',
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     padding: 16,
-    paddingTop: 24, // MainScreen의 SafeAreaView 아래에 위치하므로 적당한 패딩
+    paddingTop: 20,
+    paddingBottom: 12,
     backgroundColor: '#1F2937',
     borderBottomWidth: 1,
     borderBottomColor: '#374151',
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     color: 'white',
-    includeFontPadding: false, // 안드로이드 폰트 수직 정렬 보정
+    includeFontPadding: false,
+  },
+  headerRightButton: {
+    padding: 4,
   },
   listContainer: {
     flex: 1,
@@ -140,7 +151,7 @@ const styles = StyleSheet.create({
   },
   unreadText: {
     color: 'white',
-    fontSize: 10, // 뱃지 텍스트 크기 조정
+    fontSize: 10,
     fontWeight: 'bold',
   },
 });
