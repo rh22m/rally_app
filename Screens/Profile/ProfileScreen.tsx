@@ -6,16 +6,20 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  Alert,
 } from 'react-native';
-import { Settings, Shield, LogOut, ChevronRight } from 'lucide-react-native';
+// 1. History 아이콘 추가
+import { Settings, Shield, LogOut, ChevronRight, History } from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
 
-// App.tsx로부터 받을 props 타입 정의
 interface ProfileScreenProps {
   onLogout: () => void;
 }
 
 export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
-  // (임시) 유저 데이터 예시
+  const navigation = useNavigation<any>();
+
+  // (임시) 유저 데이터
   const user = {
     name: '배드민턴 마스터',
     location: '안양시 동안구',
@@ -23,14 +27,29 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
     rmr: 1350,
     wins: 15,
     losses: 8,
-    avatar: require('../../assets/images/card-logo.png'), // (임시)
+    avatar: require('../../assets/images/card-logo.png'),
+  };
+
+  // 2. 기록 아이콘 클릭 핸들러
+  const handleHistoryPress = () => {
+    // 실제로는 여기서 경기 기록 화면으로 이동합니다.
+    // App.tsx 스택에 'MatchHistory'가 등록되어 있어야 합니다.
+    navigation.navigate('MatchHistory');
+
+    // (아직 화면이 없다면 테스트용 Alert 사용)
+    // Alert.alert("경기 기록", "경기 기록 및 RMR 변동 내역 화면으로 이동합니다.");
   };
 
   return (
     <View style={styles.container}>
-      {/* 헤더 */}
+      {/* 3. 헤더 수정 (Flex Row 적용) */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>내 정보</Text>
+
+        {/* 우측 상단 기록 아이콘 */}
+        <TouchableOpacity onPress={handleHistoryPress} style={styles.historyButton}>
+          <History size={26} color="white" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView>
@@ -41,7 +60,7 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
           <Text style={styles.location}>{user.location}</Text>
         </View>
 
-        {/* 2. RMR 카드 (기획안 핵심) */}
+        {/* 2. RMR 카드 */}
         <View style={styles.rmrCard}>
           <View style={styles.rmrItem}>
             <Text style={styles.rmrLabel}>티어</Text>
@@ -91,6 +110,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#111827',
   },
   header: {
+    // 4. 헤더 스타일 변경 (가로 정렬)
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: 16,
     paddingTop: 24,
     backgroundColor: '#1F2937',
@@ -99,6 +122,9 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: 'white',
+  },
+  historyButton: {
+    padding: 4, // 터치 영역 확보
   },
   profileSection: {
     alignItems: 'center',
@@ -109,6 +135,7 @@ const styles = StyleSheet.create({
     height: 100,
     borderRadius: 50,
     marginBottom: 16,
+    backgroundColor: '#374151', // 이미지 없을 때 배경색
   },
   name: {
     fontSize: 22,
@@ -143,7 +170,7 @@ const styles = StyleSheet.create({
   },
   rmrValueTier: {
     fontSize: 16,
-    color: '#34D399', // 랠리 녹색
+    color: '#34D399',
     fontWeight: 'bold',
   },
   rmrSeparator: {
@@ -172,6 +199,6 @@ const styles = StyleSheet.create({
     marginLeft: 'auto',
   },
   logoutText: {
-    color: '#EF4444', // 빨간색
+    color: '#EF4444',
   },
 });
