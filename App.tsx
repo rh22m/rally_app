@@ -1,26 +1,35 @@
 import React, { useState, useCallback } from 'react';
 import {
-  SafeAreaView,
   StyleSheet,
   View,
   Text,
-  TouchableOpacity,
-  Platform,
   StatusBar,
+  Platform,
 } from 'react-native';
 
+// 네비게이션 필수 라이브러리
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+// 안드로이드 안전 영역 처리
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+
+// 컴포넌트 임포트
 import { Home } from './components/Home';
 import { BottomNav } from './components/BottomNav';
 import { ScoreTracker } from './components/ScoreTracker';
 import { GameSummary } from './components/GameSummary';
 import AIAnalysis from './Screens/AI/AIAnalysis';
 
-// 1. (수정) SignUpFlow -> SignUpScreen
 import LoginScreen from './Screens/Auth/LoginScreen';
-import SignUpScreen from './Screens/Auth/SignUpScreen'; // 2. (수정) SignUpFlow -> SignUpScreen
+import SignUpScreen from './Screens/Auth/SignUpScreen';
 import ChatListScreen from './Screens/Chat/ChatListScreen';
+import ChatRoomScreen from './Screens/Chat/ChatRoomScreen';
 import ProfileScreen from './Screens/Profile/ProfileScreen';
+// [추가] 경기 기록 화면 임포트
+import MatchHistoryScreen from './Screens/Profile/MatchHistoryScreen';
 
+// 네비게이터 정의
+const Stack = createNativeStackNavigator();
 
 export type Screen =
   | 'home'
@@ -31,9 +40,11 @@ export type Screen =
   | 'score'
   | 'summary';
 
-export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
-  const [authScreen, setAuthScreen] = useState<'login' | 'signup'>('login');
+// ==========================================
+// [MainScreen] 로그인 후 보이는 메인 탭 화면들
+// ==========================================
+function MainScreen({ navigation, route }: any) {
+  const { handleLogout } = route.params || {};
 
   const [currentScreen, setCurrentScreen] = useState<Screen>('match');
   const [gameResult, setGameResult] = useState({
@@ -41,35 +52,26 @@ export default function App() {
     team1Wins: 0,
     team2Wins: 0,
     isForced: false,
+    team1Name: '',
+    team2Name: '',
   });
 
   const handleTabChange = (tab: Screen) => {
     setCurrentScreen(tab);
   };
-  const goToSummary = useCallback(
-    (result: {
-      duration: number;
-      team1Wins: number;
-      team2Wins: number;
-      isForced: boolean;
-    }) => {
-      setGameResult(result);
-      setCurrentScreen('summary');
-    },
-    [],
-  );
+
+  const goToSummary = useCallback((result: any) => {
+    setGameResult(result);
+    setCurrentScreen('summary');
+  }, []);
+
   const goToScore = useCallback(() => {
     setCurrentScreen('score');
   }, []);
+
   const goToMatch = useCallback(() => {
     setCurrentScreen('match');
   }, []);
-
-  const handleLogout = useCallback(() => {
-    setIsLoggedIn(false);
-    setAuthScreen('login');
-  }, []);
-
 
   const renderScreen = () => {
     switch (currentScreen) {
@@ -97,37 +99,90 @@ export default function App() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" />
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      {renderScreen()}
 
-      {!isLoggedIn ? (
-        authScreen === 'login' ? (
-          <LoginScreen
-            onGoToSignUp={() => setAuthScreen('signup')}
-            onLogin={() => setIsLoggedIn(true)}
+      {/* 탭바 표시 조건 */}
+      {currentScreen !== 'home' &&
+        currentScreen !== 'score' &&
+        currentScreen !== 'summary' && (
+          <BottomNav
+            currentTab={currentScreen}
+            onTabChange={handleTabChange}
           />
-        ) : (
-          // 3. (수정) SignUpFlow -> SignUpScreen
-          <SignUpScreen
-            onGoToLogin={() => setAuthScreen('login')}
-            onSignUp={() => setIsLoggedIn(true)}
-          />
-        )
-      ) : (
-        <>
-          {renderScreen()}
-
-          {currentScreen !== 'home' &&
-            currentScreen !== 'score' &&
-            currentScreen !== 'summary' && (
-              <BottomNav
-                currentTab={currentScreen}
-                onTabChange={handleTabChange}
-              />
-            )}
-        </>
-      )}
+        )}
     </SafeAreaView>
+  );
+}
+
+// ==========================================
+// [App] 전체 앱 진입점 (네비게이션 & 인증 관리)
+// ==========================================
+export default function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(true);
+  const [authScreen, setAuthScreen] = useState<'login' | 'signup'>('login');
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setAuthScreen('login');
+  };
+
+  // 1. 로그인 전 화면
+  if (!isLoggedIn) {
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.container}>
+          <StatusBar barStyle="light-content" backgroundColor="#111827" />
+          {authScreen === 'login' ? (
+            <LoginScreen
+              onGoToSignUp={() => setAuthScreen('signup')}
+              onLogin={() => setIsLoggedIn(true)}
+            />
+          ) : (
+            <SignUpScreen
+              onGoToLogin={() => setAuthScreen('login')}
+              onSignUp={() => setIsLoggedIn(true)}
+            />
+          )}
+        </SafeAreaView>
+      </SafeAreaProvider>
+    );
+  }
+
+  // 2. 로그인 후 화면 (Stack Navigation)
+  return (
+    <SafeAreaProvider>
+      <NavigationContainer>
+        <StatusBar barStyle="light-content" backgroundColor="#111827" />
+        <Stack.Navigator
+          initialRouteName="Main"
+          screenOptions={{
+            headerShown: false,
+            animation: Platform.OS === 'android' ? 'fade_from_bottom' : 'default',
+          }}
+        >
+          {/* 메인 탭 화면 */}
+          <Stack.Screen
+            name="Main"
+            component={MainScreen}
+            initialParams={{ handleLogout }}
+          />
+
+          {/* 채팅방 상세 화면 */}
+          <Stack.Screen
+            name="ChatRoom"
+            component={ChatRoomScreen}
+          />
+
+          {/* [추가] 경기 기록 화면 */}
+          <Stack.Screen
+            name="MatchHistory"
+            component={MatchHistoryScreen}
+          />
+
+        </Stack.Navigator>
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }
 
@@ -149,10 +204,5 @@ const stubStyles = StyleSheet.create({
     fontSize: 24,
     color: 'white',
     marginBottom: 20,
-  },
-  stubButton: {
-    backgroundColor: '#34D399',
-    padding: 10,
-    borderRadius: 5,
   },
 });
