@@ -25,7 +25,6 @@ import SignUpScreen from './Screens/Auth/SignUpScreen';
 import ChatListScreen from './Screens/Chat/ChatListScreen';
 import ChatRoomScreen from './Screens/Chat/ChatRoomScreen';
 import ProfileScreen from './Screens/Profile/ProfileScreen';
-// [추가] 경기 기록 화면 임포트
 import MatchHistoryScreen from './Screens/Profile/MatchHistoryScreen';
 
 // 네비게이터 정의
@@ -78,7 +77,14 @@ function MainScreen({ navigation, route }: any) {
       case 'home':
         return <ScoreTracker onComplete={goToSummary} onCancel={goToMatch} />;
       case 'match':
-        return <Home onStartGame={goToScore} />;
+        // [수정] Home 컴포넌트에 onGoToChat prop 전달
+        // 알림 수락 시 'chat' 탭으로 이동하도록 연결
+        return (
+          <Home
+            onStartGame={goToScore}
+            onGoToChat={() => handleTabChange('chat')}
+          />
+        );
       case 'score':
         return <ScoreTracker onComplete={goToSummary} onCancel={goToMatch} />;
       case 'summary':
@@ -174,7 +180,7 @@ export default function App() {
             component={ChatRoomScreen}
           />
 
-          {/* [추가] 경기 기록 화면 */}
+          {/* 경기 기록 화면 */}
           <Stack.Screen
             name="MatchHistory"
             component={MatchHistoryScreen}
