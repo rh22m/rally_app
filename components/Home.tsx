@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   StyleSheet,
   View,
@@ -17,13 +17,16 @@ import DatePicker from 'react-native-date-picker';
 import { Calendar as RNCalendar, LocaleConfig } from 'react-native-calendars';
 import {
   Search,
-  ChevronLeft,  // 화살표 다시 추가
-  ChevronRight, // 화살표 다시 추가
+  ChevronLeft,
+  ChevronRight,
   Plus,
   Calendar,
   MapPin,
   User,
   Users,
+  Bell,
+  Check,
+  X,
 } from 'lucide-react-native';
 import { MatchCard } from './MatchCard';
 
@@ -37,7 +40,7 @@ LocaleConfig.locales['kr'] = {
 };
 LocaleConfig.defaultLocale = 'kr';
 
-// --- 컴포넌트 분리 (에러 방지) ---
+// --- 필터 버튼 컴포넌트 ---
 const FilterOptionButton = ({ label, icon, isSelected, onPress, type = 'text' }: any) => {
   const IconComponent = icon;
   const color = isSelected ? 'white' : '#6B7280';
@@ -63,8 +66,10 @@ const FilterOptionButton = ({ label, icon, isSelected, onPress, type = 'text' }:
   );
 };
 
+// [수정] Props 인터페이스에 onGoToChat 추가
 interface HomeProps {
   onStartGame: () => void;
+  onGoToChat?: () => void; // 채팅 탭으로 이동하기 위한 콜백 (선택적)
 }
 
 const initialMatches = [
@@ -83,6 +88,32 @@ const initialMatches = [
     title: '정모',
     date: '2025년 11월 13일 19시 00분',
     location: '호계체육관',
+  },
+];
+
+// 알림 데이터 타입
+interface NotificationItem {
+  id: number;
+  type: 'request';
+  title: string;
+  message: string;
+  time: string;
+}
+
+const initialNotifications: NotificationItem[] = [
+  {
+    id: 1,
+    type: 'request',
+    title: '참가 신청',
+    message: "'호계체육관 정모'에 김민수님이 참가를 희망합니다.",
+    time: '방금 전',
+  },
+  {
+    id: 2,
+    type: 'request',
+    title: '참가 신청',
+    message: "'주말 배드민턴'에 이영희님이 참가를 희망합니다.",
+    time: '10분 전',
   },
 ];
 
@@ -106,17 +137,14 @@ const regionItems = [
   { label: '제주', value: '제주' },
 ];
 
-export function Home({ onStartGame }: HomeProps) {
-  // --- 날짜 바 상태 관리 (시작일 기준) ---
-  const [startDateOffset, setStartDateOffset] = useState(0); // 오늘 기준 며칠 떨어져 있는지
-  
-  // 현재 보여줄 날짜 5개 생성
+export function Home({ onStartGame, onGoToChat }: HomeProps) {
+  const [startDateOffset, setStartDateOffset] = useState(0);
+
   const dates = useMemo(() => {
     const list = [];
     const today = new Date();
-    // startDateOffset 만큼 이동한 날짜가 시작점
-    today.setDate(today.getDate() + startDateOffset); 
-    
+    today.setDate(today.getDate() + startDateOffset);
+
     const dayLabels = ['일', '월', '화', '수', '목', '금', '토'];
     for (let i = 0; i < 5; i++) {
       const d = new Date(today);
@@ -124,7 +152,7 @@ export function Home({ onStartGame }: HomeProps) {
       list.push({
         day: d.getDate(),
         label: dayLabels[d.getDay()],
-        fullDate: d, // 전체 날짜 객체 저장 (비교용)
+        fullDate: d,
       });
     }
     return list;
@@ -145,17 +173,20 @@ export function Home({ onStartGame }: HomeProps) {
   const [isRegionModalVisible, setIsRegionModalVisible] = useState(false);
   const [isCalendarModalVisible, setCalendarModalVisible] = useState(false);
 
+  // 알림 모달 State
+  const [isNotifModalVisible, setIsNotifModalVisible] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications);
+
   // Search/Filter State
   const [isSearching, setIsSearching] = useState(false);
   const [filterGender, setFilterGender] = useState<'무관' | '남성' | '여성'>('무관');
   const [filterCount, setFilterCount] = useState<2 | 4 | '전체'>('전체');
 
-  // --- 더블 클릭 감지 로직 ---
   const [lastTap, setLastTap] = useState<number | null>(null);
-  
+
   const handleDoubleTap = () => {
     const now = Date.now();
-    const DOUBLE_PRESS_DELAY = 300; // 0.3초 이내 두 번 탭
+    const DOUBLE_PRESS_DELAY = 300;
     if (lastTap && (now - lastTap) < DOUBLE_PRESS_DELAY) {
       setCalendarModalVisible(true);
       setLastTap(null);
@@ -164,7 +195,6 @@ export function Home({ onStartGame }: HomeProps) {
     }
   };
 
-  // --- 날짜 이동 핸들러 ---
   const movePrev = () => setStartDateOffset(prev => prev - 1);
   const moveNext = () => setStartDateOffset(prev => prev + 1);
 
@@ -212,13 +242,45 @@ export function Home({ onStartGame }: HomeProps) {
     setDate(new Date());
   };
 
+  const handleNotificationPress = () => {
+    setIsNotifModalVisible(true);
+  };
+
+  // [수정] 수락 시 알림 삭제 및 채팅 탭 이동
+  const handleAccept = (id: number) => {
+    // 1. 알림 삭제
+    setNotifications(prev => prev.filter(n => n.id !== id));
+    // 2. 모달 닫기
+    setIsNotifModalVisible(false);
+    // 3. 채팅 탭으로 이동 (App.tsx에서 함수를 내려줘야 함)
+    if (onGoToChat) {
+      onGoToChat();
+    }
+  };
+
+  const handleDecline = (id: number) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.logoContainer}>
-          <Image source={require('../assets/images/rally-logo.png')} style={styles.logo} />
-          <Text style={styles.logoText}>Rally</Text>
+          <View style={styles.logoWrapper}>
+            <Image source={require('../assets/images/rally-logo.png')} style={styles.logo} />
+            <Text style={styles.logoText}>Rally</Text>
+          </View>
+
+          <TouchableOpacity onPress={handleNotificationPress} style={styles.notificationButton}>
+            <Bell size={24} color="white" />
+            {notifications.length > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{notifications.length}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
+
         <View style={styles.searchRow}>
           <View style={styles.searchContainer}>
             <TextInput
@@ -240,23 +302,19 @@ export function Home({ onStartGame }: HomeProps) {
       {!isSearching ? (
         <>
           <Image source={require('../assets/images/badminton.png')} style={styles.heroImage} resizeMode="cover" />
-          
+
           <View style={styles.dateSelectorContainer}>
-            {/* 좌측 화살표 (이전 날짜) */}
             <TouchableOpacity style={styles.dateArrowButton} onPress={movePrev}>
               <ChevronLeft size={20} color="white" />
             </TouchableOpacity>
 
-            {/* 날짜 리스트 영역 (더블 탭 감지) */}
             <Pressable style={styles.dateList} onPress={handleDoubleTap}>
               {dates.map((item) => (
                 <TouchableOpacity
-                  key={item.fullDate.toISOString()} // 고유 키
+                  key={item.fullDate.toISOString()}
                   onPress={() => {
                     setSelectedDate(item.day);
-                    // 여기서 싱글 탭 동작(날짜 선택)을 수행
-                    // 더블 탭과 겹치지 않게 하려면 handleDoubleTap을 여기에도 연결 가능
-                    handleDoubleTap(); 
+                    handleDoubleTap();
                   }}
                   activeOpacity={0.7}
                   style={[styles.dateButton, selectedDate === item.day && styles.dateButtonSelected]}
@@ -271,12 +329,9 @@ export function Home({ onStartGame }: HomeProps) {
               ))}
             </Pressable>
 
-            {/* 우측 화살표 (다음 날짜) */}
             <TouchableOpacity style={styles.dateArrowButton} onPress={moveNext}>
               <ChevronRight size={20} color="white" />
             </TouchableOpacity>
-            
-            {/* 기존 캘린더 아이콘 삭제됨 */}
           </View>
 
           <View style={styles.listWrapper}>
@@ -312,7 +367,66 @@ export function Home({ onStartGame }: HomeProps) {
         </ScrollView>
       )}
 
-      {/* Room Creation Modal */}
+      {/* --- 알림 리스트 모달 --- */}
+      <Modal
+        visible={isNotifModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsNotifModalVisible(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setIsNotifModalVisible(false)}>
+          <View style={styles.notifModalContent}>
+            <View style={styles.notifHeader}>
+              <Text style={styles.modalTitle}>알림 센터</Text>
+              <TouchableOpacity onPress={() => setIsNotifModalVisible(false)}>
+                <X size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            {notifications.length === 0 ? (
+              <View style={styles.emptyNotifContainer}>
+                <Bell size={48} color="#D1D5DB" />
+                <Text style={styles.emptyNotifText}>새로운 알림이 없습니다.</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={notifications}
+                keyExtractor={(item) => item.id.toString()}
+                renderItem={({ item }) => (
+                  <View style={styles.notifItem}>
+                    <View style={styles.notifTextContainer}>
+                      <View style={styles.notifTitleRow}>
+                        <Text style={styles.notifTitle}>{item.title}</Text>
+                        <Text style={styles.notifTime}>{item.time}</Text>
+                      </View>
+                      <Text style={styles.notifMessage}>{item.message}</Text>
+                    </View>
+
+                    {/* 수락/거절 버튼 */}
+                    <View style={styles.notifActionContainer}>
+                      <TouchableOpacity
+                        style={[styles.actionBtn, styles.declineBtn]}
+                        onPress={() => handleDecline(item.id)}
+                      >
+                        <X size={18} color="#EF4444" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.actionBtn, styles.acceptBtn]}
+                        onPress={() => handleAccept(item.id)}
+                      >
+                        <Check size={18} color="white" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+                contentContainerStyle={{ paddingBottom: 20 }}
+              />
+            )}
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* 방 생성 모달 */}
       <Modal animationType="slide" transparent={true} visible={isModalVisible} onRequestClose={() => setModalVisible(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBackdrop}>
           <Pressable style={styles.modalBackdropPressable} onPress={() => setModalVisible(false)} />
@@ -377,7 +491,6 @@ export function Home({ onStartGame }: HomeProps) {
         </Pressable>
       </Modal>
 
-      {/* 전체 달력 Modal */}
       <Modal visible={isCalendarModalVisible} transparent={true} animationType="fade" onRequestClose={() => setCalendarModalVisible(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setCalendarModalVisible(false)}>
           <View style={styles.calendarModalContent}>
@@ -402,9 +515,14 @@ export function Home({ onStartGame }: HomeProps) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
   header: { backgroundColor: '#111827', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12 },
-  logoContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  logoContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  logoWrapper: { flexDirection: 'row', alignItems: 'center' },
   logo: { width: 32, height: 32, marginRight: 8 },
   logoText: { fontSize: 24, fontWeight: 'bold', color: '#FFFFFF' },
+  notificationButton: { position: 'relative', padding: 4 },
+  badge: { position: 'absolute', top: 0, right: 0, backgroundColor: '#EF4444', width: 16, height: 16, borderRadius: 8, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: '#111827' },
+  badgeText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
+
   searchRow: { flexDirection: 'row', alignItems: 'center' },
   searchContainer: { position: 'relative', flex: 1 },
   searchInput: { backgroundColor: '#374151', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 16, paddingRight: 40, fontSize: 16, color: '#FFFFFF' },
@@ -448,4 +566,39 @@ const styles = StyleSheet.create({
   calendarModalContent: { backgroundColor: 'white', margin: 20, borderRadius: 20, padding: 20, elevation: 5, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } },
   closeButton: { marginTop: 15, backgroundColor: '#34D399', padding: 12, borderRadius: 10, alignItems: 'center' },
   closeButtonText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
+
+  // 알림 모달 스타일
+  notifModalContent: {
+    width: '90%',
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 24,
+    alignSelf: 'center',
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 10
+  },
+  notifHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  emptyNotifContainer: { alignItems: 'center', paddingVertical: 32 },
+  emptyNotifText: { color: '#9CA3AF', marginTop: 12, fontSize: 16 },
+  notifItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6'
+  },
+  notifTextContainer: { flex: 1, marginRight: 12 },
+  notifTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  notifTitle: { fontSize: 14, fontWeight: 'bold', color: '#34D399' },
+  notifTime: { fontSize: 12, color: '#9CA3AF' },
+  notifMessage: { fontSize: 15, color: '#1F2937', lineHeight: 20 },
+  notifActionContainer: { flexDirection: 'row', gap: 8 },
+  actionBtn: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
+  acceptBtn: { backgroundColor: '#34D399' },
+  declineBtn: { backgroundColor: '#F3F4F6' },
 });
