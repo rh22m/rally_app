@@ -6,9 +6,11 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  Platform,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 
-// (임시) 채팅방 데이터 예시
+// (임시) 채팅방 데이터
 const chatRooms = [
   {
     id: 1,
@@ -16,7 +18,7 @@ const chatRooms = [
     lastMessage: '네, 6시에 뵙겠습니다!',
     time: '오후 2:30',
     unreadCount: 1,
-    avatar: require('../../assets/images/card-logo.png'), // (임시)
+    avatar: require('../../assets/images/card-logo.png'),
   },
   {
     id: 2,
@@ -24,11 +26,13 @@ const chatRooms = [
     lastMessage: '복식 가능하신가요?',
     time: '오전 11:15',
     unreadCount: 0,
-    avatar: require('../../assets/images/card-logo.png'), // (임시)
+    avatar: require('../../assets/images/card-logo.png'),
   },
 ];
 
 export default function ChatListScreen() {
+  const navigation = useNavigation<any>();
+
   return (
     <View style={styles.container}>
       {/* 헤더 */}
@@ -37,9 +41,17 @@ export default function ChatListScreen() {
       </View>
 
       {/* 채팅 목록 */}
-      <ScrollView style={styles.listContainer}>
+      <ScrollView
+        style={styles.listContainer}
+        contentContainerStyle={{ paddingBottom: 20 }} // 하단 탭바에 가려짐 방지 여유 공간
+      >
         {chatRooms.map((room) => (
-          <TouchableOpacity key={room.id} style={styles.chatItem}>
+          <TouchableOpacity
+            key={room.id}
+            style={styles.chatItem}
+            activeOpacity={0.7} // 안드로이드 터치 피드백 개선
+            onPress={() => navigation.navigate('ChatRoom', { title: room.matchTitle })}
+          >
             <Image source={room.avatar} style={styles.avatar} />
             <View style={styles.chatContent}>
               <Text style={styles.chatTitle}>{room.matchTitle}</Text>
@@ -67,13 +79,16 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: 16,
-    paddingTop: 24,
-    backgroundColor: '#1F2937', // 약간 더 밝은 어두운색
+    paddingTop: 24, // MainScreen의 SafeAreaView 아래에 위치하므로 적당한 패딩
+    backgroundColor: '#1F2937',
+    borderBottomWidth: 1,
+    borderBottomColor: '#374151',
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: 'white',
+    includeFontPadding: false, // 안드로이드 폰트 수직 정렬 보정
   },
   listContainer: {
     flex: 1,
@@ -90,6 +105,7 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     marginRight: 12,
+    backgroundColor: '#374151',
   },
   chatContent: {
     flex: 1,
@@ -99,10 +115,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: 'white',
     marginBottom: 4,
+    includeFontPadding: false,
   },
   chatMessage: {
     fontSize: 14,
     color: '#9CA3AF',
+    includeFontPadding: false,
   },
   chatMeta: {
     alignItems: 'flex-end',
@@ -122,7 +140,7 @@ const styles = StyleSheet.create({
   },
   unreadText: {
     color: 'white',
-    fontSize: 12,
+    fontSize: 10, // 뱃지 텍스트 크기 조정
     fontWeight: 'bold',
   },
 });
