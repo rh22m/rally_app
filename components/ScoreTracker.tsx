@@ -16,7 +16,7 @@ import {
   Animated,
   ActivityIndicator
 } from 'react-native';
-import { RotateCcw, Play, Pause, ArrowLeft, XCircle, AlertTriangle, Activity, Trophy, Zap, ShieldAlert, Lightbulb } from 'lucide-react-native';
+import { RotateCcw, Play, Pause, ArrowLeft, XCircle, AlertTriangle, Timer, TrendingUp, Activity, Flame, Trophy, Zap, ShieldAlert, Lightbulb } from 'lucide-react-native';
 import LinearGradient from 'react-native-linear-gradient';
 
 // --- Types ---
@@ -45,10 +45,41 @@ interface ScoreTrackerProps {
 
 // --- INTERNAL COMPONENT: GameLoadingScreen ---
 const TIPS = [
-  { icon: <Trophy size={32} color="#FBBF24" />, title: "RMR은 단순 승패가 아닙니다", desc: "당신의 경기 내용이 얼마나 훌륭했는지를 분석합니다. 져도 잘 싸웠다면 점수 하락이 줄어듭니다." },
-  { icon: <Zap size={32} color="#34D399" />, title: "지구력 점수 올리기", desc: "30초 이상 이어지는 긴 랠리에서 승리해보세요. '지구력' 수치가 올라가 RMR에 긍정적인 영향을 줍니다." },
-  { icon: <ShieldAlert size={32} color="#EF4444" />, title: "중도 포기는 금물!", desc: "경기를 강제로 종료하면 패배보다 더 큰 페널티를 받게 됩니다. 끝까지 매너있는 플레이를 보여주세요." },
-  { icon: <Lightbulb size={32} color="#60A5FA" />, title: "위기관리 능력", desc: "20:20 듀스 상황에서의 득점은 일반 득점보다 가치가 높습니다. 중요한 순간에 강한 모습을 보여주세요." },
+   {
+     icon: <Trophy size={32} color="#FBBF24" />,
+     title: "RMR은 단순 승패가 아닙니다",
+     desc: "단순 결과가 아닌 경기 내용을 평가합니다. 졌더라도 좋은 플레이는 점수 하락을 막아줍니다."
+   },
+  {
+    icon: <Zap size={32} color="#34D399" />,
+    title: "지구력 점수 올리기",
+    desc: "30초 이상 긴 랠리를 이겨보세요. '지구력' 수치가 올라가 RMR을 높여줍니다."
+  },
+  {
+      icon: <Timer size={32} color="#F472B6" />,
+      title: "속도전의 묘미",
+      desc: "30초 미만의 짧고 강한 랠리 승부는 '속도' 능력치를 올려줍니다. 빠른 공격을 시도해보세요!"
+  },
+  {
+    icon: <ShieldAlert size={32} color="#EF4444" />,
+    title: "중도 포기는 금물!",
+    desc: "경기를 강제로 종료하면 패배보다 더 큰 페널티를 받게 됩니다. 끝까지 매너있는 플레이를 보여주세요."
+  },
+  {
+    icon: <Lightbulb size={32} color="#60A5FA" />,
+    title: "위기관리 능력",
+    desc: "20:20 듀스 상황에서의 득점은 일반 득점보다 가치가 높습니다. 중요한 순간에 강한 모습을 보여주세요."
+  },
+  {
+    icon: <Flame size={32} color="#F97316" />, // 아이콘 변경 (집중력/열정)
+    title: "후반 집중력",
+    desc: "끝까지 집중하세요! 1세트보다 마지막 세트 성적이 좋으면 추가 점수를 받습니다."
+  },
+  {
+    icon: <TrendingUp size={32} color="#A78BFA" />, // 아이콘 변경 (역전승)
+    title: "역전의 짜릿함",
+    desc: "3점 차 이상 뒤지고 있어도 포기하지 마세요. 역전에 성공하면 RMR이 더 많이 오릅니다."
+  },
 ];
 
 function InternalGameLoadingScreen({ visible, onFinish }: { visible: boolean; onFinish: () => void }) {
