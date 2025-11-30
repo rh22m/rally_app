@@ -64,7 +64,6 @@ const formatTime = (seconds: number) => {
 // --- Hexagon Chart ---
 const HexagonChart = ({ data }: { data: any }) => {
   const chartViewSize = normalize(200);
-  // [수정] 차트 크기 약간 축소 (150 -> 140)
   const chartSize = normalize(140);
   const center = chartViewSize / 2;
   const radius = chartSize / 2;
@@ -101,7 +100,6 @@ const HexagonChart = ({ data }: { data: any }) => {
         })}
         <Polygon points={dataPoints} fill="rgba(52, 211, 153, 0.4)" stroke="#34D399" strokeWidth="2" />
         {labels.map((label, i) => {
-          // [수정] 텍스트 거리 축소 (1.3 -> 1.2) - 글씨가 차트에 더 붙어서 잘리지 않음
           const [x, y] = getPoint(1.2, i, radius).split(',').map(Number);
           return (
             <SvgText
@@ -205,16 +203,31 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
 
   const scoreText = `${result.team2Wins} : ${result.team1Wins}`;
 
+  // 사용자(나) 기준 데이터 계산
+  const myStats = useMemo(() => {
+    const winnerStats = analysis.flowDetails;
+    if (isUserWinner) return winnerStats; // 승리 시 그대로 사용
+
+    // 패배 시 데이터 반전 (1.0 - 상대방점수)
+    return {
+      clutch: 1.0 - winnerStats.clutch,
+      tempo: 1.0 - winnerStats.tempo,
+      endurance: 1.0 - winnerStats.endurance,
+      focus: 1.0 - winnerStats.focus,
+      cons: 1.0 - winnerStats.cons,
+      com: 1.0 - winnerStats.com,
+    };
+  }, [analysis, isUserWinner]);
+
   const generateComment = () => {
-      const { flowDetails } = analysis;
       if (result.isForced) return "경기가 중단되어 분석이 제한적이에요.";
 
       const metrics = [
-          { key: 'endurance', val: flowDetails.endurance, label: "지구력", msg: "지치지 않는 강철 체력을 보여줬어요! 💪" },
-          { key: 'clutch', val: flowDetails.clutch, label: "위기관리", msg: "위기 상황에서 빛나는 승부사 기질! 🔥" },
-          { key: 'tempo', val: flowDetails.tempo, label: "속도", msg: "빠른 템포로 상대를 압도했어요! ⚡️" },
-          { key: 'focus', val: flowDetails.focus, label: "집중력", msg: "경기 후반 엄청난 집중력을 발휘했어요! 🧠" },
-          { key: 'com', val: flowDetails.com, label: "역전능력", msg: "불리한 상황을 뒤집는 저력! 대역전승! 🏆" }
+          { key: 'endurance', val: myStats.endurance, label: "지구력", winMsg: "지치지 않는 강철 체력을 보여줬어요! 💪", loseMsg: "지구력 싸움에서 조금 밀렸네요. 끈기가 필요해요!" },
+          { key: 'clutch', val: myStats.clutch, label: "위기관리", winMsg: "위기 상황에서 빛나는 승부사 기질! 🔥", loseMsg: "듀스 상황에서의 집중력이 아쉬웠어요." },
+          { key: 'tempo', val: myStats.tempo, label: "속도", winMsg: "빠른 템포로 상대를 압도했어요! ⚡️", loseMsg: "상대의 빠른 템포에 말리지 않도록 주의하세요." },
+          { key: 'focus', val: myStats.focus, label: "집중력", winMsg: "경기 후반 엄청난 집중력을 발휘했어요! 🧠", loseMsg: "후반 집중력이 조금 떨어졌어요. 끝까지 파이팅!" },
+          { key: 'com', val: myStats.com, label: "역전능력", winMsg: "불리한 상황을 뒤집는 저력! 대역전승! 🏆", loseMsg: "초반 실점을 만회하지 못해 아쉬워요." }
       ];
 
       metrics.sort((a, b) => b.val - a.val);
@@ -222,22 +235,44 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
       const worstMetric = metrics[metrics.length - 1];
 
       if (isUserWinner) {
-          if (bestMetric.val > 0.6) return bestMetric.msg;
+          if (bestMetric.val > 0.6) return bestMetric.winMsg;
           return "안정적인 경기 운용으로 승리했어요! 🎉";
       } else {
-          if (bestMetric.val > 0.4) {
+          if (bestMetric.val > 0.5) {
               return `아쉽게 졌지만, ${bestMetric.label}만큼은 훌륭했어요! 👍`;
           } else {
-              return `수고하셨어요! 다음엔 ${worstMetric.label}을 보완해보는 건 어떨까요?`;
+              return `${worstMetric.loseMsg} 다음엔 이길 수 있어요!`;
           }
       }
   };
 
+  // [수정] 승패에 따른 타이틀 분기 처리
   const getPlayStyleTitle = () => {
-    const details = analysis.flowDetails;
+    const details = myStats;
     const maxKey = Object.keys(details).reduce((a, b) => details[a as keyof typeof details] > details[b as keyof typeof details] ? a : b);
-    const titles: any = { clutch: "강심장 승부사 🔥", tempo: "전광석화 스피드스타 ⚡️", endurance: "지칠 줄 모르는 에너자이저 💪", focus: "후반 집중형 승부사 🧠", cons: "흔들리지 않는 편안함 🛡", com: "기적의 역전승 메이커 🌟" };
-    return titles[maxKey] || "올라운드 플레이어 ⚖️";
+
+    // 승리 시 타이틀
+    const winTitles: any = {
+        clutch: "강심장 승부사 🔥",
+        tempo: "전광석화 스피드스타 ⚡️",
+        endurance: "지칠 줄 모르는 에너자이저 💪",
+        focus: "후반 집중형 승부사 🧠",
+        cons: "흔들리지 않는 편안함 🛡",
+        com: "기적의 역전승 메이커 🌟"
+    };
+
+    // 패배 시 타이틀 (격려 및 장점 부각)
+    const loseTitles: any = {
+        clutch: "위기 속에서 빛난 침착함 🛡",
+        tempo: "상대를 긴장시킨 스피드 ⚡️",
+        endurance: "쉽게 지치지 않는 끈기 💪",
+        focus: "끝까지 포기하지 않는 집중력 🧠",
+        cons: "안정적인 경기 운영 능력 ⚖️",
+        com: "매서운 추격 본능 🔥"
+    };
+
+    const titles = isUserWinner ? winTitles : loseTitles;
+    return titles[maxKey] || "가능성이 보이는 챌린저 🌱";
   };
 
   return (
@@ -253,7 +288,6 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
 
             <View style={styles.card}>
 
-              {/* 탭 버튼 */}
               <View style={styles.pillTabContainer}>
                 <TouchableOpacity
                   onPress={() => setActiveTab('rmr')}
@@ -290,7 +324,7 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
                     </View>
 
                     <View style={styles.visualSectionChart}>
-                      <HexagonChart data={analysis.flowDetails} />
+                      <HexagonChart data={myStats} />
                     </View>
                   </>
                 )}
@@ -349,7 +383,7 @@ const styles = StyleSheet.create({
 
   card: { backgroundColor: '#1F2937', borderRadius: 24, padding: 32, marginBottom: 24, alignItems: 'center', width: '100%', maxWidth: 480 },
 
-  pillTabContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: 20, padding: 4, marginBottom: 16, alignSelf: 'center' },
+  pillTabContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: 20, padding: 4, marginBottom: 12, alignSelf: 'center' },
   pillTab: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16, gap: 4 },
 
   activePillTab: { backgroundColor: 'rgba(52, 211, 153, 0.15)' },
@@ -358,8 +392,8 @@ const styles = StyleSheet.create({
 
   activePillTabText: { color: '#34D399', fontWeight: 'bold' },
 
-  contentArea: { width: '100%', alignItems: 'center', height: normalize(260), justifyContent: 'flex-start' },
-  textReportContainer: { alignItems: 'center', marginBottom: 12, height: 50, justifyContent: 'center' },
+  contentArea: { width: '100%', alignItems: 'center', height: normalize(270), justifyContent: 'flex-start' },
+  textReportContainer: { alignItems: 'center', marginBottom: 8, height: 40, justifyContent: 'center' },
   reportTitle: { fontSize: normalize(18), fontWeight: 'bold', color: 'white', marginBottom: 4, textAlign: 'center' },
   reportBody: { fontSize: normalize(16), color: '#E5E7EB', lineHeight: 22, textAlign: 'center' },
 
