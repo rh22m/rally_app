@@ -73,39 +73,61 @@ const FilterOptionButton = ({ label, icon, isSelected, onPress, type = 'text' }:
   );
 };
 
-// [수정] 공지사항 데이터 (이미지 필드 추가)
+// 공지사항 데이터
 const NOTICE_ITEMS = [
   {
     id: 1,
     badge: 'RMR 가이드',
     title: '단순 승패 그 이상',
     subtitle: '경기 내용까지 분석하는 RMR 시스템을 소개합니다.',
-    image: require('../assets/images/badminton_1.png'), // 첫 번째 이미지
+    image: require('../assets/images/badminton_1.png'),
   },
   {
     id: 2,
     badge: '플레이 스타일',
     title: '나만의 강점을 찾으세요',
     subtitle: '지구력, 속도, 위기관리 등 다양한 지표를 분석해 드려요.',
-    image: require('../assets/images/badminton_2.png'), // [교체 필요] 두 번째 이미지 (예: badminton_2.png)
+    image: require('../assets/images/badminton_2.png'),
   },
   {
     id: 3,
     badge: '매너 플레이',
     title: '끝까지 최선을 다해주세요',
     subtitle: '강제 종료는 패배보다 더 큰 페널티를 받게 됩니다.',
-    image: require('../assets/images/badminton_3.png'), // [교체 필요] 세 번째 이미지 (예: badminton_3.png)
+    image: require('../assets/images/badminton_3.png'),
   }
 ];
 
+// [유틸] 날짜 문자열 파싱 함수 (YYYY년 MM월 DD일 HH시 mm분)
+const parseMatchDateStr = (dateStr: string): Date => {
+  const parts = dateStr.match(/(\d{4})년 (\d{1,2})월 (\d{1,2})일 (\d{1,2})시 (\d{1,2})분/);
+  if (!parts) return new Date(0); // 파싱 실패 시 과거 날짜 반환
+  return new Date(
+    parseInt(parts[1]),
+    parseInt(parts[2]) - 1,
+    parseInt(parts[3]),
+    parseInt(parts[4]),
+    parseInt(parts[5])
+  );
+};
+
+// [수정] 2025년 12월 ~ 2026년 1월 미래 임의 매칭 데이터
 const initialMatches = [
   {
-    id: 1, status: '모집 중', playerCount: '2명', title: '정모',
-    date: '2025년 11월 13일 19시 00분', location: '호계체육관',
+    id: 101,
+    status: '모집 중',
+    playerCount: '4명',
+    title: '12월 송년 배드민턴',
+    date: '2025년 12월 20일 18시 00분',
+    location: '안양 호계체육관',
   },
   {
-    id: 2, status: '모집 중', playerCount: '2명', title: '주말 번개',
-    date: '2025년 11월 14일 14시 00분', location: '안양 종합운동장',
+    id: 102,
+    status: '모집 중',
+    playerCount: '2명',
+    title: '2026 신년맞이 단식',
+    date: '2026년 1월 10일 14시 00분',
+    location: '수원 만석공원',
   },
 ];
 
@@ -142,7 +164,25 @@ export interface HomeProps {
 export function Home({ onStartGame, onGoToChat }: HomeProps) {
   const [startDateOffset, setStartDateOffset] = useState(0);
   const [selectedDate, setSelectedDate] = useState(new Date().getDate());
-  const [matches, setMatches] = useState(initialMatches);
+
+  // [수정] 매칭 데이터 상태 관리 (날짜순 정렬 초기화)
+  const [matches, setMatches] = useState(() => {
+    return initialMatches.sort((a, b) => {
+      const dateA = parseMatchDateStr(a.date).getTime();
+      const dateB = parseMatchDateStr(b.date).getTime();
+      return dateA - dateB;
+    });
+  });
+
+  // [수정] 화면에 보여줄 매칭 데이터 (지난 경기 필터링 및 정렬)
+  const displayMatches = useMemo(() => {
+    const now = new Date();
+
+    // 1. 지난 경기 필터링 & 날짜순 정렬
+    return matches
+      .filter(match => parseMatchDateStr(match.date) > now) // 미래 경기만 표시
+      .sort((a, b) => parseMatchDateStr(a.date).getTime() - parseMatchDateStr(b.date).getTime());
+  }, [matches]);
 
   // Modal States
   const [isModalVisible, setModalVisible] = useState(false);
@@ -267,13 +307,33 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
   const handleCreateRoom = () => setModalVisible(true);
 
   const handleConfirmCreation = () => {
+    const finalLocation = `${selectedRegion || '지역 미선택'} - ${detailedLocation || '상세 장소 미입력'}`;
     const newMatch = {
-      id: Math.random(), status: '모집 중', playerCount: `${selectedCount}명`,
-      title: roomName || '새 모임', date: formatMatchDate(date),
-      location: `${selectedRegion || '지역 미선택'} - ${detailedLocation || '상세 장소 미입력'}`,
+      id: Math.random(),
+      status: '모집 중',
+      playerCount: `${selectedCount}명`,
+      title: roomName || '새 모임',
+      date: formatMatchDate(date),
+      location: finalLocation,
     };
-    setMatches([newMatch, ...matches]);
+
+    // [수정] 매칭 추가 시 날짜순 정렬 유지
+    setMatches(prev => {
+      const updated = [newMatch, ...prev];
+      return updated.sort((a, b) => {
+        const dateA = parseMatchDateStr(a.date).getTime();
+        const dateB = parseMatchDateStr(b.date).getTime();
+        return dateA - dateB;
+      });
+    });
+
     setModalVisible(false);
+    setRoomName('');
+    setSelectedRegion(null);
+    setDetailedLocation('');
+    setSelectedGender('무관');
+    setSelectedCount(4);
+    setDate(new Date());
   };
 
   const handleNotificationPress = () => setIsNotifModalVisible(true);
@@ -331,7 +391,6 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
               scrollEventThrottle={16}
               style={{ flex: 1 }}
             >
-              {/* [수정] 각 아이템이 이미지+그라데이션을 포함하여 통째로 슬라이드됨 */}
               {extendedNotices.map((item, index) => (
                 <TouchableOpacity
                   key={`${item.id}-${index}`}
@@ -358,7 +417,7 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
               ))}
             </ScrollView>
 
-            {/* 페이지 인디케이터 (화면 맨 위에 고정, 스크롤되지 않음) */}
+            {/* 페이지 인디케이터 */}
             <View style={styles.paginationContainer}>
               {NOTICE_ITEMS.map((_, index) => (
                 <View
@@ -397,10 +456,16 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
 
           {/* Match List */}
           <View style={styles.listWrapper}>
+            {/* [수정] displayMatches 사용 */}
             <ScrollView style={styles.listContainer} contentContainerStyle={styles.listContent}>
-              {matches.map((match) => (
+              {displayMatches.map((match) => (
                 <MatchCard key={match.id} match={match} onStartGame={onStartGame} />
               ))}
+              {displayMatches.length === 0 && (
+                <View style={{padding: 20, alignItems: 'center'}}>
+                   <Text style={{color: '#6B7280'}}>예정된 경기가 없습니다.</Text>
+                </View>
+              )}
             </ScrollView>
             <TouchableOpacity style={styles.fab} onPress={handleCreateRoom} activeOpacity={0.8}>
               <Plus size={28} color="white" />
@@ -536,14 +601,13 @@ const styles = StyleSheet.create({
   cancelButton: { paddingLeft: 16 },
   cancelButtonText: { color: '#FFFFFF', fontSize: 16 },
 
-  // [수정] Hero 영역 스타일
+  // Hero 영역 스타일
   heroContainer: { width: '100%', height: 200, position: 'relative', overflow: 'hidden' },
   heroImage: { width: '100%', height: '100%' },
   heroGradientOverlay: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     height: '70%',
     paddingHorizontal: 20,
-    // [수정] 텍스트와 인디케이터가 겹치지 않게 하단 패딩 조정 (32)
     paddingBottom: 32,
     justifyContent: 'flex-end'
   },
@@ -558,7 +622,7 @@ const styles = StyleSheet.create({
   // 페이지네이션 도트 스타일
   paginationContainer: {
     position: 'absolute',
-    bottom: 8, // [수정] 위치 고정 (bottom 8)
+    bottom: 8,
     left: 0,
     right: 0,
     flexDirection: 'row',
