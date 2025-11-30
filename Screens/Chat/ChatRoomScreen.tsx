@@ -8,11 +8,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   FlatList,
+  Image
 } from 'react-native';
-// 중요: 안드로이드 노치 및 하단 바 대응을 위한 라이브러리 교체
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { ArrowLeft, Send } from 'lucide-react-native';
+
+// 1. 모달 컴포넌트 import (경로 확인해주세요)
+import OpponentProfileModal from './OpponentProfileModal';
 
 export default function ChatRoomScreen() {
   const navigation = useNavigation();
@@ -20,10 +23,25 @@ export default function ChatRoomScreen() {
   const { title } = route.params || { title: '채팅방' };
 
   const [text, setText] = useState('');
-  // 스크롤 제어를 위한 Ref
   const flatListRef = useRef<FlatList>(null);
 
-  // (임시) 메시지 데이터
+  // 2. 모달 상태 관리 추가 (보임 여부, 선택된 유저 정보)
+  const [isModalVisible, setModalVisible] = useState(false);
+
+  // (임시) 상대방 프로필 데이터 - 실제로는 API로 받아오거나 route params로 받아야 함
+  const opponentProfile = {
+    id: 'opponent_1',
+    name: title, // 채팅방 이름을 상대방 이름으로 사용
+    location: '안양시 만안구',
+    tier: 'Silver 3',
+    win: 5,
+    loss: 3,
+    mannerScore: 4.6,
+    // 이미지가 없으므로 모달 내부에서 기본 이미지 처리가 필요하거나 require로 로컬 이미지 지정
+    // avatar: require('../../assets/images/default_avatar.png'), // 경로에 맞는 이미지 필요 (없으면 모달쪽에서 예외처리 필요)
+    avatar: { uri: 'https://cdn-icons-png.flaticon.com/512/149/149071.png' },
+  };
+
   const [messages, setMessages] = useState([
     { id: '1', text: '안녕하세요! 배드민턴 치러 오시나요?', sender: 'other' },
     { id: '2', text: '네! 6시까지 갈게요.', sender: 'me' },
@@ -35,18 +53,31 @@ export default function ChatRoomScreen() {
     setText('');
   };
 
-  // 메시지 추가 시 자동으로 아래로 스크롤
   useEffect(() => {
     setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
     }, 100);
   }, [messages]);
 
+  // 3. 프로필 클릭 핸들러
+  const handleProfilePress = () => {
+    setModalVisible(true);
+  };
+
   const renderItem = ({ item }: { item: any }) => {
     const isMe = item.sender === 'me';
     return (
       <View style={[styles.msgRow, isMe ? styles.msgRowRight : styles.msgRowLeft]}>
-        {!isMe && <View style={styles.avatarCircle} />}
+        {/* 상대방일 때만 프로필 이미지 표시 */}
+        {!isMe && (
+          <TouchableOpacity onPress={handleProfilePress}>
+            <Image
+              source={opponentProfile.avatar} // 아까 설정한 URL 이미지 사용
+              style={styles.avatarCircle}
+            />
+          </TouchableOpacity>
+        )}
+
         <View style={[styles.bubble, isMe ? styles.bubbleRight : styles.bubbleLeft]}>
           <Text style={[styles.msgText, isMe ? styles.msgTextRight : styles.msgTextLeft]}>
             {item.text}
@@ -57,10 +88,7 @@ export default function ChatRoomScreen() {
   };
 
   return (
-    // edges 설정: 상단(상태바)과 하단(제스처바) 영역을 안전하게 확보
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-
-      {/* 헤더 */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <ArrowLeft color="white" size={24} />
@@ -69,10 +97,6 @@ export default function ChatRoomScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      {/* 안드로이드 키보드 처리 핵심:
-        안드로이드는 behavior를 설정하지 않거나 undefined로 두어야
-        OS 자체의 adjustResize 모드와 충돌하지 않고 자연스럽게 올라갑니다.
-      */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -87,7 +111,6 @@ export default function ChatRoomScreen() {
           style={styles.list}
         />
 
-        {/* 입력창 */}
         <View style={styles.inputContainer}>
           <TextInput
             style={styles.input}
@@ -95,13 +118,20 @@ export default function ChatRoomScreen() {
             placeholderTextColor="#9CA3AF"
             value={text}
             onChangeText={setText}
-            multiline // 안드로이드에서 텍스트 길어질 때 줄바꿈 지원
+            multiline
           />
           <TouchableOpacity onPress={sendMessage} style={styles.sendBtn}>
             <Send color="white" size={20} />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* 5. 모달 컴포넌트를 화면 최상위에 렌더링 */}
+      <OpponentProfileModal
+        visible={isModalVisible}
+        onClose={() => setModalVisible(false)}
+        userProfile={opponentProfile}
+      />
     </SafeAreaView>
   );
 }
@@ -122,7 +152,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#374151',
   },
   backBtn: {
-    padding: 8, // 터치 영역 확보
+    padding: 8,
   },
   headerTitle: {
     fontSize: 18,
@@ -193,11 +223,11 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     minHeight: 40,
-    maxHeight: 100, // 입력창 최대 높이 제한
+    maxHeight: 100,
     backgroundColor: '#374151',
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 8, // 안드로이드 텍스트 수직 정렬
+    paddingVertical: 8,
     color: 'white',
     marginRight: 10,
     includeFontPadding: false,
