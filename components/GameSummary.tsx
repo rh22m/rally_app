@@ -203,12 +203,10 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
 
   const scoreText = `${result.team2Wins} : ${result.team1Wins}`;
 
-  // 사용자(나) 기준 데이터 계산
   const myStats = useMemo(() => {
     const winnerStats = analysis.flowDetails;
-    if (isUserWinner) return winnerStats; // 승리 시 그대로 사용
+    if (isUserWinner) return winnerStats;
 
-    // 패배 시 데이터 반전 (1.0 - 상대방점수)
     return {
       clutch: 1.0 - winnerStats.clutch,
       tempo: 1.0 - winnerStats.tempo,
@@ -220,6 +218,7 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
   }, [analysis, isUserWinner]);
 
   const generateComment = () => {
+      const { flowDetails } = analysis;
       if (result.isForced) return "경기가 중단되어 분석이 제한적이에요.";
 
       const metrics = [
@@ -241,17 +240,16 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
           if (bestMetric.val > 0.5) {
               return `아쉽게 졌지만, ${bestMetric.label}만큼은 훌륭했어요! 👍`;
           } else {
-              return `${worstMetric.loseMsg} 다음엔 이길 수 있어요!`;
+              // [수정] "다음엔 이길 수 있어요!" 문구 삭제
+              return `${worstMetric.loseMsg}`;
           }
       }
   };
 
-  // [수정] 승패에 따른 타이틀 분기 처리
   const getPlayStyleTitle = () => {
     const details = myStats;
     const maxKey = Object.keys(details).reduce((a, b) => details[a as keyof typeof details] > details[b as keyof typeof details] ? a : b);
 
-    // 승리 시 타이틀
     const winTitles: any = {
         clutch: "강심장 승부사 🔥",
         tempo: "전광석화 스피드스타 ⚡️",
@@ -261,7 +259,6 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
         com: "기적의 역전승 메이커 🌟"
     };
 
-    // 패배 시 타이틀 (격려 및 장점 부각)
     const loseTitles: any = {
         clutch: "위기 속에서 빛난 침착함 🛡",
         tempo: "상대를 긴장시킨 스피드 ⚡️",
