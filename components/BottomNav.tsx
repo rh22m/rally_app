@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { Screen } from '../App';
 import {
-  MessageCircleMore, // 1. (수정) MessageCircle -> MessageCircleMore
+  MessageCircleMore,
   Search,
   User,
   Bot,
@@ -22,7 +22,7 @@ interface BottomNavProps {
 export function BottomNav({ currentTab, onTabChange }: BottomNavProps) {
   const tabs: { id: Screen; label: string; Icon: React.ElementType }[] = [
     { id: 'home', label: '경기 모드', Icon: Flame },
-    { id: 'chat', label: '대화', Icon: MessageCircleMore }, // 2. (수정) 아이콘 교체
+    { id: 'chat', label: '대화', Icon: MessageCircleMore },
     { id: 'ai', label: 'AI 분석', Icon: Bot },
     { id: 'match', label: '매칭', Icon: Search },
     { id: 'profile', label: '정보', Icon: User },
@@ -32,24 +32,34 @@ export function BottomNav({ currentTab, onTabChange }: BottomNavProps) {
     <View style={styles.container}>
       {tabs.map((tab) => {
         const isActive = currentTab === tab.id;
-        const iconColor = isActive ? (tab.id === 'ai' ? '#34D399' : '#FFFFFF') : '#6B7280';
-        const tabStyle = [
-          styles.tabButton,
-          isActive && (tab.id === 'ai' ? styles.tabButtonActiveAi : styles.tabButtonActive),
-        ];
+        // [수정] 모든 탭 활성화 시 흰색 아이콘 (AI 탭 예외 제거)
+        const iconColor = isActive ? '#FFFFFF' : '#6B7280';
 
         return (
           <TouchableOpacity
             key={tab.id}
             onPress={() => onTabChange(tab.id)}
-            style={tabStyle}
+            // [수정] 모든 탭 동일한 활성 스타일 적용
+            style={[
+              styles.tabButton,
+              isActive && styles.tabButtonActive,
+            ]}
           >
-            <tab.Icon color={iconColor} size={28} />
+            <View>
+              <tab.Icon color={iconColor} size={28} />
+
+              {/* Beta 배지 (AI 탭 전용) */}
+              {tab.id === 'ai' && (
+                <View style={styles.betaBadge}>
+                  <Text style={styles.betaText}>BETA</Text>
+                </View>
+              )}
+            </View>
 
             <Text
               style={[
                 styles.tabLabel,
-                isActive && (tab.id === 'ai' ? styles.tabLabelActiveAi : styles.tabLabelActive),
+                isActive && styles.tabLabelActive,
               ]}
             >
               {tab.label}
@@ -80,20 +90,35 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginHorizontal: 4,
   },
-  tabButtonActive: { // '경기 모드', '매칭' 등 활성 (녹색 배경)
-    backgroundColor: '#34D399',
-  },
-  tabButtonActiveAi: { // 'AI 분석' 탭 활성 (배경 없음)
-    backgroundColor: 'transparent',
+  // [수정] 모든 탭 활성 상태 스타일 통일
+  tabButtonActive: {
+    backgroundColor: '#34D399', // 녹색 배경
   },
   tabLabel: {
     fontSize: 12,
-    color: '#6B7280', // 비활성 텍스트
+    color: '#6B7280',
   },
-  tabLabelActive: { // '경기 모드', '매칭' 등 활성 텍스트 (흰색)
+  // [수정] 모든 탭 활성 텍스트 스타일 통일
+  tabLabelActive: {
+    color: '#FFFFFF', // 흰색 텍스트
+  },
+
+  // Beta 배지 스타일
+  betaBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -10,
+    backgroundColor: '#EF4444',
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderColor: '#FFFFFF',
+    zIndex: 10,
+  },
+  betaText: {
     color: '#FFFFFF',
-  },
-  tabLabelActiveAi: { // 'AI 분석' 탭 활성 텍스트 (녹색)
-    color: '#34D399',
+    fontSize: 8,
+    fontWeight: 'bold',
+    includeFontPadding: false,
   },
 });
