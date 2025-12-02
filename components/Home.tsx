@@ -15,6 +15,9 @@ import {
   Dimensions,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Alert,
+  TouchableWithoutFeedback,
+  ImageSourcePropType
 } from 'react-native';
 import DatePicker from 'react-native-date-picker';
 import { Calendar as RNCalendar, LocaleConfig } from 'react-native-calendars';
@@ -32,10 +35,10 @@ import {
   Check,
   X,
   Megaphone,
-  ChevronRight as ArrowRight
+  Filter
 } from 'lucide-react-native';
-import { MatchCard } from './MatchCard';
-import { RMRGuideModal } from './RMRGuideModal';
+import { MatchCard } from './MatchCard'; // 경로 확인 필요
+import { RMRGuideModal } from './RMRGuideModal'; // 경로 확인 필요
 
 // --- 1. 달력 한국어 설정 ---
 LocaleConfig.locales['kr'] = {
@@ -47,10 +50,20 @@ LocaleConfig.locales['kr'] = {
 };
 LocaleConfig.defaultLocale = 'kr';
 
+// --- Helper Types ---
+interface HostProfile {
+  name: string;
+  location: string;
+  tier: string;
+  win: number;
+  loss: number;
+  mannerScore: number;
+  avatar: ImageSourcePropType;
+}
+
 // --- 2. 헬퍼 컴포넌트 & 데이터 ---
 const FilterOptionButton = ({ label, icon, isSelected, onPress, type = 'text' }: any) => {
   const IconComponent = icon;
-  const color = isSelected ? 'white' : '#6B7280';
   return (
     <TouchableOpacity
       style={[
@@ -60,58 +73,25 @@ const FilterOptionButton = ({ label, icon, isSelected, onPress, type = 'text' }:
       ]}
       onPress={onPress}
     >
-      {IconComponent && <IconComponent size={16} color={color} />}
-      <Text
-        style={[
-          styles.optionButtonText,
-          isSelected && styles.optionButtonTextSelected,
-        ]}
-      >
-        {label}
-      </Text>
+      {IconComponent && <IconComponent size={16} color={isSelected ? 'white' : '#6B7280'} />}
+      <Text style={[styles.optionButtonText, isSelected && styles.optionButtonTextSelected]}>{label}</Text>
     </TouchableOpacity>
   );
 };
 
-// 공지사항 데이터
 const NOTICE_ITEMS = [
-  {
-    id: 1,
-    badge: 'RMR 가이드',
-    title: '단순 승패 그 이상',
-    subtitle: '경기 내용까지 분석하는 RMR 시스템을 소개합니다.',
-    image: require('../assets/images/badminton_1.png'),
-  },
-  {
-    id: 2,
-    badge: '플레이 스타일',
-    title: '나만의 강점을 찾으세요',
-    subtitle: '지구력, 속도, 위기관리 등 다양한 지표를 분석해 드려요.',
-    image: require('../assets/images/badminton_2.png'),
-  },
-  {
-    id: 3,
-    badge: '매너 플레이',
-    title: '끝까지 최선을 다해주세요',
-    subtitle: '강제 종료는 패배보다 더 큰 페널티를 받게 됩니다.',
-    image: require('../assets/images/badminton_3.png'),
-  }
+  { id: 1, badge: 'RMR 가이드', title: '단순 승패 그 이상', subtitle: '경기 내용까지 분석하는 RMR 시스템을 소개합니다.', image: require('../assets/images/badminton_1.png') },
+  { id: 2, badge: '플레이 스타일', title: '나만의 강점을 찾으세요', subtitle: '지구력, 속도, 위기관리 등 다양한 지표를 분석해 드려요.', image: require('../assets/images/badminton_2.png') },
+  { id: 3, badge: '매너 플레이', title: '끝까지 최선을 다해주세요', subtitle: '강제 종료는 패배보다 더 큰 페널티를 받게 됩니다.', image: require('../assets/images/badminton_3.png') }
 ];
 
-// [유틸] 날짜 문자열 파싱 함수 (YYYY년 MM월 DD일 HH시 mm분)
 const parseMatchDateStr = (dateStr: string): Date => {
   const parts = dateStr.match(/(\d{4})년 (\d{1,2})월 (\d{1,2})일 (\d{1,2})시 (\d{1,2})분/);
-  if (!parts) return new Date(0); // 파싱 실패 시 과거 날짜 반환
-  return new Date(
-    parseInt(parts[1]),
-    parseInt(parts[2]) - 1,
-    parseInt(parts[3]),
-    parseInt(parts[4]),
-    parseInt(parts[5])
-  );
+  if (!parts) return new Date(0);
+  return new Date(parseInt(parts[1]), parseInt(parts[2]) - 1, parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]));
 };
 
-// [수정] 2025년 12월 ~ 2026년 1월 미래 임의 매칭 데이터
+// [수정] 방장(host) 정보 추가
 const initialMatches = [
   {
     id: 101,
@@ -120,6 +100,18 @@ const initialMatches = [
     title: '12월 송년 배드민턴',
     date: '2025년 12월 20일 18시 00분',
     location: '안양 호계체육관',
+    region: '경기',
+    gender: '무관',
+    maxCount: 4,
+    host: {
+      name: '김민수',
+      location: '안양시',
+      tier: 'Silver 2',
+      win: 15,
+      loss: 8,
+      mannerScore: 4.5,
+      avatar: require('../assets/images/badminton_1.png')
+    }
   },
   {
     id: 102,
@@ -128,6 +120,38 @@ const initialMatches = [
     title: '2026 신년맞이 단식',
     date: '2026년 1월 10일 14시 00분',
     location: '수원 만석공원',
+    region: '경기',
+    gender: '남성',
+    maxCount: 2,
+    host: {
+      name: '이영희',
+      location: '수원시',
+      tier: 'Gold 1',
+      win: 42,
+      loss: 12,
+      mannerScore: 4.9,
+      avatar: require('../assets/images/badminton_2.png')
+    }
+  },
+  {
+    id: 103,
+    status: '모집 중',
+    playerCount: '4명',
+    title: '서울 주말 아침 운동',
+    date: '2025년 12월 21일 07시 00분',
+    location: '서울 마곡 배드민턴장',
+    region: '서울',
+    gender: '무관',
+    maxCount: 4,
+    host: {
+      name: '박철수',
+      location: '서울 강서구',
+      tier: 'Bronze 3',
+      win: 5,
+      loss: 5,
+      mannerScore: 4.0,
+      avatar: require('../assets/images/badminton_3.png')
+    }
   },
 ];
 
@@ -145,15 +169,91 @@ const formatMatchDate = (d: Date) => {
   return `${year}년 ${month}월 ${day}일 ${hours}시 ${minutes}분`;
 };
 
+const formatDateSimple = (d: Date) => `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
+
 const regionItems = [
+  { label: '전체', value: '전체' },
   { label: '서울', value: '서울' }, { label: '경기', value: '경기' }, { label: '인천', value: '인천' },
   { label: '강원', value: '강원' }, { label: '충청', value: '충청' }, { label: '전라', value: '전라' },
   { label: '경상', value: '경상' }, { label: '제주', value: '제주' },
 ];
 
-const getHolidays = () => {
-  return ['2025-01-01', '2025-03-01', '2025-05-05', '2025-08-15', '2025-10-03', '2025-12-25'];
+const getHolidays = () => ['2025-01-01', '2025-03-01', '2025-05-05', '2025-08-15', '2025-10-03', '2025-12-25'];
+
+// --- [추가] 방장 프로필 모달 컴포넌트 (내부 정의) ---
+// OpponentProfileModal의 디자인을 차용하여 "참가 신청" 기능으로 변형
+const MatchHostModal = ({ visible, onClose, host, matchTitle }: { visible: boolean, onClose: () => void, host: HostProfile | null, matchTitle: string }) => {
+  if (!host) return null;
+
+  const handleRequestJoin = () => {
+    Alert.alert(
+      "참가 신청",
+      `'${matchTitle}' 모임에 참가 신청을 보내시겠습니까?`,
+      [
+        { text: "취소", style: "cancel" },
+        {
+          text: "보내기",
+          onPress: () => {
+            Alert.alert("신청 완료", "방장에게 참가 신청을 보냈습니다.");
+            onClose();
+          }
+        }
+      ]
+    );
+  };
+
+  return (
+    <Modal animationType="fade" transparent={true} visible={visible} onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={styles.profileModalOverlay}>
+          <TouchableWithoutFeedback>
+            <View style={styles.profileModalContent}>
+              {/* 프로필 이미지 & 이름 */}
+              <View style={styles.profileSection}>
+                <Image source={host.avatar} style={styles.profileAvatar} />
+                <Text style={styles.profileNameText}>{host.name}</Text>
+                <View style={{flexDirection:'row', alignItems:'center', gap:4}}>
+                    <MapPin size={12} color="#A0A0A0"/>
+                    <Text style={styles.profileLocationText}>{host.location}</Text>
+                </View>
+                <Text style={styles.hostBadgeText}>방장(Host)</Text>
+              </View>
+
+              {/* 통계 박스 */}
+              <View style={styles.statsContainer}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statLabel}>티어</Text>
+                  <Text style={[styles.statValue, { color: '#00E0C6' }]}>{host.tier}</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Text style={styles.statLabel}>승/패</Text>
+                  <Text style={styles.statValue}>{host.win}승 {host.loss}패</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Text style={styles.statLabel}>매너 점수</Text>
+                  <Text style={styles.statValue}>{host.mannerScore}</Text>
+                </View>
+              </View>
+
+              {/* 참가 신청 버튼 */}
+              <TouchableOpacity style={styles.joinRequestButton} onPress={handleRequestJoin}>
+                <Text style={styles.joinRequestButtonText}>참가 신청 보내기</Text>
+              </TouchableOpacity>
+
+              {/* 닫기 버튼 */}
+              <TouchableOpacity style={styles.profileCloseButton} onPress={onClose}>
+                <Text style={styles.profileCloseButtonText}>닫기</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
 };
+
 
 // --- 3. Home 컴포넌트 ---
 export interface HomeProps {
@@ -162,10 +262,6 @@ export interface HomeProps {
 }
 
 export function Home({ onStartGame, onGoToChat }: HomeProps) {
-  const [startDateOffset, setStartDateOffset] = useState(0);
-  const [selectedDate, setSelectedDate] = useState(new Date().getDate());
-
-  // [수정] 매칭 데이터 상태 관리 (날짜순 정렬 초기화)
   const [matches, setMatches] = useState(() => {
     return initialMatches.sort((a, b) => {
       const dateA = parseMatchDateStr(a.date).getTime();
@@ -174,17 +270,20 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
     });
   });
 
-  // [수정] 화면에 보여줄 매칭 데이터 (지난 경기 필터링 및 정렬)
-  const displayMatches = useMemo(() => {
-    const now = new Date();
+  // 검색/필터 상태
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [filterDate, setFilterDate] = useState<Date | null>(null);
+  const [filterRegion, setFilterRegion] = useState<string>('전체');
+  const [filterGender, setFilterGender] = useState<'무관' | '남성' | '여성'>('무관');
+  const [filterCount, setFilterCount] = useState<2 | 4 | '전체'>('전체');
+  const [activeFilterTab, setActiveFilterTab] = useState<'date' | 'region' | 'gender' | 'count'>('date');
 
-    // 1. 지난 경기 필터링 & 날짜순 정렬
-    return matches
-      .filter(match => parseMatchDateStr(match.date) > now) // 미래 경기만 표시
-      .sort((a, b) => parseMatchDateStr(a.date).getTime() - parseMatchDateStr(b.date).getTime());
-  }, [matches]);
+  // 날짜 선택기 상태
+  const [startDateOffset, setStartDateOffset] = useState(0);
+  const [selectedDate, setSelectedDate] = useState(new Date().getDate());
 
-  // Modal States
+  // 모달 상태
   const [isModalVisible, setModalVisible] = useState(false);
   const [isDatePickerVisible, setDatePickerVisible] = useState(false);
   const [isRegionModalVisible, setIsRegionModalVisible] = useState(false);
@@ -192,36 +291,72 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
   const [isNotifModalVisible, setIsNotifModalVisible] = useState(false);
   const [isRmrGuideVisible, setIsRmrGuideVisible] = useState(false);
 
-  // Form States
-  const [roomName, setRoomName] = useState('');
-  const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
-  const [detailedLocation, setDetailedLocation] = useState('');
-  const [selectedGender, setSelectedGender] = useState<'무관' | '남성' | '여성'>('무관');
-  const [selectedCount, setSelectedCount] = useState<2 | 4>(4);
-  const [date, setDate] = useState(new Date());
+  // [추가] 선택된 매칭과 방장 프로필 모달 상태
+  const [selectedMatch, setSelectedMatch] = useState<typeof initialMatches[0] | null>(null);
+  const [isHostModalVisible, setIsHostModalVisible] = useState(false);
 
-  // Search & Notification States
-  const [isSearching, setIsSearching] = useState(false);
-  const [filterGender, setFilterGender] = useState<'무관' | '남성' | '여성'>('무관');
-  const [filterCount, setFilterCount] = useState<2 | 4 | '전체'>('전체');
+  // 모드 구분
+  const [datePickerMode, setDatePickerMode] = useState<'create' | 'filter'>('create');
+  const [regionModalMode, setRegionModalMode] = useState<'create' | 'filter'>('create');
+
+  // 방 만들기 상태
+  const [roomName, setRoomName] = useState('');
+  const [createRegion, setCreateRegion] = useState<string | null>(null);
+  const [detailedLocation, setDetailedLocation] = useState('');
+  const [createGender, setCreateGender] = useState<'무관' | '남성' | '여성'>('무관');
+  const [createCount, setCreateCount] = useState<2 | 4>(4);
+  const [createDate, setCreateDate] = useState(new Date());
+
   const [notifications, setNotifications] = useState(initialNotifications);
   const [lastTap, setLastTap] = useState<number | null>(null);
 
-  // 공지사항 슬라이드 상태
+  // --- 리스트 필터링 로직 ---
+  const displayMatches = useMemo(() => {
+    const now = new Date();
+    return matches.filter(match => {
+      const matchDate = parseMatchDateStr(match.date);
+      if (matchDate <= now) return false;
+
+      if (isSearching) {
+        if (searchText) {
+          const keyword = searchText.toLowerCase();
+          if (!match.title.toLowerCase().includes(keyword) && !match.location.toLowerCase().includes(keyword)) return false;
+        }
+        if (filterDate) {
+           const isSameDay = matchDate.getFullYear() === filterDate.getFullYear() &&
+                             matchDate.getMonth() === filterDate.getMonth() &&
+                             matchDate.getDate() === filterDate.getDate();
+           if (!isSameDay) return false;
+        }
+        if (filterRegion !== '전체') {
+            if (match.region && match.region !== filterRegion) return false;
+            if (!match.region && !match.location.includes(filterRegion)) return false;
+        }
+        if (filterGender !== '무관') {
+            if (match.gender && match.gender !== filterGender && match.gender !== '무관') return false;
+        }
+        if (filterCount !== '전체') {
+            if (match.maxCount && match.maxCount !== filterCount) return false;
+        }
+        return true;
+      }
+      return true;
+    }).sort((a, b) => parseMatchDateStr(a.date).getTime() - parseMatchDateStr(b.date).getTime());
+  }, [matches, isSearching, searchText, filterDate, filterRegion, filterGender, filterCount, selectedDate]);
+
+  // --- 슬라이드 로직 ---
   const extendedNotices = useMemo(() => [...NOTICE_ITEMS, { ...NOTICE_ITEMS[0], id: 'clone' }], []);
   const [currentScrollIndex, setCurrentScrollIndex] = useState(0);
   const noticeScrollRef = useRef<ScrollView>(null);
   const screenWidth = Dimensions.get('window').width;
-
   const activeDotIndex = currentScrollIndex % NOTICE_ITEMS.length;
 
   useEffect(() => {
+    if(isSearching) return;
     const interval = setInterval(() => {
       let nextIndex = currentScrollIndex + 1;
-
       noticeScrollRef.current?.scrollTo({ x: nextIndex * screenWidth, animated: true });
       setCurrentScrollIndex(nextIndex);
-
       if (nextIndex === NOTICE_ITEMS.length) {
         setTimeout(() => {
           noticeScrollRef.current?.scrollTo({ x: 0, animated: false });
@@ -229,9 +364,8 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
         }, 500);
       }
     }, 4000);
-
     return () => clearInterval(interval);
-  }, [currentScrollIndex, screenWidth, extendedNotices.length]);
+  }, [currentScrollIndex, screenWidth, extendedNotices.length, isSearching]);
 
   const handleNoticeScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
@@ -241,8 +375,8 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
     }
   };
 
+  // --- 날짜 스트립 로직 ---
   const holidayList = useMemo(() => getHolidays(), []);
-
   const dates = useMemo(() => {
     const list = [];
     const today = new Date();
@@ -291,33 +425,44 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
     const textColor = state === 'disabled' ? '#D1D5DB' : getDayTextColor(dateString);
     const hasMatch = calendarMarks[dateString]?.hasMatch;
     const isToday = dateString === new Date().toISOString().split('T')[0];
-
     return (
       <TouchableOpacity onPress={() => setCalendarModalVisible(false)} style={styles.calendarDayContainer}>
         <View style={[styles.calendarDayTextContainer, isToday && styles.todayBackground]}>
-          <Text style={[styles.calendarDayText, { color: isToday ? 'white' : textColor }, (state === 'today') && { fontWeight: 'bold' }]}>
-            {date.day}
-          </Text>
+          <Text style={[styles.calendarDayText, { color: isToday ? 'white' : textColor }, (state === 'today') && { fontWeight: 'bold' }]}>{date.day}</Text>
         </View>
         {hasMatch && <View style={styles.matchDot} />}
       </TouchableOpacity>
     );
   };
 
-  const handleCreateRoom = () => setModalVisible(true);
+  const handleCreateRoom = () => {
+    setDatePickerMode('create');
+    setRegionModalMode('create');
+    setModalVisible(true);
+  };
 
   const handleConfirmCreation = () => {
-    const finalLocation = `${selectedRegion || '지역 미선택'} - ${detailedLocation || '상세 장소 미입력'}`;
+    const finalLocation = `${createRegion || '지역 미선택'} - ${detailedLocation || '상세 장소 미입력'}`;
     const newMatch = {
       id: Math.random(),
       status: '모집 중',
-      playerCount: `${selectedCount}명`,
+      playerCount: `${createCount}명`,
       title: roomName || '새 모임',
-      date: formatMatchDate(date),
+      date: formatMatchDate(createDate),
       location: finalLocation,
+      region: createRegion || '기타',
+      gender: createGender,
+      maxCount: createCount,
+      host: {
+          name: '나(본인)',
+          location: createRegion || '미정',
+          tier: 'Unranked',
+          win: 0,
+          loss: 0,
+          mannerScore: 5.0,
+          avatar: require('../assets/images/badminton_1.png')
+      }
     };
-
-    // [수정] 매칭 추가 시 날짜순 정렬 유지
     setMatches(prev => {
       const updated = [newMatch, ...prev];
       return updated.sort((a, b) => {
@@ -326,14 +471,8 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
         return dateA - dateB;
       });
     });
-
     setModalVisible(false);
-    setRoomName('');
-    setSelectedRegion(null);
-    setDetailedLocation('');
-    setSelectedGender('무관');
-    setSelectedCount(4);
-    setDate(new Date());
+    setRoomName(''); setCreateRegion(null); setDetailedLocation(''); setCreateGender('무관'); setCreateCount(4); setCreateDate(new Date());
   };
 
   const handleNotificationPress = () => setIsNotifModalVisible(true);
@@ -344,9 +483,69 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
   };
   const handleDecline = (id: number) => setNotifications(prev => prev.filter(n => n.id !== id));
 
+  const openFilterDate = () => { setDatePickerMode('filter'); setDatePickerVisible(true); };
+  const openFilterRegion = () => { setRegionModalMode('filter'); setIsRegionModalVisible(true); };
+
+  // [추가] 매칭 카드 클릭 핸들러
+  const handleMatchPress = (match: typeof initialMatches[0]) => {
+      setSelectedMatch(match);
+      setIsHostModalVisible(true);
+  };
+
+  const renderFilterPanel = () => (
+    <View style={styles.filterPanelContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterTabsScroll}>
+            {(['date', 'region', 'gender', 'count'] as const).map(tab => (
+                <TouchableOpacity
+                    key={tab}
+                    style={[styles.filterTab, activeFilterTab === tab && styles.filterTabActive]}
+                    onPress={() => setActiveFilterTab(tab)}
+                >
+                    <Text style={[styles.filterTabText, activeFilterTab === tab && styles.filterTabTextActive]}>
+                        {tab === 'date' ? '날짜' : tab === 'region' ? '지역' : tab === 'gender' ? '성별' : '인원'}
+                    </Text>
+                    {((tab === 'date' && filterDate) || (tab === 'region' && filterRegion !== '전체') || (tab === 'gender' && filterGender !== '무관') || (tab === 'count' && filterCount !== '전체')) && <View style={styles.filterDot} />}
+                </TouchableOpacity>
+            ))}
+        </ScrollView>
+        <View style={styles.filterDetailContainer}>
+            {activeFilterTab === 'date' && (
+                <View style={styles.filterRow}>
+                    <TouchableOpacity style={styles.filterInputButton} onPress={openFilterDate}>
+                        <Calendar size={18} color="#6B7280" />
+                        <Text style={styles.modalInputText}>{filterDate ? formatDateSimple(filterDate) : '날짜 선택 (전체)'}</Text>
+                    </TouchableOpacity>
+                    {filterDate && <TouchableOpacity style={styles.resetBadge} onPress={() => setFilterDate(null)}><X size={12} color="white" /></TouchableOpacity>}
+                </View>
+            )}
+            {activeFilterTab === 'region' && (
+                <View style={styles.filterRow}>
+                    <TouchableOpacity style={styles.filterInputButton} onPress={openFilterRegion}>
+                        <MapPin size={18} color="#6B7280" />
+                        <Text style={styles.modalInputText}>{filterRegion === '전체' ? '지역 선택 (전체)' : filterRegion}</Text>
+                    </TouchableOpacity>
+                </View>
+            )}
+            {activeFilterTab === 'gender' && (
+                <View style={styles.optionGroup}>
+                    <FilterOptionButton label="무관" icon={null} isSelected={filterGender === '무관'} onPress={() => setFilterGender('무관')} />
+                    <FilterOptionButton label="남성" icon={User} isSelected={filterGender === '남성'} onPress={() => setFilterGender('남성')} type="icon"/>
+                    <FilterOptionButton label="여성" icon={User} isSelected={filterGender === '여성'} onPress={() => setFilterGender('여성')} type="icon"/>
+                </View>
+            )}
+            {activeFilterTab === 'count' && (
+                <View style={styles.optionGroup}>
+                    <FilterOptionButton label="전체" icon={null} isSelected={filterCount === '전체'} onPress={() => setFilterCount('전체')} />
+                    <FilterOptionButton label="2인" icon={Users} isSelected={filterCount === 2} onPress={() => setFilterCount(2)} type="icon" />
+                    <FilterOptionButton label="4인" icon={Users} isSelected={filterCount === 4} onPress={() => setFilterCount(4)} type="icon" />
+                </View>
+            )}
+        </View>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <View style={styles.logoContainer}>
           <View style={styles.logoWrapper}>
@@ -355,161 +554,102 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
           </View>
           <TouchableOpacity onPress={handleNotificationPress} style={styles.notificationButton}>
             <Bell size={24} color="white" />
-            {notifications.length > 0 && (
-              <View style={styles.badge}><Text style={styles.badgeText}>{notifications.length}</Text></View>
-            )}
+            {notifications.length > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{notifications.length}</Text></View>}
           </TouchableOpacity>
         </View>
         <View style={styles.searchRow}>
           <View style={styles.searchContainer}>
             <TextInput
-              placeholder="지역, 체육관으로 찾기"
+              placeholder="제목, 장소 검색"
               placeholderTextColor="#9CA3AF"
               style={styles.searchInput}
-              onFocus={() => setIsSearching(true)}
+              value={searchText}
+              onChangeText={setSearchText}
+              onFocus={() => { setIsSearching(true); setActiveFilterTab('date'); }}
             />
             <Search size={20} color="#9CA3AF" style={styles.searchIcon} />
           </View>
           {isSearching && (
-            <TouchableOpacity style={styles.cancelButton} onPress={() => setIsSearching(false)}>
+            <TouchableOpacity style={styles.cancelButton} onPress={() => {
+                setIsSearching(false); setSearchText(''); setFilterDate(null); setFilterRegion('전체'); setFilterGender('무관'); setFilterCount('전체');
+            }}>
               <Text style={styles.cancelButtonText}>취소</Text>
             </TouchableOpacity>
           )}
         </View>
       </View>
 
-      {!isSearching ? (
-        <>
-          {/* 공지사항 배너 (Carousel) */}
-          <View style={styles.heroContainer}>
-            <ScrollView
-              ref={noticeScrollRef}
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              onScroll={handleNoticeScroll}
-              scrollEventThrottle={16}
-              style={{ flex: 1 }}
-            >
-              {extendedNotices.map((item, index) => (
-                <TouchableOpacity
-                  key={`${item.id}-${index}`}
-                  onPress={() => setIsRmrGuideVisible(true)}
-                  activeOpacity={0.95}
-                  style={{ width: screenWidth, height: 200 }}
-                >
-                  <Image source={item.image} style={styles.heroImage} resizeMode="cover" />
-
-                  <LinearGradient
-                    colors={['transparent', 'rgba(0,0,0,0.85)']}
-                    style={styles.heroGradientOverlay}
-                  >
-                    <View style={styles.heroBadge}>
-                      <Megaphone size={12} color="white" />
-                      <Text style={styles.heroBadgeText}>{item.badge}</Text>
+      <View style={{ flex: 1 }}>
+        {isSearching ? renderFilterPanel() : (
+            <>
+                <View style={styles.heroContainer}>
+                    <ScrollView ref={noticeScrollRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false} onScroll={handleNoticeScroll} scrollEventThrottle={16} style={{ flex: 1 }}>
+                    {extendedNotices.map((item, index) => (
+                        <TouchableOpacity key={`${item.id}-${index}`} onPress={() => setIsRmrGuideVisible(true)} activeOpacity={0.95} style={{ width: screenWidth, height: 200 }}>
+                        <Image source={item.image} style={styles.heroImage} resizeMode="cover" />
+                        <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={styles.heroGradientOverlay}>
+                            <View style={styles.heroBadge}><Megaphone size={12} color="white" /><Text style={styles.heroBadgeText}>{item.badge}</Text></View>
+                            <View><Text style={styles.heroTitle}>{item.title}</Text><Text style={styles.heroSubtitle}>{item.subtitle}</Text></View>
+                        </LinearGradient>
+                        </TouchableOpacity>
+                    ))}
+                    </ScrollView>
+                    <View style={styles.paginationContainer}>
+                    {NOTICE_ITEMS.map((_, index) => <View key={index} style={[styles.paginationDot, index === activeDotIndex && styles.paginationDotActive]} />)}
                     </View>
-                    <View>
-                        <Text style={styles.heroTitle}>{item.title}</Text>
-                        <Text style={styles.heroSubtitle}>{item.subtitle}</Text>
-                    </View>
-                  </LinearGradient>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+                </View>
+                <View style={styles.dateSelectorContainer}>
+                    <TouchableOpacity style={styles.dateArrowButton} onPress={() => setStartDateOffset(p => p - 1)}><ChevronLeft size={20} color="white" /></TouchableOpacity>
+                    <Pressable style={styles.dateList} onPress={handleDoubleTap}>
+                    {dates.map((item) => {
+                        const isSelected = selectedDate === item.day;
+                        const dateStr = item.fullDate.toISOString().split('T')[0];
+                        return (
+                        <TouchableOpacity key={dateStr} onPress={() => { setSelectedDate(item.day); handleDoubleTap(); }} activeOpacity={0.7} style={[styles.dateButton, isSelected && styles.dateButtonSelected]}>
+                            <Text style={[styles.dateButtonDay, { color: isSelected ? 'white' : getDayTextColor(dateStr) }]}>{item.day}</Text>
+                            <Text style={[styles.dateButtonLabel, isSelected && styles.dateButtonTextSelected]}>{item.label}</Text>
+                        </TouchableOpacity>
+                        );
+                    })}
+                    </Pressable>
+                    <TouchableOpacity style={styles.dateArrowButton} onPress={() => setStartDateOffset(p => p + 1)}><ChevronRight size={20} color="white" /></TouchableOpacity>
+                </View>
+            </>
+        )}
 
-            {/* 페이지 인디케이터 */}
-            <View style={styles.paginationContainer}>
-              {NOTICE_ITEMS.map((_, index) => (
-                <View
-                  key={index}
-                  style={[
-                    styles.paginationDot,
-                    index === activeDotIndex && styles.paginationDotActive
-                  ]}
-                />
-              ))}
-            </View>
-          </View>
-
-          {/* Date Selector */}
-          <View style={styles.dateSelectorContainer}>
-            <TouchableOpacity style={styles.dateArrowButton} onPress={() => setStartDateOffset(p => p - 1)}><ChevronLeft size={20} color="white" /></TouchableOpacity>
-            <Pressable style={styles.dateList} onPress={handleDoubleTap}>
-              {dates.map((item) => {
-                const isSelected = selectedDate === item.day;
-                const dateStr = item.fullDate.toISOString().split('T')[0];
-                return (
-                  <TouchableOpacity
-                    key={dateStr}
-                    onPress={() => { setSelectedDate(item.day); handleDoubleTap(); }}
-                    activeOpacity={0.7}
-                    style={[styles.dateButton, isSelected && styles.dateButtonSelected]}
-                  >
-                    <Text style={[styles.dateButtonDay, { color: isSelected ? 'white' : getDayTextColor(dateStr) }]}>{item.day}</Text>
-                    <Text style={[styles.dateButtonLabel, isSelected && styles.dateButtonTextSelected]}>{item.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </Pressable>
-            <TouchableOpacity style={styles.dateArrowButton} onPress={() => setStartDateOffset(p => p + 1)}><ChevronRight size={20} color="white" /></TouchableOpacity>
-          </View>
-
-          {/* Match List */}
-          <View style={styles.listWrapper}>
-            {/* [수정] displayMatches 사용 */}
+        <View style={styles.listWrapper}>
             <ScrollView style={styles.listContainer} contentContainerStyle={styles.listContent}>
               {displayMatches.map((match) => (
-                <MatchCard key={match.id} match={match} onStartGame={onStartGame} />
+                <MatchCard key={match.id} match={match} onPress={handleMatchPress} />
               ))}
               {displayMatches.length === 0 && (
-                <View style={{padding: 20, alignItems: 'center'}}>
-                   <Text style={{color: '#6B7280'}}>예정된 경기가 없습니다.</Text>
+                <View style={{padding: 40, alignItems: 'center'}}>
+                    <Search size={40} color="#D1D5DB" style={{marginBottom:10}} />
+                    <Text style={{color: '#6B7280', fontSize: 16}}>조건에 맞는 경기가 없습니다.</Text>
                 </View>
               )}
             </ScrollView>
-            <TouchableOpacity style={styles.fab} onPress={handleCreateRoom} activeOpacity={0.8}>
-              <Plus size={28} color="white" />
-            </TouchableOpacity>
-          </View>
-        </>
-      ) : (
-        <ScrollView style={styles.filterContainer}>
-          <Text style={styles.modalLabel}>인원</Text>
-          <View style={styles.optionGroup}>
-            <FilterOptionButton label="전체" icon={null} isSelected={filterCount === '전체'} onPress={() => setFilterCount('전체')} />
-            <FilterOptionButton label="2인 (단식)" icon={User} isSelected={filterCount === 2} onPress={() => setFilterCount(2)} type="icon" />
-            <FilterOptionButton label="4인 (복식)" icon={Users} isSelected={filterCount === 4} onPress={() => setFilterCount(4)} type="icon" />
-          </View>
-          <Text style={styles.modalLabel}>성별</Text>
-          <View style={styles.optionGroup}>
-            <FilterOptionButton label="무관" icon={null} isSelected={filterGender === '무관'} onPress={() => setFilterGender('무관')} />
-            <FilterOptionButton label="남성" icon={null} isSelected={filterGender === '남성'} onPress={() => setFilterGender('남성')} />
-            <FilterOptionButton label="여성" icon={null} isSelected={filterGender === '여성'} onPress={() => setFilterGender('여성')} />
-          </View>
-          <Text style={styles.modalLabel}>날짜 범위</Text>
-          <TouchableOpacity style={styles.modalInputButton}>
-            <Calendar size={18} color="#6B7280" />
-            <Text style={styles.modalInputText}>날짜 선택</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      )}
+            {!isSearching && (
+                <TouchableOpacity style={styles.fab} onPress={handleCreateRoom} activeOpacity={0.8}><Plus size={28} color="white" /></TouchableOpacity>
+            )}
+        </View>
+      </View>
 
-      {/* RMR 가이드 모달 컴포넌트 */}
-      <RMRGuideModal
-        visible={isRmrGuideVisible}
-        onClose={() => setIsRmrGuideVisible(false)}
+      {/* --- Modals --- */}
+      <RMRGuideModal visible={isRmrGuideVisible} onClose={() => setIsRmrGuideVisible(false)} />
+
+      {/* [추가] 방장 프로필 모달 */}
+      <MatchHostModal
+        visible={isHostModalVisible}
+        onClose={() => setIsHostModalVisible(false)}
+        host={selectedMatch?.host || null}
+        matchTitle={selectedMatch?.title || ''}
       />
 
-      {/* 알림 모달 */}
       <Modal visible={isNotifModalVisible} transparent={true} animationType="fade" onRequestClose={() => setIsNotifModalVisible(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setIsNotifModalVisible(false)}>
           <View style={styles.notifModalContent}>
-            <View style={styles.notifHeader}>
-              <Text style={styles.modalTitle}>알림 센터</Text>
-              <TouchableOpacity onPress={() => setIsNotifModalVisible(false)}>
-                <X size={24} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
+            <View style={styles.notifHeader}><Text style={styles.modalTitle}>알림 센터</Text><TouchableOpacity onPress={() => setIsNotifModalVisible(false)}><X size={24} color="#6B7280" /></TouchableOpacity></View>
             {notifications.length === 0 ? (
               <View style={styles.emptyNotifContainer}><Bell size={48} color="#D1D5DB" /><Text style={styles.emptyNotifText}>새로운 알림이 없습니다.</Text></View>
             ) : (
@@ -524,60 +664,38 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
         </Pressable>
       </Modal>
 
-      {/* 방 생성 모달 */}
       <Modal animationType="slide" transparent={true} visible={isModalVisible} onRequestClose={() => setModalVisible(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBackdrop}>
           <Pressable style={styles.modalBackdropPressable} onPress={() => setModalVisible(false)} />
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>새로운 방 생성</Text>
             <TextInput style={styles.modalInput} placeholder="모임 이름" placeholderTextColor="#9CA3AF" value={roomName} onChangeText={setRoomName} />
-            <TouchableOpacity style={styles.modalInputButton} onPress={() => setDatePickerVisible(true)}>
-              <Calendar size={18} color="#6B7280" />
-              <Text style={styles.modalInputText}>{formatMatchDate(date)}</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalInputButton} onPress={() => { setDatePickerMode('create'); setDatePickerVisible(true); }}><Calendar size={18} color="#6B7280" /><Text style={styles.modalInputText}>{formatMatchDate(createDate)}</Text></TouchableOpacity>
             <Text style={styles.modalLabel}>지역 선택</Text>
-            <TouchableOpacity style={styles.modalInputButton} onPress={() => setIsRegionModalVisible(true)}>
-              <MapPin size={18} color={selectedRegion ? '#1F2937' : '#6B7280'} />
-              <Text style={[styles.modalInputText, !selectedRegion && styles.placeholderText]}>{selectedRegion || '시/도를 선택하세요'}</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalInputButton} onPress={() => { setRegionModalMode('create'); setIsRegionModalVisible(true); }}><MapPin size={18} color={createRegion ? '#1F2937' : '#6B7280'} /><Text style={[styles.modalInputText, !createRegion && styles.placeholderText]}>{createRegion || '시/도를 선택하세요'}</Text></TouchableOpacity>
             <Text style={styles.modalLabel}>상세 장소 (경기장 이름)</Text>
             <TextInput style={styles.modalInput} placeholder="예: 호계체육관" placeholderTextColor="#9CA3AF" value={detailedLocation} onChangeText={setDetailedLocation} />
             <Text style={styles.modalLabel}>성별</Text>
-            <View style={styles.optionGroup}>
-              <TouchableOpacity style={[styles.optionButton, selectedGender === '남성' && styles.optionButtonSelected]} onPress={() => setSelectedGender('남성')}><Text style={[styles.optionButtonText, selectedGender === '남성' && styles.optionButtonTextSelected]}>남성</Text></TouchableOpacity>
-              <TouchableOpacity style={[styles.optionButton, selectedGender === '여성' && styles.optionButtonSelected]} onPress={() => setSelectedGender('여성')}><Text style={[styles.optionButtonText, selectedGender === '여성' && styles.optionButtonTextSelected]}>여성</Text></TouchableOpacity>
-              <TouchableOpacity style={[styles.optionButton, selectedGender === '무관' && styles.optionButtonSelected]} onPress={() => setSelectedGender('무관')}><Text style={[styles.optionButtonText, selectedGender === '무관' && styles.optionButtonTextSelected]}>무관</Text></TouchableOpacity>
-            </View>
+            <View style={styles.optionGroup}><FilterOptionButton label="남성" icon={null} isSelected={createGender === '남성'} onPress={() => setCreateGender('남성')} /><FilterOptionButton label="여성" icon={null} isSelected={createGender === '여성'} onPress={() => setCreateGender('여성')} /><FilterOptionButton label="무관" icon={null} isSelected={createGender === '무관'} onPress={() => setCreateGender('무관')} /></View>
             <Text style={styles.modalLabel}>인원</Text>
-            <View style={styles.optionGroup}>
-              <TouchableOpacity style={[styles.optionButton, selectedCount === 2 && styles.optionButtonSelected]} onPress={() => setSelectedCount(2)}><User size={16} color={selectedCount === 2 ? 'white' : '#6B7280'} /><Text style={[styles.optionButtonText, selectedCount === 2 && styles.optionButtonTextSelected]}>2인 (단식)</Text></TouchableOpacity>
-              <TouchableOpacity style={[styles.optionButton, selectedCount === 4 && styles.optionButtonSelected]} onPress={() => setSelectedCount(4)}><Users size={16} color={selectedCount === 4 ? 'white' : '#6B7280'} /><Text style={[styles.optionButtonText, selectedCount === 4 && styles.optionButtonTextSelected]}>4인 (복식)</Text></TouchableOpacity>
-            </View>
+            <View style={styles.optionGroup}><FilterOptionButton label="2인 (단식)" icon={User} isSelected={createCount === 2} onPress={() => setCreateCount(2)} type="icon" /><FilterOptionButton label="4인 (복식)" icon={Users} isSelected={createCount === 4} onPress={() => setCreateCount(4)} type="icon" /></View>
             <TouchableOpacity style={styles.modalAddButton} onPress={handleConfirmCreation}><Text style={styles.modalAddButtonText}>추가</Text></TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      <DatePicker modal open={isDatePickerVisible} date={date} onConfirm={(selectedDate) => { setDatePickerVisible(false); setDate(selectedDate); }} onCancel={() => setDatePickerVisible(false)} title="날짜와 시간 선택" confirmText="확인" cancelText="취소" minuteInterval={5} />
-
+      <DatePicker modal open={isDatePickerVisible} date={datePickerMode === 'create' ? createDate : (filterDate || new Date())} onConfirm={(selectedDate) => { setDatePickerVisible(false); if (datePickerMode === 'create') setCreateDate(selectedDate); else setFilterDate(selectedDate); }} onCancel={() => setDatePickerVisible(false)} title={datePickerMode === 'create' ? "날짜와 시간 선택" : "날짜로 검색"} confirmText="확인" cancelText="취소" minuteInterval={5} mode={datePickerMode === 'create' ? 'datetime' : 'date'} />
       <Modal animationType="slide" transparent={true} visible={isRegionModalVisible} onRequestClose={() => setIsRegionModalVisible(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setIsRegionModalVisible(false)}>
           <Pressable style={styles.regionModalContent} onPress={() => {}}>
             <Text style={styles.modalTitle}>지역 선택</Text>
-            <FlatList data={regionItems} keyExtractor={(item) => item.value} renderItem={({ item }) => (
-              <TouchableOpacity style={styles.regionItem} onPress={() => { setSelectedRegion(item.value); setIsRegionModalVisible(false); }}><Text style={styles.regionItemText}>{item.label}</Text></TouchableOpacity>
-            )} />
+            <FlatList data={regionItems} keyExtractor={(item) => item.value} renderItem={({ item }) => (<TouchableOpacity style={styles.regionItem} onPress={() => { if (regionModalMode === 'create') setCreateRegion(item.value === '전체' ? null : item.value); else setFilterRegion(item.value); setIsRegionModalVisible(false); }}><Text style={[styles.regionItemText, (regionModalMode === 'filter' && filterRegion === item.value) && { color: '#34D399', fontWeight: 'bold' }]}>{item.label}</Text></TouchableOpacity>)} />
           </Pressable>
         </Pressable>
       </Modal>
-
       <Modal visible={isCalendarModalVisible} transparent={true} animationType="fade" onRequestClose={() => setCalendarModalVisible(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setCalendarModalVisible(false)}>
-          <View style={styles.calendarModalContent}>
-            <Text style={styles.modalTitle}>경기 일정 확인</Text>
-            <RNCalendar dayComponent={renderCalendarDay} monthFormat={'yyyy년 MM월'} theme={{ arrowColor: '#1F2937' }} />
-            <TouchableOpacity style={styles.closeButton} onPress={() => setCalendarModalVisible(false)}><Text style={styles.closeButtonText}>닫기</Text></TouchableOpacity>
-          </View>
+          <View style={styles.calendarModalContent}><Text style={styles.modalTitle}>경기 일정 확인</Text><RNCalendar dayComponent={renderCalendarDay} monthFormat={'yyyy년 MM월'} theme={{ arrowColor: '#1F2937' }} /><TouchableOpacity style={styles.closeButton} onPress={() => setCalendarModalVisible(false)}><Text style={styles.closeButtonText}>닫기</Text></TouchableOpacity></View>
         </Pressable>
       </Modal>
     </View>
@@ -601,47 +719,32 @@ const styles = StyleSheet.create({
   cancelButton: { paddingLeft: 16 },
   cancelButtonText: { color: '#FFFFFF', fontSize: 16 },
 
-  // Hero 영역 스타일
+  // Filter Panel
+  filterPanelContainer: { backgroundColor: '#F9FAFB', paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
+  filterTabsScroll: { flexDirection: 'row', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, gap: 8 },
+  filterTab: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: 'white', borderWidth: 1, borderColor: '#E5E7EB', marginRight: 8, flexDirection: 'row', alignItems: 'center' },
+  filterTabActive: { backgroundColor: '#111827', borderColor: '#111827' },
+  filterTabText: { fontSize: 14, color: '#6B7280', fontWeight: '500' },
+  filterTabTextActive: { color: 'white' },
+  filterDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#34D399', marginLeft: 6 },
+  filterDetailContainer: { paddingHorizontal: 16, paddingTop: 8 },
+  filterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  filterInputButton: { flex: 1, backgroundColor: 'white', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#E5E7EB' },
+  resetBadge: { backgroundColor: '#EF4444', borderRadius: 12, padding: 6, marginLeft: 8 },
+
+  // Hero
   heroContainer: { width: '100%', height: 200, position: 'relative', overflow: 'hidden' },
   heroImage: { width: '100%', height: '100%' },
-  heroGradientOverlay: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    height: '70%',
-    paddingHorizontal: 20,
-    paddingBottom: 32,
-    justifyContent: 'flex-end'
-  },
-  heroBadge: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#34D399',
-    paddingVertical: 4, paddingHorizontal: 8, borderRadius: 12, alignSelf: 'flex-start', marginBottom: 8, gap: 4
-  },
+  heroGradientOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, height: '70%', paddingHorizontal: 20, paddingBottom: 32, justifyContent: 'flex-end' },
+  heroBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#34D399', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 12, alignSelf: 'flex-start', marginBottom: 8, gap: 4 },
   heroBadgeText: { color: 'white', fontSize: 11, fontWeight: 'bold' },
   heroTitle: { color: 'white', fontSize: 20, fontWeight: 'bold', marginBottom: 4 },
   heroSubtitle: { color: 'rgba(255,255,255,0.9)', fontSize: 14 },
+  paginationContainer: { position: 'absolute', bottom: 8, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 },
+  paginationDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.4)' },
+  paginationDotActive: { backgroundColor: '#34D399', width: 18 },
 
-  // 페이지네이션 도트 스타일
-  paginationContainer: {
-    position: 'absolute',
-    bottom: 8,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6
-  },
-  paginationDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: 'rgba(255,255,255,0.4)'
-  },
-  paginationDotActive: {
-    backgroundColor: '#34D399',
-    width: 18
-  },
-
-  // 기존 스타일 유지
+  // Date Selector
   dateSelectorContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', paddingVertical: 16, paddingHorizontal: 12 },
   dateArrowButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#1F2937', justifyContent: 'center', alignItems: 'center', marginHorizontal: 4 },
   dateList: { flex: 1, flexDirection: 'row', justifyContent: 'space-around' },
@@ -650,10 +753,14 @@ const styles = StyleSheet.create({
   dateButtonDay: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
   dateButtonLabel: { fontSize: 12, color: '#374151' },
   dateButtonTextSelected: { color: 'white' },
+
+  // Lists
   listWrapper: { flex: 1, backgroundColor: '#F9FAFB' },
   listContainer: { flex: 1 },
   listContent: { padding: 16, paddingBottom: 88 },
   fab: { position: 'absolute', bottom: 24, right: 24, width: 60, height: 60, borderRadius: 30, backgroundColor: '#34D399', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 8 },
+
+  // Modals Common
   modalBackdrop: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.5)' },
   modalBackdropPressable: { ...StyleSheet.absoluteFillObject },
   modalContent: { width: '100%', backgroundColor: 'white', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 32, shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 20, marginTop: 'auto' },
@@ -671,13 +778,16 @@ const styles = StyleSheet.create({
   optionButtonTextSelected: { color: '#FFFFFF' },
   modalAddButton: { backgroundColor: '#34D399', paddingVertical: 16, borderRadius: 8, alignItems: 'center', marginTop: 8 },
   modalAddButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
-  filterContainer: { flex: 1, backgroundColor: '#FFFFFF', padding: 24 },
+
   regionModalContent: { width: '100%', backgroundColor: 'white', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 32, maxHeight: '60%', marginTop: 'auto' },
   regionItem: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   regionItemText: { fontSize: 18, color: '#1F2937', textAlign: 'center' },
+
   calendarModalContent: { width: '90%', backgroundColor: 'white', borderRadius: 20, padding: 20, elevation: 5, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } },
   closeButton: { marginTop: 15, backgroundColor: '#34D399', padding: 12, borderRadius: 10, alignItems: 'center' },
   closeButtonText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
+
+  // Notification Modal
   notifModalContent: { width: '90%', backgroundColor: 'white', borderRadius: 16, padding: 24, alignSelf: 'center', maxHeight: '80%', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 10 },
   notifHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   emptyNotifContainer: { alignItems: 'center', paddingVertical: 32 },
@@ -692,9 +802,29 @@ const styles = StyleSheet.create({
   actionBtn: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
   acceptBtn: { backgroundColor: '#34D399' },
   declineBtn: { backgroundColor: '#F3F4F6' },
+
+  // Calendar
   calendarDayContainer: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   calendarDayTextContainer: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   calendarDayText: { fontSize: 14 },
   todayBackground: { backgroundColor: '#34D399' },
   matchDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#34D399', marginTop: 2 },
+
+  // [추가] Profile Modal Styles (Dark Theme, Referencing OpponentProfileModal)
+  profileModalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.6)', justifyContent: 'center', alignItems: 'center' },
+  profileModalContent: { width: '85%', backgroundColor: '#1C1D2B', borderRadius: 20, padding: 25, alignItems: 'center', elevation: 5 },
+  profileSection: { alignItems: 'center', marginBottom: 20 },
+  profileAvatar: { width: 80, height: 80, borderRadius: 40, marginBottom: 10, backgroundColor: '#333' },
+  profileNameText: { fontSize: 22, fontWeight: 'bold', color: '#FFFFFF', marginBottom: 4 },
+  profileLocationText: { fontSize: 14, color: '#A0A0A0' },
+  hostBadgeText: { marginTop:6, color: '#34D399', fontSize: 12, fontWeight: 'bold', backgroundColor: 'rgba(52, 211, 153, 0.15)', paddingVertical: 2, paddingHorizontal: 8, borderRadius: 4 },
+  statsContainer: { flexDirection: 'row', backgroundColor: '#25263A', borderRadius: 15, paddingVertical: 15, width: '100%', justifyContent: 'space-around', alignItems: 'center', marginBottom: 20 },
+  statItem: { alignItems: 'center', flex: 1 },
+  statLabel: { fontSize: 12, color: '#888', marginBottom: 5 },
+  statValue: { fontSize: 16, fontWeight: 'bold', color: '#FFF' },
+  statDivider: { width: 1, height: '60%', backgroundColor: '#444' },
+  joinRequestButton: { width: '100%', backgroundColor: '#34D399', paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginBottom: 12 },
+  joinRequestButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
+  profileCloseButton: { width: '100%', paddingVertical: 12, backgroundColor: '#333', borderRadius: 12, alignItems: 'center' },
+  profileCloseButtonText: { color: '#FFF', fontSize: 15, fontWeight: 'bold' },
 });
