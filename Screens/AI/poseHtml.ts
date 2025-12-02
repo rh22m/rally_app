@@ -19,11 +19,10 @@ export const htmlContent = `
   <canvas class="output_canvas"></canvas>
 
   <script>
-    // ---------------- [수정됨: 설정값 변경] ----------------
+    // ---------------- [설정값] ----------------
     let frameCounter = 0;
-    
-    // ⚠️ 중요: 스매시 같은 빠른 동작을 잡기 위해 1로 변경 (매 프레임 전송)
-    const THROTTLE_RATE = 1; 
+    const THROTTLE_RATE = 1;
+    let currentMode = 'SWING'; // 기본 모드
 
     window.onerror = function(message, source, lineno, colno, error) {
       if(window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'log', message: 'JS ERROR: ' + message }));
@@ -35,7 +34,7 @@ export const htmlContent = `
         const canvasCtx = canvasElement.getContext('2d');
         let isBackCamera = true;
 
-        // [스윙] 프로 선수 스매시 임팩트 자세 (측면 기준)
+        // [스윙] 프로 선수 스매시 임팩트 자세
         const PRO_SMASH_LANDMARKS = [
             {"x":0.503777265548706,"y":0.4119122624397278,"z":0.016494281589984894,"visibility":0.99670207500455776},
             {"x":0.5015365481376648,"y":0.4056950509548187,"z":0.035606369376182556,"visibility":0.9954809546470642},
@@ -77,7 +76,7 @@ export const htmlContent = `
             {"x":0.5976055264472961,"y":0.47949308156967163,"z":-0.13166093826293945,"visibility":0.999560534954071},
             {"x":0.5986483693122864,"y":0.47191762924194336,"z":-0.11183536052703857,"visibility":0.9994832873344421},
             {"x":0.599521815776825,"y":0.4719581604003906,"z":-0.11191945523023605,"visibility":0.9995033740997314},
-            {"x":0.6001788377761841,"y":0.4718948304653168,"z":-0.11200344562530518,"visibility":0.9994814395904541},
+            {"x":0.6001788377761841,"y":0.4719448304653168,"z":-0.11200344562530518,"visibility":0.9994814395904541},
             {"x":0.593024492263794,"y":0.4707006812095642,"z":-0.15422578155994415,"visibility":0.9995313286781311},
             {"x":0.5896613597869873,"y":0.4698105454444885,"z":-0.15431581437587738,"visibility":0.9996137619018555},
             {"x":0.5856301188468933,"y":0.46878543496131897,"z":-0.15431451797485352,"visibility":0.9996337294578552},
@@ -119,7 +118,7 @@ export const htmlContent = `
             const rightShoulder = landmarks[12];
             const shoulderCenterX = (leftShoulder.x + rightShoulder.x) / 2;
             const shoulderCenterY = (leftShoulder.y + rightShoulder.y) / 2;
-            
+
             const torsoSize = Math.sqrt(Math.pow(centerX - shoulderCenterX, 2) + Math.pow(centerY - shoulderCenterY, 2));
             const scale = torsoSize > 0 ? torsoSize : 1;
 
@@ -127,7 +126,7 @@ export const htmlContent = `
                 return {
                     x: (lm.x - centerX) / scale,
                     y: (lm.y - centerY) / scale,
-                    z: (lm.z || 0) / scale, 
+                    z: (lm.z || 0) / scale,
                     visibility: lm.visibility
                 };
             });
@@ -140,7 +139,7 @@ export const htmlContent = `
             let importantJoints = [];
 
             if (mode === 'SWING') {
-                importantJoints = [11, 12, 13, 14, 15, 16]; 
+                importantJoints = [11, 12, 13, 14, 15, 16];
             } else {
                 importantJoints = [11, 12, 23, 24, 25, 26, 27, 28];
             }
@@ -152,7 +151,7 @@ export const htmlContent = `
                 totalDistance += dist;
             }
             const avgDistance = totalDistance / importantJoints.length;
-            const score = Math.max(0, 100 - (avgDistance * 150)); 
+            const score = Math.max(0, 100 - (avgDistance * 150));
             return score;
         }
 
@@ -164,12 +163,64 @@ export const htmlContent = `
             return angle;
         }
 
+        // ---------------- [풋워크 자세 판별 - 전면/후면 카메라 방향 동기화] ----------------
+        function classifyFootworkPose(landmarks, isBackCamera) {
+            const leftHip = landmarks[23];
+            const rightHip = landmarks[24];
+            const leftAnkle = landmarks[27];
+            const rightAnkle = landmarks[28];
+            const leftKnee = landmarks[25];
+            const rightKnee = landmarks[26];
+
+            if (!leftHip || !rightHip) return 'UNKNOWN';
+
+            // 발목이 안 보이면 무릎으로 대체 (fallback)
+            const lAnkleY = (leftAnkle && leftAnkle.visibility > 0.5) ? leftAnkle.y : (leftKnee ? leftKnee.y + 0.15 : 0);
+            const rAnkleY = (rightAnkle && rightAnkle.visibility > 0.5) ? rightAnkle.y : (rightKnee ? rightKnee.y + 0.15 : 0);
+
+            // 몸의 중심 X 좌표 (화면 전체에서의 위치)
+            const hipCenterX = (leftHip.x + rightHip.x) / 2;
+
+            // X축 기준 좌/우 판별 (사용자 기준)
+            let isUserRight = false;
+            let isUserLeft = false;
+
+            // [수정] 전면/후면 모두 사용자가 화면에서 오른쪽으로 움직이면(Raw x 감소), 사용자의 오른쪽으로 간주
+            // 전면 카메라(거울모드): 내 오른쪽 -> 화면상 오른쪽(거울속 내 오른쪽) -> Raw x는 감소(왼쪽)
+            // 후면 카메라: 내 오른쪽 -> 화면상 왼쪽 -> Raw x는 감소(왼쪽)
+            // 즉, x < 0.45 정도면 사용자 기준 Right
+            // x > 0.55 정도면 사용자 기준 Left
+
+            if (hipCenterX < 0.45) isUserRight = true;
+            else if (hipCenterX > 0.55) isUserLeft = true;
+
+            if (!isUserRight && !isUserLeft) return 'CENTER';
+
+            // Y축 기준 전/후 판별 (발이 화면 아래쪽 = 더 가깝다 = 전진)
+            // 오른쪽으로 움직였을 때
+            if (isUserRight) {
+                // 오른발이 왼발보다 더 아래쪽(y가 큼)에 있으면 전진 스텝으로 간주
+                if (rAnkleY > lAnkleY + 0.03) return 'FRONT_RIGHT';
+                else return 'BACK_RIGHT';
+            }
+            // 왼쪽으로 움직였을 때
+            else {
+                // 왼발이 오른발보다 더 아래쪽에 있으면 전진 스텝
+                if (lAnkleY > rAnkleY + 0.03) return 'FRONT_LEFT';
+                else return 'BACK_LEFT';
+            }
+        }
+
         document.addEventListener("message", handleRNMessage);
         window.addEventListener("message", handleRNMessage);
+
         function handleRNMessage(event) {
           try {
             const data = JSON.parse(event.data);
             if (data.type === 'switchCamera') toggleCamera();
+            if (data.type === 'setMode') {
+                currentMode = data.mode;
+            }
           } catch (e) {}
         }
 
@@ -186,6 +237,8 @@ export const htmlContent = `
           const screenRatio = canvasElement.width / canvasElement.height;
           const imgRatio = results.image.width / results.image.height;
           let drawWidth, drawHeight, offsetX, offsetY;
+
+          // 화면 비율 계산
           if (screenRatio > imgRatio) {
              drawWidth = canvasElement.width; drawHeight = canvasElement.width / imgRatio;
              offsetX = 0; offsetY = (canvasElement.height - drawHeight) / 2;
@@ -193,7 +246,12 @@ export const htmlContent = `
              drawHeight = canvasElement.height; drawWidth = canvasElement.height * imgRatio;
              offsetX = (canvasElement.width - drawWidth) / 2; offsetY = 0;
           }
-          if (!isBackCamera) { canvasCtx.translate(canvasElement.width, 0); canvasCtx.scale(-1, 1); }
+
+          // 카메라 반전 처리 (isBackCamera가 false일 때 즉 전면 카메라일 때 반전)
+          if (!isBackCamera) {
+              canvasCtx.translate(canvasElement.width, 0);
+              canvasCtx.scale(-1, 1);
+          }
           canvasCtx.drawImage(results.image, offsetX, offsetY, drawWidth, drawHeight);
 
           if (results.poseLandmarks) {
@@ -203,14 +261,17 @@ export const htmlContent = `
             }
 
             frameCounter++;
-            
-            // ---------------- [수정됨] 조건 완화 ----------------
-            // 1. Throttle Rate 1 (매 프레임 전송)
-            // 2. visibility 0.3 (흐릿해도 전송)
+
             if (frameCounter % THROTTLE_RATE === 0) {
-                
+
                 const swingKnnScore = calculateSimilarity(results.poseLandmarks, PRO_SMASH_LANDMARKS, 'SWING');
                 const readyKnnScore = calculateSimilarity(results.poseLandmarks, PRO_READY_LANDMARKS, 'LUNGE');
+
+                // [풋워크] 자세 판별 (카메라 방향 정보 전달)
+                let footworkPose = 'CENTER';
+                if (currentMode === 'FOOTWORK') {
+                    footworkPose = classifyFootworkPose(results.poseLandmarks, isBackCamera);
+                }
 
                 const shoulder = results.poseLandmarks[12];
                 const elbow = results.poseLandmarks[14];
@@ -219,19 +280,39 @@ export const htmlContent = `
                 const knee = results.poseLandmarks[26];
                 const ankle = results.poseLandmarks[28];
 
-                // ⚠️ 여기 visibility > 0.3으로 낮췄습니다! (빠른 동작 인식용)
-                if(wrist && wrist.visibility > 0.3 && window.ReactNativeWebView) {
+                // [데이터 전송 조건 통합]
+                let isPoseVisible = false;
+
+                if (currentMode === 'SWING') {
+                    // 스윙은 손목
+                    if (wrist && wrist.visibility > 0.5) isPoseVisible = true;
+                } else if (currentMode === 'FOOTWORK') {
+                    // 풋워크는 발목 또는 힙이 보여야 함 (기본적으로 힙 기반 판별)
+                    // 발목이 없어도 힙으로 좌우 판별은 가능하므로 조건 완화
+                    if (hip && hip.visibility > 0.5) isPoseVisible = true;
+                } else {
+                    // LUNGE는 무릎
+                    if (knee && knee.visibility > 0.5) isPoseVisible = true;
+                }
+
+                if(isPoseVisible && window.ReactNativeWebView) {
                     const elbowAngle = calculateAngle(shoulder, elbow, wrist);
                     const kneeAngle = calculateAngle(hip, knee, ankle);
-                    let x = wrist.x; if (!isBackCamera) x = 1.0 - x; 
+
+                    // 좌표도 반전 상태에 따라 보정
+                    let x = wrist ? wrist.x : 0;
+                    if (!isBackCamera) x = 1.0 - x;
 
                     window.ReactNativeWebView.postMessage(JSON.stringify({
                        type: 'poseData',
-                       x: x, y: wrist.y, timestamp: Date.now(),
+                       x: x,
+                       y: wrist ? wrist.y : 0,
+                       timestamp: Date.now(),
                        elbowAngle: elbowAngle.toFixed(1),
                        kneeAngle: kneeAngle.toFixed(1),
                        swingKnnScore: swingKnnScore.toFixed(0),
-                       readyKnnScore: readyKnnScore.toFixed(0)
+                       readyKnnScore: readyKnnScore.toFixed(0),
+                       footworkPose: footworkPose
                     }));
                 }
             }
