@@ -1,4 +1,4 @@
-// utils/rmrCalculator.ts
+// RMR(Rally Match Rating) v4 Calculator
 
 export interface PointLog {
   scorer: 'A' | 'B';
@@ -6,16 +6,16 @@ export interface PointLog {
   scoreB: number;
   setIndex: number;
   timestamp: number;
-  duration: number;
+  duration: number; // 랠리 지속 시간
 }
 
 export interface GameResult {
   playerA: { rmr: number; rd: number; name: string }; // Team 1 (상대)
   playerB: { rmr: number; rd: number; name: string }; // Team 2 (나)
-  team1Wins: number;
-  team2Wins: number;
-  pointLogs: PointLog[];
-  isAbnormal: boolean;
+  team1Wins: number; // (상대) 세트 승수
+  team2Wins: number; // (나) 세트 승수
+  pointLogs: PointLog[]; // 경기 전체 포인트 로그
+  isAbnormal: boolean; // 기권, 노쇼 등 비정상 경기 종료 여부
 }
 
 export interface RMRAnalysis {
@@ -24,9 +24,11 @@ export interface RMRAnalysis {
   newRD_A: number;
   newRD_B: number;
   analysis: {
-    m_total: number;
-    m_flow: number;
-    flowDetails: {
+    m_total: number; // 최종 경기 내용 보정치
+    m_set: number;   // 세트 스코어 보정치
+    m_pd: number;    // 총 득점차 보정치
+    m_flow: number;  // 경기 흐름 보정치
+    flowDetails: {   // M_flow 하위 상세 지표
       clutch: number;
       com: number;
       cons: number;
@@ -37,26 +39,35 @@ export interface RMRAnalysis {
   };
 }
 
+// RMR v4 상수 정의
 const RMR_CONSTANTS = {
+  // Volatility (변동성) 계산 상수: (0.08 * RD) + 12
+  // Volatility: 변동성, RD: 신뢰도
   VOLATILITY_BASE: 12,
   VOLATILITY_MULTIPLIER: 0.08,
+
+  // M_flow 하위 지표 가중치
   FLOW_WEIGHTS: {
-    CLUTCH: 0.25,
-    COM: 0.20,
-    CONS: 0.20,
-    ENDURANCE: 0.15,
-    FOCUS: 0.10,
-    TEMPO: 0.05,
-    MAX_RUN: 0.05,
+    CLUTCH: 0.25,    // 듀스 상황 승률
+    COM: 0.20,       // 3점차 역전 능력
+    CONS: 0.20,      // 리드 유지 능력
+    ENDURANCE: 0.15, // 장기 랠리 승률
+    FOCUS: 0.10,     // 3-1세트 득점률
+    TEMPO: 0.05,     // 단기 랠리 승률
+    MAX_RUN: 0.05,   // 연속 득점
   },
 };
 
+// 쌍곡탄젠트 함수: 점수차 보정(M_pd) 계산 시 완만한 증가 곡선을 위해 사용
 const tanh = (x: number) => (Math.exp(2 * x) - 1) / (Math.exp(2 * x) + 1);
+// 기대 승률 (Expected Score, E_A) 계산  * 공식: 1 / (1 + 10^((RMR_B - RMR_A) / 400))
 const calculateExpectedScore = (rmrA: number, rmrB: number): number => 1 / (1 + Math.pow(10, (rmrB - rmrA) / 400));
+// Volatility (변동성) 계산: RD(신뢰도)에 따른 점수 변동폭 변화
 const calculateVolatility = (rd: number): number => RMR_CONSTANTS.VOLATILITY_MULTIPLIER * rd + RMR_CONSTANTS.VOLATILITY_BASE;
+// RD (신뢰도) 계산
 const calculateNewRD = (currentRD: number): number => Math.max(currentRD - (currentRD * 0.05), 30);
 
-// --- [상세] 로그 출력 함수 ---
+// 로그 출력 함수 (디버깅 콘솔 리포트)
 export const printRMRLog = (data: GameResult, result: RMRAnalysis) => {
   const { playerA, playerB, team1Wins, team2Wins, pointLogs, isAbnormal } = data;
   const { newRMR_A, newRMR_B, analysis } = result;
@@ -67,7 +78,7 @@ export const printRMRLog = (data: GameResult, result: RMRAnalysis) => {
   const winner = team1Wins > team2Wins ? 'A' : 'B';
   const winnerName = winner === 'A' ? playerA.name : playerB.name;
 
-  // 상세 분석을 위한 카운트 계산
+  // 상세 분석 데이터 집계
   const longRallies = pointLogs.filter(l => l.duration >= 30);
   const longRallyWins = longRallies.filter(l => (winner === 'A' ? l.scorer === 'A' : l.scorer === 'B')).length;
 
@@ -77,7 +88,7 @@ export const printRMRLog = (data: GameResult, result: RMRAnalysis) => {
   const shortRallies = pointLogs.filter(l => l.duration < 30);
   const shortRallyWins = shortRallies.filter(l => (winner === 'A' ? l.scorer === 'A' : l.scorer === 'B')).length;
 
-  // 세트별 승률 계산 (Focus)
+  // 세트별 승률 계산 (Focus 분석용)
   const set1Logs = pointLogs.filter(l => l.setIndex === 1);
   const lastSetLogs = pointLogs.filter(l => l.setIndex === Math.max(...pointLogs.map(p=>p.setIndex)));
   const getWinRate = (logs: PointLog[]) => logs.length ? (logs.filter(l => (winner === 'A' ? l.scorer === 'A' : l.scorer === 'B')).length / logs.length) * 100 : 0;
@@ -125,15 +136,17 @@ export const printRMRLog = (data: GameResult, result: RMRAnalysis) => {
   console.log('=============================================\n');
 };
 
-// --- 메인 계산 함수 ---
+// 메인 계산 함수
 export const calculateRMR = (data: GameResult): RMRAnalysis => {
   const { playerA, playerB, team1Wins, team2Wins, pointLogs, isAbnormal } = data;
 
-  // 1. M_set
+  // 1. M_set (세트 스코어 보정치) * 가중치 0.3
+  // M_set = 2:0 완승(1.25) / 2:1 신승(1.0)
   let m_set = 1.0;
   if ((team1Wins === 2 && team2Wins === 0) || (team1Wins === 0 && team2Wins === 2)) m_set = 1.25;
 
-  // 2. M_pd
+  // 2. M_pd (총 득점차 보정치) * 가중치 0.2
+  // M_pd = 1 + 0.5 * tanh((총 득점 차 - 5) / 10)
   const totalScoreA = pointLogs.filter(l => l.scorer === 'A').length;
   const totalScoreB = pointLogs.filter(l => l.scorer === 'B').length;
   const scoreDiff = Math.abs(totalScoreA - totalScoreB);
@@ -142,7 +155,10 @@ export const calculateRMR = (data: GameResult): RMRAnalysis => {
   // 승자 판별
   const winner = team1Wins > team2Wins ? 'A' : 'B';
 
-  // 3. M_flow
+  // 3. M_flow (경기 흐름 보정치) * 가중치 0.5
+  // M_flow = 1.0 + Σ(가중치 * 지표값)
+
+  // Endurance - 가중치 0.15
   const longRallies = pointLogs.filter(l => l.duration >= 30);
   let enduranceVal = 0.5;
   if (longRallies.length > 0) {
@@ -150,6 +166,7 @@ export const calculateRMR = (data: GameResult): RMRAnalysis => {
       enduranceVal = wins / longRallies.length;
   }
 
+  // Clutch - 가중치 0.25
   const clutchLogs = pointLogs.filter(l => l.scoreA >= 20 && l.scoreB >= 20);
   let clutchVal = 0.5;
   if (clutchLogs.length > 0) {
@@ -157,6 +174,7 @@ export const calculateRMR = (data: GameResult): RMRAnalysis => {
     clutchVal = wins / clutchLogs.length;
   }
 
+  // Tempo - 가중치 0.05
   const shortRallies = pointLogs.filter(l => l.duration < 30);
   let tempoVal = 0.5;
   if (shortRallies.length > 0) {
@@ -164,24 +182,29 @@ export const calculateRMR = (data: GameResult): RMRAnalysis => {
       tempoVal = wins / shortRallies.length;
   }
 
+  // Focus - 가중치 0.10
   const set1Logs = pointLogs.filter(l => l.setIndex === 1);
   const lastSetLogs = pointLogs.filter(l => l.setIndex === Math.max(...pointLogs.map(p=>p.setIndex)));
 
   const getWinRate = (logs: PointLog[]) => logs.length ? logs.filter(l => (winner === 'A' ? l.scorer === 'A' : l.scorer === 'B')).length / logs.length : 0;
+  // +0.5를 하여 0~1 사이 값으로 정규화 (변화가 없으면 0.5, 상승하면 >0.5)
   const focusVal = Math.max(0, getWinRate(lastSetLogs) - getWinRate(set1Logs) + 0.5);
 
   const comVal = 0.5;
   const consVal = 0.5;
 
+  // M_flow 최종 계산
   const { CLUTCH, COM, CONS, ENDURANCE, FOCUS, TEMPO } = RMR_CONSTANTS.FLOW_WEIGHTS;
   const flowScore =
       (clutchVal * CLUTCH) + (comVal * COM) + (consVal * CONS) +
       (enduranceVal * ENDURANCE) + (focusVal * FOCUS) + (tempoVal * TEMPO);
 
   const m_flow = 1.0 + flowScore;
+  // Integrity (경기 무결성)
   const integrity = isAbnormal ? 0.7 : 1.0;
 
-  // 4. M_total
+  // 4. M_total (최종 경기 내용 보정치) 산출
+  // M_total = [(0.3 * M_set) + (0.2 * M_pd) + (0.5 * M_flow)] * Integrity
   const m_total = ((0.3 * m_set) + (0.2 * m_pd) + (0.5 * m_flow)) * integrity;
 
   // 5. RMR Update
@@ -189,6 +212,8 @@ export const calculateRMR = (data: GameResult): RMRAnalysis => {
   const vol_A = calculateVolatility(playerA.rd);
   const vol_B = calculateVolatility(playerB.rd);
 
+  // 승자: M_total / 패자: (2.0 - M_total)
+  // 승자와 패자의 보정치 합이 2.0이 되도록 유지하는 제로썸 원칙
   const m_winner = m_total;
   const m_loser = 2.0 - m_winner;
 
