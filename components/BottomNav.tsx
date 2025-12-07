@@ -4,7 +4,9 @@ import {
   View,
   Text,
   TouchableOpacity,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context'; // [추가] 안전 영역 훅 임포트
 import { Screen } from '../App';
 import {
   MessageCircleMore,
@@ -20,6 +22,9 @@ interface BottomNavProps {
 }
 
 export function BottomNav({ currentTab, onTabChange }: BottomNavProps) {
+  // [추가] 안전 영역 인셋 가져오기
+  const insets = useSafeAreaInsets();
+
   const tabs: { id: Screen; label: string; Icon: React.ElementType }[] = [
     { id: 'home', label: '경기 모드', Icon: Flame },
     { id: 'chat', label: '대화', Icon: MessageCircleMore },
@@ -29,21 +34,26 @@ export function BottomNav({ currentTab, onTabChange }: BottomNavProps) {
   ];
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        // [수정] 하단 패딩에 안전 영역(insets.bottom)을 더해 시스템 내비게이션 바와 겹치지 않도록 처리
+        { paddingBottom: 8 + insets.bottom }
+      ]}
+    >
       {tabs.map((tab) => {
         const isActive = currentTab === tab.id;
-        // [수정] 모든 탭 활성화 시 흰색 아이콘 (AI 탭 예외 제거)
         const iconColor = isActive ? '#FFFFFF' : '#6B7280';
 
         return (
           <TouchableOpacity
             key={tab.id}
             onPress={() => onTabChange(tab.id)}
-            // [수정] 모든 탭 동일한 활성 스타일 적용
             style={[
               styles.tabButton,
               isActive && styles.tabButtonActive,
             ]}
+            activeOpacity={0.7}
           >
             <View>
               <tab.Icon color={iconColor} size={28} />
@@ -76,10 +86,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingTop: 8, // [수정] paddingVertical을 분리하여 상단은 8 고정
+    // paddingBottom은 인라인 스타일로 동적 처리
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
     backgroundColor: '#FFFFFF',
+    // 그림자 추가 (선택 사항 - 탭바 구분감 향상)
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   tabButton: {
     flex: 1,
@@ -90,17 +110,17 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginHorizontal: 4,
   },
-  // [수정] 모든 탭 활성 상태 스타일 통일
   tabButtonActive: {
     backgroundColor: '#34D399', // 녹색 배경
   },
   tabLabel: {
     fontSize: 12,
     color: '#6B7280',
+    marginTop: 2,
   },
-  // [수정] 모든 탭 활성 텍스트 스타일 통일
   tabLabelActive: {
     color: '#FFFFFF', // 흰색 텍스트
+    fontWeight: '600',
   },
 
   // Beta 배지 스타일
@@ -112,7 +132,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 4,
     paddingVertical: 1,
-    borderColor: '#FFFFFF',
     zIndex: 10,
   },
   betaText: {
