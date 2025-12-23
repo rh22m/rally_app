@@ -350,7 +350,7 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
     const list = [];
     const today = new Date();
     const dayLabels = ['일', '월', '화', '수', '목', '금', '토'];
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 30; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() + i);
       list.push({ day: d.getDate(), label: dayLabels[d.getDay()], fullDate: new Date(d) });
