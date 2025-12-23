@@ -42,17 +42,17 @@ export interface RMRAnalysis {
 // [추가] 티어 산정 유틸리티
 // Bronze 1~3 < Silver 1~3 < Gold 1~3 (1: Entry, 3: High)
 export const getRmrTier = (rmr: number): string => {
-  if (rmr < 800) return 'Bronze 1';
+  if (rmr < 800) return 'Bronze 3';
   if (rmr < 900) return 'Bronze 2';
-  if (rmr < 1000) return 'Bronze 3';
+  if (rmr < 1000) return 'Bronze 1';
 
-  if (rmr < 1100) return 'Silver 1';
+  if (rmr < 1100) return 'Silver 3';
   if (rmr < 1200) return 'Silver 2';
-  if (rmr < 1300) return 'Silver 3';
+  if (rmr < 1300) return 'Silver 1';
 
-  if (rmr < 1400) return 'Gold 1';
+  if (rmr < 1400) return 'Gold 3';
   if (rmr < 1500) return 'Gold 2';
-  return 'Gold 3'; // 1500+
+  return 'Gold 1'; // 1500+
 };
 
 // RMR v4 상수 정의
