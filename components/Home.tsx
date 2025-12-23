@@ -83,7 +83,6 @@ const formatMatchDate = (d: Date) => {
 
 const formatDateSimple = (d: Date) => `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
 
-// [추가] 로컬 시간 기준 날짜 문자열 생성 함수 (YYYY-MM-DD)
 const getLocalDateString = (date: Date) => {
   const year = date.getFullYear();
   const month = (date.getMonth() + 1).toString().padStart(2, '0');
@@ -245,14 +244,14 @@ const MatchHostModal = ({ visible, onClose, host, matchTitle }: { visible: boole
 
 // --- 3. Home 컴포넌트 ---
 const initialMatches = [
-  { id: 101, status: '모집 중', playerCount: '4명', title: '12월 송년 배드민턴', date: '2025년 12월 20일 18시 00분', location: '안양 호계체육관', region: '경기', gender: '무관', maxCount: 4, host: { name: '김민수', location: '안양시', tier: 'Silver 2', win: 15, loss: 8, mannerScore: 4.5, avatar: require('../assets/images/badminton_1.png') } },
+  { id: 101, status: '모집 중', playerCount: '4명', title: '12월 송년 배드민턴', date: '2026년 3월 20일 18시 00분', location: '안양 호계체육관', region: '경기', gender: '무관', maxCount: 4, host: { name: '김민수', location: '안양시', tier: 'Silver 2', win: 15, loss: 8, mannerScore: 4.5, avatar: require('../assets/images/badminton_1.png') } },
   { id: 102, status: '모집 중', playerCount: '2명', title: '2026 신년맞이 단식', date: '2026년 1월 10일 14시 00분', location: '수원 만석공원', region: '경기', gender: '남성', maxCount: 2, host: { name: '이영희', location: '수원시', tier: 'Gold 1', win: 42, loss: 12, mannerScore: 4.9, avatar: require('../assets/images/badminton_2.png') } },
-  { id: 103, status: '모집 중', playerCount: '4명', title: '서울 주말 아침 운동', date: '2025년 12월 21일 07시 00분', location: '서울 마곡 배드민턴장', region: '서울', gender: '무관', maxCount: 4, host: { name: '박철수', location: '서울 강서구', tier: 'Bronze 3', win: 5, loss: 5, mannerScore: 4.0, avatar: require('../assets/images/badminton_3.png') } },
-  { id: 104, status: '모집 중', playerCount: '4명', title: '강남 저녁 내기 게임', date: '2025년 12월 22일 19시 30분', location: '서울 강남구민회관', region: '서울', gender: '무관', maxCount: 4, host: { name: '최강남', location: '서울 강남구', tier: 'Gold 3', win: 60, loss: 40, mannerScore: 4.8, avatar: require('../assets/images/badminton_1.png') } },
-  { id: 105, status: '모집 중', playerCount: '2명', title: '성남 탄천 아침 단식', date: '2025년 12월 23일 06시 00분', location: '성남 탄천종합운동장', region: '경기', gender: '여성', maxCount: 2, host: { name: '정성남', location: '성남시 분당구', tier: 'Silver 1', win: 22, loss: 10, mannerScore: 5.0, avatar: require('../assets/images/badminton_2.png') } },
-  { id: 106, status: '모집 중', playerCount: '4명', title: '용인 수지 주말 번개', date: '2025년 12월 24일 14시 00분', location: '용인 수지체육공원', region: '경기', gender: '무관', maxCount: 4, host: { name: '한용인', location: '용인시 수지구', tier: 'Bronze 1', win: 2, loss: 8, mannerScore: 3.5, avatar: require('../assets/images/badminton_3.png') } },
-  { id: 107, status: '모집 중', playerCount: '4명', title: '인천 부평 퇴근 후 한판', date: '2025년 12월 26일 20시 00분', location: '인천 부평남부체육센터', region: '인천', gender: '남성', maxCount: 4, host: { name: '유인천', location: '인천 부평구', tier: 'Silver 3', win: 30, loss: 30, mannerScore: 4.2, avatar: require('../assets/images/badminton_1.png') } },
-  { id: 108, status: '모집 중', playerCount: '2명', title: '마포 고수분 모십니다', date: '2025년 12월 27일 10시 00분', location: '서울 마포구민체육센터', region: '서울', gender: '무관', maxCount: 2, host: { name: '임마포', location: '서울 마포구', tier: 'Platinum 4', win: 120, loss: 15, mannerScore: 4.9, avatar: require('../assets/images/badminton_2.png') } },
+  { id: 103, status: '모집 중', playerCount: '4명', title: '서울 주말 아침 운동', date: '2026년 4월 21일 07시 00분', location: '서울 마곡 배드민턴장', region: '서울', gender: '무관', maxCount: 4, host: { name: '박철수', location: '서울 강서구', tier: 'Bronze 3', win: 5, loss: 5, mannerScore: 4.0, avatar: require('../assets/images/badminton_3.png') } },
+  { id: 104, status: '모집 중', playerCount: '4명', title: '강남 저녁 내기 게임', date: '2026년 5월 22일 19시 30분', location: '서울 강남구민회관', region: '서울', gender: '무관', maxCount: 4, host: { name: '최강남', location: '서울 강남구', tier: 'Gold 3', win: 60, loss: 40, mannerScore: 4.8, avatar: require('../assets/images/badminton_1.png') } },
+  { id: 105, status: '모집 중', playerCount: '2명', title: '성남 탄천 아침 단식', date: '2026년 6월 23일 06시 00분', location: '성남 탄천종합운동장', region: '경기', gender: '여성', maxCount: 2, host: { name: '정성남', location: '성남시 분당구', tier: 'Silver 1', win: 22, loss: 10, mannerScore: 5.0, avatar: require('../assets/images/badminton_2.png') } },
+  { id: 106, status: '모집 중', playerCount: '4명', title: '용인 수지 주말 번개', date: '2026년 4월 24일 14시 00분', location: '용인 수지체육공원', region: '경기', gender: '무관', maxCount: 4, host: { name: '한용인', location: '용인시 수지구', tier: 'Bronze 1', win: 2, loss: 8, mannerScore: 3.5, avatar: require('../assets/images/badminton_3.png') } },
+  { id: 107, status: '모집 중', playerCount: '4명', title: '인천 부평 퇴근 후 한판', date: '2026년 4월 26일 20시 00분', location: '인천 부평남부체육센터', region: '인천', gender: '남성', maxCount: 4, host: { name: '유인천', location: '인천 부평구', tier: 'Silver 3', win: 30, loss: 30, mannerScore: 4.2, avatar: require('../assets/images/badminton_1.png') } },
+  { id: 108, status: '모집 중', playerCount: '2명', title: '마포 고수분 모십니다', date: '2026년 5월 27일 10시 00분', location: '서울 마포구민체육센터', region: '서울', gender: '무관', maxCount: 2, host: { name: '임마포', location: '서울 마포구', tier: 'Platinum 4', win: 120, loss: 15, mannerScore: 4.9, avatar: require('../assets/images/badminton_2.png') } },
 ];
 
 export interface HomeProps {
@@ -299,6 +298,17 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
     { id: 2, type: 'request', title: '참가 신청', message: "'주말 배드민턴'에 이영희님이 참가를 희망합니다.", time: '10분 전' },
   ]);
   const [lastTap, setLastTap] = useState<number | null>(null);
+
+  // [복구된 기능] 알림 수락/거절 핸들러
+  const handleNotificationPress = (id: number, action: 'accept' | 'decline') => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+      if (action === 'accept') {
+        setIsNotifModalVisible(false); // 모달 닫기
+        onGoToChat(); // 대화 목록으로 즉시 이동
+      } else {
+        Alert.alert('거절 완료', '참가 신청을 거절했습니다.');
+      }
+    };
 
   const displayMatches = useMemo(() => {
     const now = new Date();
@@ -441,7 +451,6 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
             <Pressable style={styles.dateList} onPress={handleDoubleTap}>
             {dates.map((item) => {
                 const isSelected = selectedDate === item.day;
-                // [수정] toISOString() 대신 getLocalDateString() 사용하여 시차 문제 해결
                 const dateStr = getLocalDateString(item.fullDate);
                 return (
                 <TouchableOpacity key={dateStr} onPress={() => { setSelectedDate(item.day); handleDoubleTap(); }} activeOpacity={0.7} style={[styles.dateButton, isSelected && styles.dateButtonSelected]}>
@@ -627,7 +636,15 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
               <FlatList data={notifications} keyExtractor={(item) => item.id.toString()} renderItem={({ item }) => (
                 <View style={styles.notifItem}>
                   <View style={styles.notifTextContainer}><View style={styles.notifTitleRow}><Text style={styles.notifTitle}>{item.title}</Text><Text style={styles.notifTime}>{item.time}</Text></View><Text style={styles.notifMessage}>{item.message}</Text></View>
-                  <View style={styles.notifActionContainer}><TouchableOpacity style={[styles.actionBtn, styles.declineBtn]} onPress={() => {}}><X size={18} color="#EF4444" /></TouchableOpacity><TouchableOpacity style={[styles.actionBtn, styles.acceptBtn]} onPress={() => handleAccept(item.id)}><Check size={18} color="white" /></TouchableOpacity></View>
+                  <View style={styles.notifActionContainer}>
+                    {/* [복구] 수락/거절 버튼에 handleNotificationPress 연결 */}
+                    <TouchableOpacity style={[styles.actionBtn, styles.declineBtn]} onPress={() => handleNotificationPress(item.id, 'decline')}>
+                      <X size={18} color="#EF4444" />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.actionBtn, styles.acceptBtn]} onPress={() => handleNotificationPress(item.id, 'accept')}>
+                      <Check size={18} color="white" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               )} />
             )}
