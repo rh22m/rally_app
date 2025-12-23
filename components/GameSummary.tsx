@@ -350,7 +350,8 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
           <View style={styles.topSection}>
             <View style={styles.header}>
               <Text style={styles.headerTitle}>오늘도 랠리하셨군요!</Text>
-              <Text style={styles.headerSubtitle}>{formattedDate} • {result.team2Name} (나) vs {result.team1Name}</Text>
+              <Text style={styles.headerSubtitle}>{formattedDate}</Text>
+              <Text style={styles.headerSubtitle}>{result.team2Name} (나) vs {result.team1Name}</Text>
             </View>
 
             <View style={styles.card}>
