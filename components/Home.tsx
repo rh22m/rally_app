@@ -270,8 +270,10 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
   const [filterCount, setFilterCount] = useState<2 | 4 | '전체'>('전체');
   const [activeFilterTab, setActiveFilterTab] = useState<'date' | 'region' | 'gender' | 'count'>('date');
 
-  const [startDateOffset, setStartDateOffset] = useState(0);
-  const [selectedDate, setSelectedDate] = useState(new Date().getDate());
+  // 변경: selectedDate를 Date 객체로 관리하여 정확한 날짜 비교
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  // 추가: 실시간 필터링을 위한 현재 시간 상태
+  const [now, setNow] = useState(new Date());
 
   const [isModalVisible, setModalVisible] = useState(false);
   const [isDatePickerVisible, setDatePickerVisible] = useState(false);
@@ -297,25 +299,30 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
     { id: 1, type: 'request', title: '참가 신청', message: "'호계체육관 정모'에 김민수님이 참가를 희망합니다.", time: '방금 전' },
     { id: 2, type: 'request', title: '참가 신청', message: "'주말 배드민턴'에 이영희님이 참가를 희망합니다.", time: '10분 전' },
   ]);
-  const [lastTap, setLastTap] = useState<number | null>(null);
 
-  // [복구된 기능] 알림 수락/거절 핸들러
+  // 실시간 시간 업데이트 (1분마다)
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
   const handleNotificationPress = (id: number, action: 'accept' | 'decline') => {
       setNotifications(prev => prev.filter(n => n.id !== id));
       if (action === 'accept') {
-        setIsNotifModalVisible(false); // 모달 닫기
-        onGoToChat(); // 대화 목록으로 즉시 이동
+        setIsNotifModalVisible(false);
+        onGoToChat?.();
       } else {
         Alert.alert('거절 완료', '참가 신청을 거절했습니다.');
       }
     };
 
   const displayMatches = useMemo(() => {
-    const now = new Date();
     return matches.filter(match => {
       const matchDate = parseMatchDateStr(match.date);
+      // 1. 이미 지난 경기 필터링 (실시간)
       if (matchDate <= now) return false;
 
+      // 2. 검색 모드일 때 필터링
       if (isSearching) {
         if (searchText && !match.title.toLowerCase().includes(searchText.toLowerCase()) && !match.location.toLowerCase().includes(searchText.toLowerCase())) return false;
         if (filterDate) {
@@ -337,20 +344,19 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
       }
       return true;
     }).sort((a, b) => parseMatchDateStr(a.date).getTime() - parseMatchDateStr(b.date).getTime());
-  }, [matches, isSearching, searchText, filterDate, filterRegion, filterGender, filterCount, selectedDate]);
+  }, [matches, isSearching, searchText, filterDate, filterRegion, filterGender, filterCount, selectedDate, now]);
 
   const dates = useMemo(() => {
     const list = [];
     const today = new Date();
-    today.setDate(today.getDate() + startDateOffset);
     const dayLabels = ['일', '월', '화', '수', '목', '금', '토'];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 14; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() + i);
       list.push({ day: d.getDate(), label: dayLabels[d.getDay()], fullDate: new Date(d) });
     }
     return list;
-  }, [startDateOffset]);
+  }, []);
 
   const getDayTextColor = (dateString: string) => {
     const d = new Date(dateString);
@@ -359,16 +365,6 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
     if (holidayList.includes(dateString) || dayOfWeek === 0) return '#EF4444';
     if (dayOfWeek === 6) return '#3B82F6';
     return '#1F2937';
-  };
-
-  const handleDoubleTap = () => {
-    const now = Date.now();
-    if (lastTap && (now - lastTap) < 300) {
-      setCalendarModalVisible(true);
-      setLastTap(null);
-    } else {
-      setLastTap(now);
-    }
   };
 
   const calendarMarks = useMemo(() => {
@@ -447,20 +443,35 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
       <View>
         <HeroSection onNoticePress={() => setIsRmrGuideVisible(true)} />
         <View style={styles.dateSelectorContainer}>
-            <TouchableOpacity style={styles.dateArrowButton} onPress={() => setStartDateOffset(p => p - 1)}><ChevronLeft size={20} color="white" /></TouchableOpacity>
-            <Pressable style={styles.dateList} onPress={handleDoubleTap}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ flex: 1, marginRight: 10 }}
+              contentContainerStyle={{ gap: 10, paddingRight: 10 }}
+            >
             {dates.map((item) => {
-                const isSelected = selectedDate === item.day;
+                // 비교 로직 수정: 날짜 객체끼리 비교 (년, 월, 일)
+                const isSelected = selectedDate.getFullYear() === item.fullDate.getFullYear() &&
+                                   selectedDate.getMonth() === item.fullDate.getMonth() &&
+                                   selectedDate.getDate() === item.fullDate.getDate();
                 const dateStr = getLocalDateString(item.fullDate);
+                // 추가: 해당 날짜에 경기가 있는지 확인
+                const hasMatch = calendarMarks[dateStr]?.hasMatch;
+
                 return (
-                <TouchableOpacity key={dateStr} onPress={() => { setSelectedDate(item.day); handleDoubleTap(); }} activeOpacity={0.7} style={[styles.dateButton, isSelected && styles.dateButtonSelected]}>
+                <TouchableOpacity key={dateStr} onPress={() => setSelectedDate(item.fullDate)} activeOpacity={0.7} style={[styles.dateButton, isSelected && styles.dateButtonSelected]}>
                     <Text style={[styles.dateButtonDay, { color: isSelected ? 'white' : getDayTextColor(dateStr) }]}>{item.day}</Text>
                     <Text style={[styles.dateButtonLabel, isSelected && styles.dateButtonTextSelected]}>{item.label}</Text>
+                    {/* 추가: 경기가 있는 날짜에 초록색 점 표시 */}
+                    {hasMatch && !isSelected && <View style={styles.sliderMatchDot} />}
+                    {hasMatch && isSelected && <View style={[styles.sliderMatchDot, { backgroundColor: 'white' }]} />}
                 </TouchableOpacity>
                 );
             })}
-            </Pressable>
-            <TouchableOpacity style={styles.dateArrowButton} onPress={() => setStartDateOffset(p => p + 1)}><ChevronRight size={20} color="white" /></TouchableOpacity>
+            </ScrollView>
+            <TouchableOpacity style={styles.dateArrowButton} onPress={() => setCalendarModalVisible(true)}>
+                <Calendar size={20} color="white" />
+            </TouchableOpacity>
         </View>
       </View>
     );
@@ -637,7 +648,6 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
                 <View style={styles.notifItem}>
                   <View style={styles.notifTextContainer}><View style={styles.notifTitleRow}><Text style={styles.notifTitle}>{item.title}</Text><Text style={styles.notifTime}>{item.time}</Text></View><Text style={styles.notifMessage}>{item.message}</Text></View>
                   <View style={styles.notifActionContainer}>
-                    {/* [복구] 수락/거절 버튼에 handleNotificationPress 연결 */}
                     <TouchableOpacity style={[styles.actionBtn, styles.declineBtn]} onPress={() => handleNotificationPress(item.id, 'decline')}>
                       <X size={18} color="#EF4444" />
                     </TouchableOpacity>
@@ -729,6 +739,7 @@ const styles = StyleSheet.create({
   dateButtonDay: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
   dateButtonLabel: { fontSize: 12, color: '#374151' },
   dateButtonTextSelected: { color: 'white' },
+  sliderMatchDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#34D399', marginTop: 2 },
 
   listContent: { paddingBottom: 88 },
   fab: { position: 'absolute', bottom: 24, right: 24, width: 60, height: 60, borderRadius: 30, backgroundColor: '#34D399', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 8 },
