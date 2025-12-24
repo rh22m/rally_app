@@ -17,6 +17,13 @@ interface ProfileScreenProps {
   onLogout: () => void;
 }
 
+// [이미지] 티어별 이미지 에셋 설정 (파일 경로를 실제 위치에 맞게 확인해주세요)
+const TIER_IMAGES = {
+  gold: require('../../assets/images/tier_gold.png'),
+  silver: require('../../assets/images/tier_silver.png'),
+  bronze: require('../../assets/images/tier_bronze.png'),
+};
+
 // [데이터] 티어 정의 및 커트라인 점수 (Gold 3 -> Bronze 1)
 const TIER_LEVELS = [
   { name: 'Gold 1', type: 'gold', minRmr: 1500 },
@@ -41,7 +48,10 @@ const COLORS = {
 export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
   const navigation = useNavigation<any>();
 
-  // [상태] 사용자가 선택한 티어 (없으면 null)
+  // [상태] 탭 관리 ('tier' | 'info')
+  const [activeTab, setActiveTab] = useState<'tier' | 'info'>('tier');
+
+  // [상태] 피라미드에서 사용자가 선택한 티어 (없으면 null)
   const [selectedTierName, setSelectedTierName] = useState<string | null>(null);
 
   const screenWidth = Dimensions.get('window').width;
@@ -62,12 +72,16 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
     avatar: require('../../assets/images/card-logo.png'),
   };
 
-  const currentTier = getRmrTier(user.rmr);
+  const currentTierName = getRmrTier(user.rmr);
 
-  // 현재 보여줘야 할 정보의 대상 티어 결정
-  const targetTierName = selectedTierName ?? currentTier;
+  // 현재 티어의 타입(gold, silver, bronze) 찾기 (이미지 매핑용)
+  const currentTierData = TIER_LEVELS.find(t => t.name === currentTierName);
+  const currentTierType = currentTierData ? currentTierData.type : 'bronze';
 
-  // 티어 클릭 핸들러
+  // 현재 보여줘야 할 정보의 대상 티어 결정 (피라미드용)
+  const targetTierName = selectedTierName ?? currentTierName;
+
+  // 티어 클릭 핸들러 (피라미드)
   const handleTierPress = (tierName: string) => {
     if (selectedTierName === tierName) {
       setSelectedTierName(null);
@@ -76,8 +90,14 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
     }
   };
 
+  // 탭 변경 핸들러
+  const handleTabChange = (tab: 'tier' | 'info') => {
+    setActiveTab(tab);
+  };
+
   return (
     <View style={styles.container}>
+      {/* 헤더 */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>내 정보</Text>
         <TouchableOpacity onPress={() => navigation.navigate('MatchHistory')} style={styles.historyButton}>
@@ -87,7 +107,7 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
 
       <ScrollView contentContainerStyle={{ paddingBottom: 60 }}>
 
-        {/* [수정] 통합 프로필 카드 섹션 */}
+        {/* 통합 프로필 카드 섹션 */}
         <View style={styles.profileCard}>
           {/* 좌측: 기본 정보 */}
           <View style={styles.profileLeft}>
@@ -103,7 +123,7 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
           <View style={styles.profileRight}>
             <View style={styles.statItem}>
               <Text style={styles.statLabel}>티어</Text>
-              <Text style={styles.statValueTier}>{currentTier}</Text>
+              <Text style={styles.statValueTier}>{currentTierName}</Text>
             </View>
             <View style={styles.statItem}>
               <Text style={styles.statLabel}>전적</Text>
@@ -116,107 +136,144 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
           </View>
         </View>
 
-        <View style={styles.pyramidSection}>
-          <Text style={styles.pyramidTitle}>티어 표</Text>
-          <Text style={styles.pyramidSubtitle}>
-            {selectedTierName ? '다시 누르면 내 정보로 돌아갑니다' : '다른 등급을 눌러 정보를 확인하세요'}
-          </Text>
-
-          <View style={styles.svgContainer}>
-            <Svg height={PYRAMID_HEIGHT + 70} width={screenWidth}>
-              <Defs>
-                {Object.keys(COLORS).map((key) => (
-                  <LinearGradient id={`grad_${key}`} x1="0" y1="0" x2="1" y2="1" key={key}>
-                    <Stop offset="0" stopColor={COLORS[key as keyof typeof COLORS].front[0]} stopOpacity="1" />
-                    <Stop offset="1" stopColor={COLORS[key as keyof typeof COLORS].front[1]} stopOpacity="1" />
-                  </LinearGradient>
-                ))}
-              </Defs>
-
-              {TIER_LEVELS.map((level, index) => {
-                const isCurrent = level.name === currentTier;
-                const isSelected = level.name === selectedTierName;
-                const isTarget = level.name === targetTierName;
-
-                let colorKey = 'disabled';
-                if (isCurrent || isSelected) colorKey = level.type;
-                const colorSet = COLORS[colorKey as keyof typeof COLORS];
-
-                // 좌표 계산
-                const totalLevels = TIER_LEVELS.length;
-                const topRatio = index / totalLevels;
-                const bottomRatio = (index + 1) / totalLevels;
-
-                const yTop = START_Y + (topRatio * PYRAMID_HEIGHT);
-                const yBottom = START_Y + (bottomRatio * PYRAMID_HEIGHT);
-                const wTop = PYRAMID_WIDTH * topRatio;
-                const wBottom = PYRAMID_WIDTH * bottomRatio;
-
-                const xTopLeft = CENTER_X - (wTop / 2);
-                const xTopRight = CENTER_X + (wTop / 2);
-                const xBottomLeft = CENTER_X - (wBottom / 2);
-                const xBottomRight = CENTER_X + (wBottom / 2);
-
-                const dX = DEPTH_X;
-                const dY = DEPTH_Y;
-
-                const frontPath = `M ${xTopLeft} ${yTop} L ${xTopRight} ${yTop} L ${xBottomRight} ${yBottom} L ${xBottomLeft} ${yBottom} Z`;
-                const sidePath = `M ${xTopRight} ${yTop} L ${xTopRight + dX} ${yTop + dY} L ${xBottomRight + dX} ${yBottom + dY} L ${xBottomRight} ${yBottom} Z`;
-
-                // 정보 텍스트
-                let line1 = '';
-                let line2 = '';
-                let textColor = '#9CA3AF';
-
-                if (isTarget) {
-                  const diff = level.minRmr - user.rmr;
-                  if (isCurrent) {
-                    line1 = `◀ ${level.name} (현재 ${user.rmr}점)`;
-                    const nextTier = TIER_LEVELS[index - 1];
-                    const rangeEnd = nextTier ? nextTier.minRmr - 1 : 'MAX';
-                    line2 = `   구간: ${level.minRmr} ~ ${rangeEnd}점`;
-                    textColor = '#34D399';
-                  } else if (diff > 0) {
-                    line1 = `◀ ${level.name} (컷: ${level.minRmr}점)`;
-                    line2 = `   승급까지 +${diff}점 필요`;
-                    textColor = '#F87171';
-                  } else {
-                    line1 = `◀ ${level.name} (컷: ${level.minRmr}점)`;
-                    line2 = `   달성 완료 (여유 +${Math.abs(diff)}점)`;
-                    textColor = '#60A5FA';
-                  }
-                }
-
-                return (
-                  <G key={level.name} onPress={() => handleTierPress(level.name)}>
-                    <Path d={sidePath} fill={colorSet.side} stroke={colorSet.side} strokeWidth={1} />
-                    <Path
-                      d={frontPath}
-                      fill={`url(#grad_${colorKey})`}
-                      stroke={isSelected ? '#FFFFFF' : (isCurrent ? '#FFFFFF' : '#111827')}
-                      strokeWidth={isSelected ? 2 : (isCurrent ? 1.5 : 0.5)}
-                      strokeOpacity={isSelected ? 1 : 0.5}
-                    />
-                    {isTarget && (
-                      <SvgText
-                        fill={textColor}
-                        fontSize="14"
-                        fontWeight="bold"
-                        x={xBottomRight + dX + 12}
-                        y={yBottom - (PYRAMID_HEIGHT / totalLevels / 2)}
-                        textAnchor="start"
-                      >
-                        <TSpan x={xBottomRight + dX + 12} dy="-6">{line1}</TSpan>
-                        <TSpan x={xBottomRight + dX + 12} dy="16" fontSize="11" fontWeight="normal" fill="#9CA3AF">{line2}</TSpan>
-                      </SvgText>
-                    )}
-                  </G>
-                );
-              })}
-            </Svg>
-          </View>
+        {/* [신규] 탭 버튼 영역 */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'tier' && styles.activeTabButton]}
+            onPress={() => handleTabChange('tier')}
+          >
+            <Text style={[styles.tabText, activeTab === 'tier' && styles.activeTabText]}>티어</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'info' && styles.activeTabButton]}
+            onPress={() => handleTabChange('info')}
+          >
+            <Text style={[styles.tabText, activeTab === 'info' && styles.activeTabText]}>티어 정보</Text>
+          </TouchableOpacity>
         </View>
 
+        {/* 탭 콘텐츠 영역 */}
+        <View style={styles.contentSection}>
+          {activeTab === 'tier' ? (
+            /* [탭 1] 티어: 이미지 및 점수 표시 */
+            <View style={styles.tierTabContent}>
+              <View style={styles.tierImageContainer}>
+                 {/* 실제 업로드한 티어 이미지 표시 */}
+                 <Image
+                   source={TIER_IMAGES[currentTierType as keyof typeof TIER_IMAGES]}
+                   style={styles.mainTierImage}
+                   resizeMode="contain"
+                 />
+              </View>
+              <Text style={styles.myScoreText}>{user.rmr} RMR</Text>
+              <Text style={styles.myTierLabel}>현재 나의 티어: <Text style={{color: COLORS[currentTierType as keyof typeof COLORS].front[0]}}>{currentTierName}</Text></Text>
+            </View>
+          ) : (
+            /* [탭 2] 티어 정보: 기존 피라미드 차트 */
+            <View style={styles.pyramidSection}>
+              <Text style={styles.pyramidTitle}>티어 표</Text>
+              <Text style={styles.pyramidSubtitle}>
+                {selectedTierName ? '다시 누르면 내 정보로 돌아갑니다' : '다른 등급을 눌러 정보를 확인하세요'}
+              </Text>
+
+              <View style={styles.svgContainer}>
+                <Svg height={PYRAMID_HEIGHT + 70} width={screenWidth}>
+                  <Defs>
+                    {Object.keys(COLORS).map((key) => (
+                      <LinearGradient id={`grad_${key}`} x1="0" y1="0" x2="1" y2="1" key={key}>
+                        <Stop offset="0" stopColor={COLORS[key as keyof typeof COLORS].front[0]} stopOpacity="1" />
+                        <Stop offset="1" stopColor={COLORS[key as keyof typeof COLORS].front[1]} stopOpacity="1" />
+                      </LinearGradient>
+                    ))}
+                  </Defs>
+
+                  {TIER_LEVELS.map((level, index) => {
+                    const isCurrent = level.name === currentTierName;
+                    const isSelected = level.name === selectedTierName;
+                    const isTarget = level.name === targetTierName;
+
+                    let colorKey = 'disabled';
+                    if (isCurrent || isSelected) colorKey = level.type;
+                    const colorSet = COLORS[colorKey as keyof typeof COLORS];
+
+                    // 좌표 계산
+                    const totalLevels = TIER_LEVELS.length;
+                    const topRatio = index / totalLevels;
+                    const bottomRatio = (index + 1) / totalLevels;
+
+                    const yTop = START_Y + (topRatio * PYRAMID_HEIGHT);
+                    const yBottom = START_Y + (bottomRatio * PYRAMID_HEIGHT);
+                    const wTop = PYRAMID_WIDTH * topRatio;
+                    const wBottom = PYRAMID_WIDTH * bottomRatio;
+
+                    const xTopLeft = CENTER_X - (wTop / 2);
+                    const xTopRight = CENTER_X + (wTop / 2);
+                    const xBottomLeft = CENTER_X - (wBottom / 2);
+                    const xBottomRight = CENTER_X + (wBottom / 2);
+
+                    const dX = DEPTH_X;
+                    const dY = DEPTH_Y;
+
+                    const frontPath = `M ${xTopLeft} ${yTop} L ${xTopRight} ${yTop} L ${xBottomRight} ${yBottom} L ${xBottomLeft} ${yBottom} Z`;
+                    const sidePath = `M ${xTopRight} ${yTop} L ${xTopRight + dX} ${yTop + dY} L ${xBottomRight + dX} ${yBottom + dY} L ${xBottomRight} ${yBottom} Z`;
+
+                    // 정보 텍스트
+                    let line1 = '';
+                    let line2 = '';
+                    let textColor = '#9CA3AF';
+
+                    if (isTarget) {
+                      const diff = level.minRmr - user.rmr;
+                      if (isCurrent) {
+                        line1 = `◀ ${level.name} (현재 ${user.rmr}점)`;
+                        const nextTier = TIER_LEVELS[index - 1];
+                        const rangeEnd = nextTier ? nextTier.minRmr - 1 : 'MAX';
+                        line2 = `   구간: ${level.minRmr} ~ ${rangeEnd}점`;
+                        textColor = '#34D399';
+                      } else if (diff > 0) {
+                        line1 = `◀ ${level.name} (컷: ${level.minRmr}점)`;
+                        line2 = `   승급까지 +${diff}점 필요`;
+                        textColor = '#F87171';
+                      } else {
+                        line1 = `◀ ${level.name} (컷: ${level.minRmr}점)`;
+                        line2 = `   달성 완료 (여유 +${Math.abs(diff)}점)`;
+                        textColor = '#60A5FA';
+                      }
+                    }
+
+                    return (
+                      <G key={level.name} onPress={() => handleTierPress(level.name)}>
+                        <Path d={sidePath} fill={colorSet.side} stroke={colorSet.side} strokeWidth={1} />
+                        <Path
+                          d={frontPath}
+                          fill={`url(#grad_${colorKey})`}
+                          stroke={isSelected ? '#FFFFFF' : (isCurrent ? '#FFFFFF' : '#111827')}
+                          strokeWidth={isSelected ? 2 : (isCurrent ? 1.5 : 0.5)}
+                          strokeOpacity={isSelected ? 1 : 0.5}
+                        />
+                        {isTarget && (
+                          <SvgText
+                            fill={textColor}
+                            fontSize="14"
+                            fontWeight="bold"
+                            x={xBottomRight + dX + 12}
+                            y={yBottom - (PYRAMID_HEIGHT / totalLevels / 2)}
+                            textAnchor="start"
+                          >
+                            <TSpan x={xBottomRight + dX + 12} dy="-6">{line1}</TSpan>
+                            <TSpan x={xBottomRight + dX + 12} dy="16" fontSize="11" fontWeight="normal" fill="#9CA3AF">{line2}</TSpan>
+                          </SvgText>
+                        )}
+                      </G>
+                    );
+                  })}
+                </Svg>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* 메뉴 섹션 */}
         <View style={styles.menuSection}>
           <TouchableOpacity style={styles.menuItem}>
             <Settings size={22} color="#9CA3AF" />
@@ -265,7 +322,6 @@ const styles = StyleSheet.create({
   historyButton: {
     padding: 4,
   },
-  // [수정] 통합 프로필 카드 스타일
   profileCard: {
     flexDirection: 'row',
     backgroundColor: '#1F2937',
@@ -275,7 +331,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   profileLeft: {
-    flex: 4, // 4:6 비율
+    flex: 4,
     alignItems: 'center',
     paddingRight: 0,
   },
@@ -307,7 +363,7 @@ const styles = StyleSheet.create({
   profileRight: {
     flex: 6,
     justifyContent: 'center',
-    gap: 10, // 아이템 간 간격
+    gap: 10,
   },
   statItem: {
     flexDirection: 'row',
@@ -325,10 +381,77 @@ const styles = StyleSheet.create({
   },
   statValueTier: {
     fontSize: 16,
-    color: '#34D399', // 티어 강조색
+    color: '#34D399',
     fontWeight: 'bold',
   },
 
+  // [신규] 탭 스타일
+  tabContainer: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginBottom: 10,
+    backgroundColor: '#1F2937',
+    borderRadius: 12,
+    padding: 4,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  activeTabButton: {
+    backgroundColor: '#374151',
+  },
+  tabText: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    fontWeight: '600',
+  },
+  activeTabText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+
+  // 콘텐츠 영역
+  contentSection: {
+    minHeight: 250, // 탭 전환 시 높이 튐 방지
+  },
+
+  // [신규] 티어 탭 스타일
+  tierTabContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 23,
+    marginHorizontal: 0,
+    borderRadius: 0,
+    marginBottom: 25,
+  },
+  tierImageContainer: {
+    width: 180,
+    height: 180,
+    marginBottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    // 필요한 경우 그림자 효과 추가
+    // shadowColor: "#000", ...
+  },
+  mainTierImage: {
+    width: '100%',
+    height: '100%',
+  },
+  myScoreText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: 'white',
+    marginBottom: 8,
+  },
+  myTierLabel: {
+    fontSize: 14,
+    color: '#D1D5DB',
+  },
+
+  // 기존 피라미드 스타일
   pyramidSection: {
     alignItems: 'center',
     marginBottom: 24,
@@ -355,6 +478,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 10,
   },
+
   menuSection: { marginTop: 0, backgroundColor: '#1F2937' },
   menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#374151' },
   menuText: { flex: 1, fontSize: 16, color: 'white', marginLeft: 16 },
