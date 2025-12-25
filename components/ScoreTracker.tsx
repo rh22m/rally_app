@@ -271,16 +271,20 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
 
   // [수정] 워치로 현재 점수 및 상태 전송
   useEffect(() => {
-    // 설정 모드가 아니고, 결과 모달도 안 뜬 상태에서만 전송
     if (!isSetupMode && !showExitModal) {
-      // 상단(Team1): 상대방, 하단(Team2): 나라고 가정
       const message = {
         type: 'SYNC_UPDATE',
         myScore: team2Score,
         opponentScore: team1Score,
         isPause: !isTimerRunning,
       };
-      sendMessage(message);
+
+      // try-catch로 감싸서 통신 실패 시 앱이 꺼지지 않도록 보호
+      try {
+        sendMessage(message);
+      } catch (error) {
+        console.warn("Watch sync failed:", error);
+      }
     }
   }, [team1Score, team2Score, isTimerRunning, isSetupMode, showExitModal]);
 
