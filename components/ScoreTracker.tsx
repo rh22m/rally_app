@@ -5,7 +5,6 @@ import {
   Text,
   TouchableOpacity,
   SafeAreaView,
-  Alert,
   TextInput,
   Keyboard,
   KeyboardAvoidingView,
@@ -18,6 +17,7 @@ import {
 } from 'react-native';
 import { RotateCcw, Play, Pause, ArrowLeft, XCircle, AlertTriangle, Timer, TrendingUp, Activity, Flame, Trophy, Zap, ShieldAlert, Lightbulb } from 'lucide-react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import { sendMessage, watchEvents } from 'react-native-wear-connectivity';
 
 // --- Types ---
 export interface PointLog {
@@ -71,12 +71,12 @@ const TIPS = [
     desc: "20:20 듀스 상황에서의 득점은 일반 득점보다 가치가 높습니다. 중요한 순간에 강한 모습을 보여주세요."
   },
   {
-    icon: <Flame size={32} color="#F97316" />, // 아이콘 변경 (집중력/열정)
+    icon: <Flame size={32} color="#F97316" />,
     title: "후반 집중력",
     desc: "끝까지 집중하세요! 1세트보다 마지막 세트 성적이 좋으면 추가 점수를 받습니다."
   },
   {
-    icon: <TrendingUp size={32} color="#A78BFA" />, // 아이콘 변경 (역전승)
+    icon: <TrendingUp size={32} color="#A78BFA" />,
     title: "역전의 짜릿함",
     desc: "3점 차 이상 뒤지고 있어도 포기하지 마세요. 역전에 성공하면 RMR이 더 많이 오릅니다."
   },
@@ -151,6 +151,54 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
   const lastPointTimeRef = useRef<number>(0);
   const [scoreHistory, setScoreHistory] = useState<any[]>([]);
   const [pointLogs, setPointLogs] = useState<PointLog[]>([]);
+
+  // --- Watch Connectivity Logic (New) ---
+
+  // 1. 상태 동기화: 점수나 게임 상태가 바뀔 때마다 워치로 전송
+  useEffect(() => {
+    if (isSetupMode) return;
+
+    const message = {
+      type: 'SYNC_UPDATE',
+      // Team 2가 '나(User)', Team 1이 '상대(Opponent)'로 매핑
+      myScore: team2Score,
+      opponentScore: team1Score,
+      isPause: !isTimerRunning,
+    };
+
+    // [수정] .catch 제거 (sendMessage는 Promise를 반환하지 않음)
+    sendMessage(message);
+  }, [team1Score, team2Score, isTimerRunning, isSetupMode]);
+
+  // 2. 명령 수신: 워치에서 보내는 버튼 입력 처리
+  useEffect(() => {
+    if (isSetupMode) return;
+
+    const unsubscribe = watchEvents.on('message', (msg) => {
+      if (!msg || !msg.command) return;
+
+      switch (msg.command) {
+        case 'INCREMENT_MY': // 워치: 내 점수 +1 (Team 2)
+          handleScore('team2');
+          break;
+        case 'INCREMENT_OPP': // 워치: 상대 점수 +1 (Team 1)
+          handleScore('team1');
+          break;
+        case 'UNDO':
+          handleUndo();
+          break;
+        case 'PAUSE_TOGGLE':
+          setIsTimerRunning(prev => !prev);
+          break;
+      }
+    });
+
+    return () => unsubscribe();
+  }, [
+    // 핸들러가 참조하는 최신 상태 의존성들
+    team1Score, team2Score, team1SetWins, team2SetWins, isTimerRunning, scoreHistory, isSetupMode, pointLogs, elapsedTime, team1Name, team2Name
+  ]);
+
 
   // Timer Logic
   useEffect(() => {
