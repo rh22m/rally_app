@@ -18,8 +18,6 @@ import {
 } from 'react-native';
 import { RotateCcw, Play, Pause, ArrowLeft, XCircle, AlertTriangle, Timer, TrendingUp, Activity, Flame, Trophy, Zap, ShieldAlert, Lightbulb } from 'lucide-react-native';
 import LinearGradient from 'react-native-linear-gradient';
-// [수정] 워치 연동 라이브러리 활용
-import { sendMessage, watchEvents } from 'react-native-wear-connectivity';
 
 // --- Types ---
 export interface PointLog {
@@ -268,56 +266,6 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
     setShowExitModal(false);
     setIsTimerRunning(true);
   };
-
-  // [수정] 워치로 현재 점수 및 상태 전송
-  useEffect(() => {
-    if (!isSetupMode && !showExitModal) {
-      const message = {
-        type: 'SYNC_UPDATE',
-        myScore: team2Score,
-        opponentScore: team1Score,
-        isPause: !isTimerRunning,
-      };
-
-      // try-catch로 감싸서 통신 실패 시 앱이 꺼지지 않도록 보호
-      try {
-        sendMessage(message);
-      } catch (error) {
-        console.warn("Watch sync failed:", error);
-      }
-    }
-  }, [team1Score, team2Score, isTimerRunning, isSetupMode, showExitModal]);
-
-  // [수정] 워치로부터 이벤트 수신
-  useEffect(() => {
-    if (isSetupMode) return;
-
-    const unsubscribe = watchEvents.on('message', (msg: any) => {
-      if (!msg || !msg.command) return;
-
-      switch (msg.command) {
-        case 'INCREMENT_OPP':
-          handleScore('team1'); // 상단(상대) 점수 증가
-          break;
-        case 'INCREMENT_MY':
-          handleScore('team2'); // 하단(나) 점수 증가
-          break;
-        case 'UNDO':
-          handleUndo();
-          break;
-        case 'PAUSE_TOGGLE':
-          // 타이머 토글 (단순 상태 반전)
-          setIsTimerRunning((prev) => !prev);
-          break;
-        default:
-          break;
-      }
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, [isSetupMode, handleScore, handleUndo]);
 
   // --- Render Setup ---
   if (isSetupMode) {
