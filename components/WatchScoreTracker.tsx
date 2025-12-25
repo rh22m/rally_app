@@ -7,6 +7,7 @@ const WatchScoreTracker = () => {
   const [myScore, setMyScore] = useState(0);
   const [opponentScore, setOpponentScore] = useState(0);
   const [isPause, setIsPause] = useState(false);
+  const [timer, setTimer] = useState("00:00"); // [추가] 타이머 상태
 
   useEffect(() => {
     // 휴대폰에서 보내는 점수 동기화 메시지 수신
@@ -15,6 +16,7 @@ const WatchScoreTracker = () => {
         setMyScore(msg.myScore);
         setOpponentScore(msg.opponentScore);
         setIsPause(msg.isPause);
+        if (msg.timer) setTimer(msg.timer); // [추가] 타이머 업데이트
       }
     });
     return () => unsubscribe();
@@ -27,6 +29,11 @@ const WatchScoreTracker = () => {
 
   return (
     <View style={styles.container}>
+      {/* [추가] 상단 타이머 (오버레이 형태) */}
+      <View style={styles.timerContainer}>
+        <Text style={styles.timerText}>{timer}</Text>
+      </View>
+
       {/* 상단: 상대방 점수 (#34D399 - 폰 앱 Team 1 색상 매칭) */}
       <TouchableOpacity
         style={[styles.scoreHalf, { backgroundColor: '#34D399' }]}
@@ -76,6 +83,23 @@ const WatchScoreTracker = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'black' },
+  // [추가] 타이머 스타일
+  timerContainer: {
+    position: 'absolute',
+    top: 10, // 화면 상단 여백
+    alignSelf: 'center',
+    zIndex: 20, // 다른 요소보다 위에 표시
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 20,
+  },
+  timerText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+    fontVariant: ['tabular-nums'], // 숫자가 흔들리지 않게 고정폭 사용
+  },
   scoreHalf: {
     flex: 1,
     justifyContent: 'center',
@@ -98,7 +122,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: 'rgba(0,0,0,0.4)', // 반투명 배경
+    backgroundColor: 'rgba(0,0,0,0.1)', // 반투명 배경
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,

@@ -9,6 +9,8 @@ import {
   Dimensions,
   Animated,
   Modal,
+  PermissionsAndroid, // [추가] 권한 요청을 위해 필요
+  Alert,              // [추가] 권한 거부 시 알림을 위해 필요
 } from 'react-native';
 
 // 네비게이션 필수 라이브러리
@@ -408,6 +410,35 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(true);
   const [authScreen, setAuthScreen] = useState<'login' | 'signup'>('login');
   const [isFirstLogin, setIsFirstLogin] = useState(false);
+
+  // [추가] Android 12 이상에서 Bluetooth 권한 요청
+  // 이 부분이 없으면 워치 연동 시 SecurityException 발생으로 앱이 종료될 수 있습니다.
+  useEffect(() => {
+    const requestPermissions = async () => {
+      if (Platform.OS === 'android' && Platform.Version >= 31) {
+        try {
+          const result = await PermissionsAndroid.requestMultiple([
+            PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+            PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+          ]);
+
+          if (
+            result['android.permission.BLUETOOTH_CONNECT'] !== PermissionsAndroid.RESULTS.GRANTED ||
+            result['android.permission.BLUETOOTH_SCAN'] !== PermissionsAndroid.RESULTS.GRANTED
+          ) {
+            Alert.alert(
+              "권한 필요",
+              "워치와 연동하려면 '근처 기기' 권한을 허용해야 합니다. 설정에서 권한을 켜주세요."
+            );
+          }
+        } catch (err) {
+          console.warn(err);
+        }
+      }
+    };
+
+    requestPermissions();
+  }, []);
 
   // [추가] 워치일 경우 WatchScoreTracker를 렌더링
   if (isWatch) {

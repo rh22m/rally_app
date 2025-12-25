@@ -152,9 +152,16 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
   const [scoreHistory, setScoreHistory] = useState<any[]>([]);
   const [pointLogs, setPointLogs] = useState<PointLog[]>([]);
 
-  // --- Watch Connectivity Logic (New) ---
+  // 시간 포맷 헬퍼
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const secs = (seconds % 60).toString().padStart(2, '0');
+    return `${mins}:${secs}`;
+  };
 
-  // 1. 상태 동기화: 점수나 게임 상태가 바뀔 때마다 워치로 전송
+  // --- Watch Connectivity Logic (Modified) ---
+
+  // 1. 상태 동기화: 점수, 게임 상태, 타이머가 바뀔 때마다 워치로 전송
   useEffect(() => {
     if (isSetupMode) return;
 
@@ -164,40 +171,55 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
       myScore: team2Score,
       opponentScore: team1Score,
       isPause: !isTimerRunning,
+      timer: formatTime(elapsedTime), // [수정] 타이머 정보 추가
     };
 
-    // [수정] .catch 제거 (sendMessage는 Promise를 반환하지 않음)
     sendMessage(message);
-  }, [team1Score, team2Score, isTimerRunning, isSetupMode]);
+  }, [team1Score, team2Score, isTimerRunning, isSetupMode, elapsedTime]); // elapsedTime 의존성 추가
 
   // 2. 명령 수신: 워치에서 보내는 버튼 입력 처리
+  // [수정] 핸들러 함수들을 최신 상태로 유지하기 위한 Ref
+  const handlersRef = useRef({
+    handleScore: (team: 'team1' | 'team2') => {},
+    handleUndo: () => {},
+    togglePause: () => {}
+  });
+
+  // [수정] 최신 핸들러를 Ref에 업데이트 (렌더링 될 때마다)
+  useEffect(() => {
+    handlersRef.current = {
+      handleScore: (team) => handleScore(team),
+      handleUndo: () => handleUndo(),
+      togglePause: () => setIsTimerRunning(prev => !prev),
+    };
+  });
+
   useEffect(() => {
     if (isSetupMode) return;
 
+    // [수정] 의존성 배열을 비우거나 최소화하여 리스너가 자주 재생성되지 않도록 함
+    // 내부 로직은 handlersRef를 통해 최신 함수에 접근
     const unsubscribe = watchEvents.on('message', (msg) => {
       if (!msg || !msg.command) return;
 
       switch (msg.command) {
         case 'INCREMENT_MY': // 워치: 내 점수 +1 (Team 2)
-          handleScore('team2');
+          handlersRef.current.handleScore('team2');
           break;
         case 'INCREMENT_OPP': // 워치: 상대 점수 +1 (Team 1)
-          handleScore('team1');
+          handlersRef.current.handleScore('team1');
           break;
         case 'UNDO':
-          handleUndo();
+          handlersRef.current.handleUndo();
           break;
         case 'PAUSE_TOGGLE':
-          setIsTimerRunning(prev => !prev);
+          handlersRef.current.togglePause();
           break;
       }
     });
 
     return () => unsubscribe();
-  }, [
-    // 핸들러가 참조하는 최신 상태 의존성들
-    team1Score, team2Score, team1SetWins, team2SetWins, isTimerRunning, scoreHistory, isSetupMode, pointLogs, elapsedTime, team1Name, team2Name
-  ]);
+  }, [isSetupMode]); // 의존성 대폭 축소 (이벤트 리스너 안정화)
 
 
   // Timer Logic
@@ -210,12 +232,6 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isTimerRunning]);
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
-    const secs = (seconds % 60).toString().padStart(2, '0');
-    return `${mins}:${secs}`;
-  };
 
   // --- Handlers ---
   const handleStartButtonPress = () => {
