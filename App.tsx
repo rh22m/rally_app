@@ -33,8 +33,10 @@ import { Home } from './components/Home';
 import { BottomNav } from './components/BottomNav';
 import { ScoreTracker } from './components/ScoreTracker';
 import { GameSummary } from './components/GameSummary';
-import AIAnalysis from './Screens/AI/AIAnalysis';
+// [추가] 워치용 컴포넌트 임포트
+import WatchScoreTracker from './components/WatchScoreTracker';
 
+import AIAnalysis from './Screens/AI/AIAnalysis';
 import LoginScreen from './Screens/Auth/LoginScreen';
 import SignUpScreen from './Screens/Auth/SignUpScreen';
 import ChatListScreen from './Screens/Chat/ChatListScreen';
@@ -48,6 +50,10 @@ import { PointLog } from './utils/rmrCalculator';
 // 네비게이터 정의
 const Stack = createNativeStackNavigator();
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// [추가] 워치 판별 로직 (안드로이드이면서 화면 너비가 350 미만인 경우)
+// 일반적인 폰은 너비가 360dp 이상, 워치는 보통 200~250dp 수준입니다.
+const isWatch = Platform.OS === 'android' && SCREEN_WIDTH < 350;
 
 export type Screen =
   | 'home'
@@ -169,8 +175,6 @@ const TutorialOverlay = ({ visible, stepIndex, onNext, onSkip }: {
   const tabWidth = SCREEN_WIDTH / tabs.length;
 
   // [수정] BottomNav 패딩 변경(top 8 + bottom 8 + insets)에 맞춰 화살표 위치 보정
-  // 탭바 높이 근사치: paddingTop(8) + paddingBottom(8) + icon(28) + text(16) + gap + insets.bottom
-  // 대략 60 + insets.bottom 정도가 탭바 높이임.
   const arrowBottomPos = (60 + insets.bottom) + 5;
   const arrowLeftPos = (activeTabIndex * tabWidth) + (tabWidth / 2) - 20;
 
@@ -404,6 +408,11 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(true);
   const [authScreen, setAuthScreen] = useState<'login' | 'signup'>('login');
   const [isFirstLogin, setIsFirstLogin] = useState(false);
+
+  // [추가] 워치일 경우 WatchScoreTracker를 렌더링
+  if (isWatch) {
+    return <WatchScoreTracker />;
+  }
 
   const handleLogout = () => {
     setIsLoggedIn(false);
