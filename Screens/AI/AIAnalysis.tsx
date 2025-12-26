@@ -48,8 +48,8 @@ import {
 import { htmlContent } from './poseHtml';
 
 // ---------------- [설정값] ----------------
-const ANALYSIS_DURATION = 20; // 스윙 모드용 (20초)
-const FOOTWORK_DURATION = 60; // 풋워크 모드용 (60초)
+const ANALYSIS_DURATION = 20;
+const FOOTWORK_DURATION = 60;
 const SMOOTHING_FACTOR = 0.5;
 const SPEED_BUFFER_SIZE = 3;
 const USER_HEIGHT_CM = 175;
@@ -60,7 +60,7 @@ const MIN_SWING_DISTANCE_PX = 0.3;
 const SWING_TRIGGER_SPEED = 40;
 const ESTIMATED_FPS = 30;
 
-type AnalysisMode = 'SWING' | 'LUNGE' | 'FOOTWORK';
+export type AnalysisMode = 'SWING' | 'LUNGE' | 'FOOTWORK';
 type FootworkDirection = 'CENTER' | 'FRONT_LEFT' | 'FRONT_RIGHT' | 'BACK_LEFT' | 'BACK_RIGHT';
 
 interface ResultData {
@@ -70,10 +70,11 @@ interface ResultData {
   type: AnalysisMode;
   grade?: string;
   score?: number;
-  unit?: string; // 결과 단위 (km/h, 초, 점 등)
+  unit?: string;
 }
 
-interface AnalysisReport {
+// [수정] 외부 참조를 위해 export 추가
+export interface AnalysisReport {
   id: string;
   date: string;
   mode: AnalysisMode;
@@ -86,32 +87,26 @@ interface AnalysisReport {
 }
 
 export default function AIAnalysis() {
-  // --- State: 기본 상태 ---
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);
   const [mode, setMode] = useState<AnalysisMode>('SWING');
 
-  // --- State: 실시간 데이터 ---
   const [swingSpeed, setSwingSpeed] = useState(0);
   const [currentElbowAngle, setCurrentElbowAngle] = useState(0);
   const [currentKneeAngle, setCurrentKneeAngle] = useState(0);
 
-  // --- State: 측정 요소 ---
   const [swingScore, setSwingScore] = useState(0);
 
-  // 런지 모드용 상태
   const [currentLungeHoldTime, setCurrentLungeHoldTime] = useState(0);
   const [maxLungeHoldTime, setMaxLungeHoldTime] = useState(0);
   const [lungeStability, setLungeStability] = useState(0);
 
-  // --- State: 풋워크 전용 ---
   const [targetDirection, setTargetDirection] = useState<FootworkDirection>('CENTER');
   const [currentFootworkPose, setCurrentFootworkPose] = useState<FootworkDirection>('CENTER');
   const [footworkScore, setFootworkScore] = useState(0);
   const [footworkCombo, setFootworkCombo] = useState(0);
   const [lastActionTime, setLastActionTime] = useState(0);
 
-  // --- State: 타이머 및 UI ---
   const [timeLeft, setTimeLeft] = useState(ANALYSIS_DURATION);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -122,7 +117,6 @@ export default function AIAnalysis() {
   const [selectedReport, setSelectedReport] = useState<AnalysisReport | null>(null);
   const [history, setHistory] = useState<AnalysisReport[]>([]);
 
-  // --- Refs ---
   const [lastResult, setLastResult] = useState<ResultData | null>(null);
   const popAnim = useRef(new Animated.Value(0)).current;
   const flashAnim = useRef(new Animated.Value(0)).current;
@@ -153,7 +147,6 @@ export default function AIAnalysis() {
   const isLungingRef = useRef(false);
   const lungeStartTimeRef = useRef(0);
 
-  // --- 1. 권한 요청 ---
   useEffect(() => {
     const requestPermission = async () => {
       if (Platform.OS === 'android') {
@@ -175,7 +168,6 @@ export default function AIAnalysis() {
     requestPermission();
   }, []);
 
-  // --- 카운트다운 로직 ---
   useEffect(() => {
     if (countdown !== null) {
       countdownAnim.setValue(1.5);
@@ -195,7 +187,6 @@ export default function AIAnalysis() {
     }
   }, [countdown]);
 
-  // --- 2. 타이머 로직 ---
   useEffect(() => {
     let interval: any;
     if (isAnalyzing && isTimerRunning && mode !== 'LUNGE' && timeLeft > 0) {
@@ -208,7 +199,6 @@ export default function AIAnalysis() {
     return () => clearInterval(interval);
   }, [isAnalyzing, isTimerRunning, timeLeft, mode]);
 
-  // --- 3. 화살표 애니메이션 ---
   useEffect(() => {
     if (mode === 'FOOTWORK' && isTimerRunning) {
       Animated.loop(
@@ -222,7 +212,6 @@ export default function AIAnalysis() {
     }
   }, [mode, isTimerRunning, targetDirection]);
 
-  // --- 4. 풋워크 게임 루프 ---
   useEffect(() => {
     if (mode !== 'FOOTWORK' || !isTimerRunning) return;
 
@@ -259,7 +248,6 @@ export default function AIAnalysis() {
     }
   }, [currentFootworkPose, targetDirection, isTimerRunning, mode]);
 
-  // --- 5. 기능 함수들 ---
   const enterAnalysisMode = () => {
     if (hasPermission) {
       const duration = mode === 'FOOTWORK' ? FOOTWORK_DURATION : ANALYSIS_DURATION;
@@ -352,7 +340,7 @@ export default function AIAnalysis() {
         report.training = '측정된 데이터가 없습니다. 동작을 다시 수행해주세요.';
         return report;
       }
-      const maxSpeed = Math.floor(Math.max(...data.swingSpeeds)); // [수정] 소수점 제거
+      const maxSpeed = Math.floor(Math.max(...data.swingSpeeds));
       const avgKnn = data.swingKnnScores.length > 0
         ? data.swingKnnScores.reduce((a, b) => a + b, 0) / data.swingKnnScores.length
         : 0;
@@ -368,7 +356,6 @@ export default function AIAnalysis() {
 
       report.avgScore = Math.floor(speedScore * 0.5 + formScore * 0.3 + angleScore * 0.2);
 
-      // [수정] 스윙 피드백 다양화
       if (maxSpeed >= 130) report.pros.push('국가대표급 파워 스매시입니다! 코트를 찢을 듯한 속도네요.');
       else if (maxSpeed >= 110) report.pros.push('상급자 수준의 강력한 스매시 파워를 보유하고 계십니다.');
       else if (maxSpeed >= 90) report.pros.push('동호인 평균 이상의 준수한 스윙 스피드입니다.');
@@ -397,7 +384,6 @@ export default function AIAnalysis() {
 
       report.avgScore = Math.min(100, Math.floor((maxHold / 60) * 100));
 
-      // [수정] 런지/준비자세 피드백 다양화
       if (maxHold >= 60) report.pros.push('강철 같은 하체입니다. 지치지 않는 체력이 돋보입니다.');
       else if (maxHold >= 45) report.pros.push('매우 안정적인 하체 밸런스를 유지하고 있습니다.');
       else if (maxHold >= 30) report.pros.push('평균 이상의 지구력입니다. 수비 범위가 넓어지겠네요.');
@@ -425,7 +411,6 @@ export default function AIAnalysis() {
       report.maxRecord = avgReaction;
       report.avgScore = footworkScore;
 
-      // [수정] 풋워크 피드백 다양화
       if (avgReaction < 0.6) report.pros.push('반사 신경이 신의 경지입니다! 상대가 예측할 수 없는 속도네요.');
       else if (avgReaction < 0.9) report.pros.push('매우 민첩합니다. 빈 곳을 찌르는 공격에 완벽히 대응할 수 있습니다.');
       else if (avgReaction < 1.2) report.pros.push('준수한 반응 속도입니다. 스텝 리듬이 좋습니다.');
@@ -678,7 +663,6 @@ export default function AIAnalysis() {
     );
   };
 
-  // --- 6. 결과 리포트 모달 (복구됨) ---
   if (showReport && selectedReport) {
     return (
       <Modal animationType="slide" transparent={false} visible={showReport}>
@@ -991,7 +975,6 @@ export default function AIAnalysis() {
         </View>
       </ScrollView>
 
-      {/* 메인 가이드 모달 */}
       <Modal animationType="fade" transparent visible={showInfoModal} onRequestClose={() => setShowInfoModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
