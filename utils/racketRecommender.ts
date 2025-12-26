@@ -21,7 +21,7 @@ export interface RacketRecommendation {
 }
 
 const RACKET_SPECS: Record<string, RacketDetail> = {
-  "요넥스 아스트록스 100ZZ": { id: "ast_100ZZ", name: "요넥스 아스트록스 100ZZ", weight: "3U, 4U", tension: "20-28 Lbs", features: ["하이퍼 슬림 샤프트", "남차오 그라파이트", "파워풀한 연속 스매시"] },
+  "요넥스 아스트록스 100ZZ": { id: "ast_100ZZ", name: "요넥스 아스트록스 100ZZ", weight: "3U, 4U", tension: "20-28 Lbs", features: ["하이퍼 슬림 샤프트", "부드러운 타구감", "파워풀한 연속 스매시"] },
   "아펙스 Z-지글러": { id: "apx_ziggler", name: "아펙스 Z-지글러", weight: "4U", tension: "최대 38 Lbs", features: ["컴팩트 프레임", "고탄성 카본", "강력한 가성비 공격력"] },
   "요넥스 아스트록스 77 프로": { id: "ast_77PRO", name: "요넥스 아스트록스 77 프로", weight: "4U", tension: "20-28 Lbs", features: ["플렉스 퓨즈 기술", "부드러운 타구감", "공격적 올라운더"] },
   "빅터 스러스터 K 12": { id: "vic_K12", name: "빅터 스러스터 K 12", weight: "4U, 5U", tension: "최대 30 Lbs", features: ["헤드무게 중심", "입문자용 파워형", "빠른 복원력"] },

@@ -9,7 +9,7 @@ import {
   Dimensions,
   Modal,
 } from 'react-native';
-import { Settings, Shield, LogOut, ChevronRight, History, Dumbbell, Zap, Target, Award, ShoppingBag, X, CheckCircle2 } from 'lucide-react-native';
+import { Settings, Shield, LogOut, ChevronRight, PencilRuler, History, Dumbbell, Wallet, Scale, Gem, ShoppingBag, X, CheckCircle2 } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path, Defs, LinearGradient, Stop, G, Text as SvgText, TSpan } from 'react-native-svg';
 import { getRmrTier } from '../../utils/rmrCalculator';
@@ -79,12 +79,12 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
 
   // 데모 데이터 (실제 데이터는 API/DB 연동)
   const user = {
-    name: '배드민턴 마스터',
-    location: '안양시 동안구',
-    rmr: 1180,
-    wins: 15,
-    losses: 8,
-    avatar: require('../../assets/images/card-logo.png'),
+    name: '오이너구리',
+    location: '안산시 단원구',
+    rmr: 1380,
+    wins: 21,
+    losses: 18,
+    avatar: require('../../assets/images/profile.png'),
     /**
      * [임의 데이터 기반 스타일 분석 주석]
      * 1. 3번의 스윙 중 90km/h 이상이 100% (3/3)이므로 smashRatio 임계값 0.4를 상회함 -> 공격 가산점 부여
@@ -243,7 +243,7 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
               <View style={styles.racketGrid}>
                 {/* 프리미엄 카드 */}
                 <View style={styles.productCard}>
-                  <View style={styles.productBadge}><Award size={12} color="#FDB931" /><Text style={styles.productBadgeText}>프리미엄</Text></View>
+                  <View style={styles.productBadge}><Gem size={12} color="#FDB931" /><Text style={styles.productBadgeText}>프리미엄</Text></View>
                   <Text style={styles.productName}>{racketResult.premium.name}</Text>
                   <Text style={styles.productTag}>숙련자용 최고 사양</Text>
                   <TouchableOpacity style={[styles.buyButton, {backgroundColor: '#374151'}]} onPress={() => openRacketDetail(racketResult.premium)}><ShoppingBag size={16} color="white" /><Text style={styles.buyText}>상세보기</Text></TouchableOpacity>
@@ -251,7 +251,7 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
 
                 {/* 가성비 카드 */}
                 <View style={styles.productCard}>
-                  <View style={[styles.productBadge, {backgroundColor: 'rgba(96, 165, 250, 0.2)'}]}><Zap size={12} color="#60A5FA" /><Text style={[styles.productBadgeText, {color: '#60A5FA'}]}>가성비</Text></View>
+                  <View style={[styles.productBadge, {backgroundColor: 'rgba(96, 165, 250, 0.2)'}]}><Wallet size={12} color="#60A5FA" /><Text style={[styles.productBadgeText, {color: '#60A5FA'}]}>가성비</Text></View>
                   <Text style={styles.productName}>{racketResult.budget.name}</Text>
                   <Text style={styles.productTag}>최고의 효율과 퍼포먼스</Text>
                   <TouchableOpacity style={[styles.buyButton, {backgroundColor: '#374151'}]} onPress={() => openRacketDetail(racketResult.budget)}><ShoppingBag size={16} color="white" /><Text style={styles.buyText}>상세보기</Text></TouchableOpacity>
@@ -289,8 +289,8 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
               <Text style={styles.detailRacketName}>{selectedRacket?.name}</Text>
 
               <View style={styles.specContainer}>
-                <View style={styles.specRow}><Target size={18} color="#34D399" /><Text style={styles.specLabel}>무게:</Text><Text style={styles.specValue}>{selectedRacket?.weight}</Text></View>
-                <View style={styles.specRow}><Zap size={18} color="#FDB931" /><Text style={styles.specLabel}>권장 장력:</Text><Text style={styles.specValue}>{selectedRacket?.tension}</Text></View>
+                <View style={styles.specRow}><Scale size={17} color="#34D399" /><Text style={styles.specLabel}>무게:</Text><Text style={styles.specValue}>{selectedRacket?.weight}</Text></View>
+                <View style={styles.specRow}><PencilRuler size={17} color="#FDB931" /><Text style={styles.specLabel}>권장 장력:</Text><Text style={styles.specValue}>{selectedRacket?.tension}</Text></View>
               </View>
 
               <Text style={styles.featureTitle}>주요 특징</Text>
@@ -357,7 +357,7 @@ const styles = StyleSheet.create({
   menuItem: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#374151' },
   menuText: { flex: 1, color: 'white', marginLeft: 12, fontSize: 15 },
 
-  // 모달 스타일 (규격 보존 및 레이아웃 정의)
+  // 모달 스타일
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { width: '85%', backgroundColor: '#1F2937', borderRadius: 24, padding: 20, borderWidth: 1, borderColor: '#374151' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
@@ -366,12 +366,12 @@ const styles = StyleSheet.create({
   racketImagePlaceholder: { width: 200, height: 200, backgroundColor: '#111827', borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginBottom: 20, borderStyle: 'dashed', borderWidth: 1, borderColor: '#374151' },
   detailRacketName: { color: 'white', fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
   specContainer: { width: '100%', backgroundColor: '#111827', borderRadius: 16, padding: 16, marginBottom: 20 },
-  specRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  specLabel: { color: '#9CA3AF', fontSize: 14, marginLeft: 10, width: 70 },
+  specRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  specLabel: { color: '#9CA3AF', fontSize: 14, marginLeft: 12, width: 70 },
   specValue: { color: 'white', fontSize: 14, fontWeight: 'bold' },
   featureTitle: { color: 'white', fontSize: 15, fontWeight: 'bold', alignSelf: 'flex-start', marginBottom: 12 },
   featureRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: 8 },
-  featureText: { color: '#D1D5DB', fontSize: 13, marginLeft: 10 },
-  modalCloseBtn: { backgroundColor: '#34D399', width: '100%', paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 10 },
+  featureText: { color: '#D1D5DB', fontSize: 13, marginLeft: 10, marginBottom: 2 },
+  modalCloseBtn: { backgroundColor: '#34D399', width: '100%', paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 14 },
   modalCloseBtnText: { color: '#111827', fontWeight: 'bold', fontSize: 16 },
 });
