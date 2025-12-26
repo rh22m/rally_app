@@ -153,8 +153,17 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
           <TouchableOpacity style={[styles.tabButton, activeTab === 'info' && styles.activeTabButton]} onPress={() => setActiveTab('info')}>
             <Text style={[styles.tabText, activeTab === 'info' && styles.activeTabText]}>티어 정보</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.tabButton, activeTab === 'racket' && styles.activeTabButton]} onPress={() => setActiveTab('racket')}>
-            <Text style={[styles.tabText, activeTab === 'racket' && styles.activeTabText]}>장비 추천</Text>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'racket' && styles.activeTabButton]}
+            onPress={() => setActiveTab('racket')}
+          >
+            <Text style={[styles.tabText, activeTab === 'racket' && styles.activeTabText]}>
+              장비 추천
+            </Text>
+            {/* Beta 뱃지 추가 */}
+            <View style={styles.betaBadge}>
+              <Text style={styles.betaText}>BETA</Text>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -374,4 +383,22 @@ const styles = StyleSheet.create({
   featureText: { color: '#D1D5DB', fontSize: 13, marginLeft: 10, marginBottom: 2 },
   modalCloseBtn: { backgroundColor: '#34D399', width: '100%', paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 14 },
   modalCloseBtnText: { color: '#111827', fontWeight: 'bold', fontSize: 16 },
+
+  // Beta 배지 스타일 추가
+  betaBadge: {
+    position: 'absolute',
+    top: +4,
+    right: 4,
+    backgroundColor: '#EF4444',
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    zIndex: 10,
+  },
+  betaText: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    fontWeight: 'bold',
+    includeFontPadding: false,
+  },
 });
