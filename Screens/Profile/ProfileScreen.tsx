@@ -191,7 +191,7 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
                        } else if (diff > 0) {
                          line1 = `◀ ${level.name} (컷: ${level.minRmr}점)`;
                          line2 = `   승급까지 +${diff}점 필요`;
-                         textColor = '#F87171';
+                         labelColor = '#F87171';
                        } else {
                          line1 = `◀ ${level.name} (컷: ${level.minRmr}점)`;
                          line2 = `   달성 완료 (여유 +${Math.abs(diff)}점)`;
