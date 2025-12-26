@@ -7,12 +7,13 @@ import {
   TouchableOpacity,
   Image,
   Dimensions,
+  Modal,
 } from 'react-native';
-import { Settings, Shield, LogOut, ChevronRight, History, Dumbbell, Zap, Target, Award, ShoppingBag } from 'lucide-react-native';
+import { Settings, Shield, LogOut, ChevronRight, History, Dumbbell, Zap, Target, Award, ShoppingBag, X, CheckCircle2 } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path, Defs, LinearGradient, Stop, G, Text as SvgText, TSpan } from 'react-native-svg';
 import { getRmrTier } from '../../utils/rmrCalculator';
-import { recommendRacket } from '../../utils/racketRecommender';
+import { recommendRacket, RacketDetail } from '../../utils/racketRecommender';
 import { AnalysisReport } from '../AI/AIAnalysis';
 
 interface ProfileScreenProps {
@@ -23,6 +24,21 @@ const TIER_IMAGES = {
   gold: require('../../assets/images/tier_gold.png'),
   silver: require('../../assets/images/tier_silver.png'),
   bronze: require('../../assets/images/tier_bronze.png'),
+};
+
+const RACKET_IMAGES: Record<string, any> = {
+  ast_100ZZ: require('../../assets/images/rackets/ast_100ZZ.png'),
+  apx_ziggler: require('../../assets/images/rackets/apx_ziggler.png'),
+  ast_77PRO: require('../../assets/images/rackets/ast_77PRO.png'),
+  vic_K12: require('../../assets/images/rackets/vic_K12.png'),
+  acs_11PRO: require('../../assets/images/rackets/acs_11PRO.png'),
+  vic_7K: require('../../assets/images/rackets/vic_7K.png'),
+  vic_09: require('../../assets/images/rackets/vic_09.png'),
+  mus_POW: require('../../assets/images/rackets/mus_POW.png'),
+  nano_1000Z: require('../../assets/images/rackets/nano_1000Z.png'),
+  nano_900POW: require('../../assets/images/rackets/nano_900POW.png'),
+  nano_700: require('../../assets/images/rackets/nano_700.png'),
+  nano_001: require('../../assets/images/rackets/nano_001.png'),
 };
 
 const TIER_LEVELS = [
@@ -49,8 +65,12 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
   const [activeTab, setActiveTab] = useState<'tier' | 'info' | 'racket'>('tier');
   const [selectedTierName, setSelectedTierName] = useState<string | null>(null);
 
+  // 상세보기 모달 상태 구성
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [selectedRacket, setSelectedRacket] = useState<RacketDetail | null>(null);
+
   const screenWidth = Dimensions.get('window').width;
-  const PYRAMID_HEIGHT = 200; // 피라미드 높이 상향 조정
+  const PYRAMID_HEIGHT = 200;
   const PYRAMID_WIDTH = 210;
   const CENTER_X = screenWidth / 3;
   const START_Y = 20;
@@ -65,6 +85,14 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
     wins: 15,
     losses: 8,
     avatar: require('../../assets/images/card-logo.png'),
+    /**
+     * [임의 데이터 기반 스타일 분석 주석]
+     * 1. 3번의 스윙 중 90km/h 이상이 100% (3/3)이므로 smashRatio 임계값 0.4를 상회함 -> 공격 가산점 부여
+     * 2. 최신 경기 flow 데이터에서 Tempo(0.85)가 Endurance(0.45)보다 높아 빠른 템포 선호 -> 공격 가산점 부여
+     * 3. 위 결과로 최종 밸런스는 "Head Heavy (공격형)" 도출
+     * 4. RMR 1180은 중급자 가산점(1점)을 받으며, 평균 스윙 속도(약 106km/h)가 기준값(100)을 상회하므로
+     * 최종 스피드 점수가 3점이 되어 "Stiff (딱딱함)" 샤프트가 추천됨.
+     */
     videoHistory: [
         { id: '1', mode: 'SWING', maxRecord: 115 } as AnalysisReport,
         { id: '2', mode: 'SWING', maxRecord: 95 } as AnalysisReport,
@@ -78,7 +106,6 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
   const currentTierType = currentTierData ? currentTierData.type : 'bronze';
   const targetTierName = selectedTierName ?? currentTierName;
 
-  // 라켓 추천 결과 도출
   const racketResult = useMemo(() => {
     return recommendRacket(user.videoHistory, user.rmr, user.latestFlow);
   }, [user.rmr, user.videoHistory, user.latestFlow]);
@@ -86,6 +113,11 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
   const handleTierPress = (tierName: string) => {
     if (selectedTierName === tierName) setSelectedTierName(null);
     else setSelectedTierName(tierName);
+  };
+
+  const openRacketDetail = (racket: RacketDetail) => {
+    setSelectedRacket(racket);
+    setDetailModalVisible(true);
   };
 
   return (
@@ -139,9 +171,7 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
           ) : activeTab === 'info' ? (
             <View style={styles.pyramidSection}>
               <Text style={styles.pyramidTitle}>티어 표</Text>
-              <Text style={styles.pyramidSubtitle}>
-                {selectedTierName ? '다시 누르면 내 정보로 돌아갑니다' : '다른 등급을 눌러 상세 정보를 확인하세요'}
-              </Text>
+              <Text style={styles.pyramidSubtitle}>{selectedTierName ? '다시 누르면 내 정보로 돌아갑니다' : '다른 등급을 눌러 상세 정보를 확인하세요'}</Text>
               <View style={styles.svgContainer}>
                 <Svg height={PYRAMID_HEIGHT + 42} width={screenWidth}>
                   <Defs>
@@ -156,10 +186,8 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
                     const isCurrent = level.name === currentTierName;
                     const isSelected = level.name === selectedTierName;
                     const isTarget = level.name === targetTierName;
-                    let colorKey = 'disabled';
-                    if (isCurrent || isSelected) colorKey = level.type;
+                    let colorKey = (isCurrent || isSelected) ? level.type : 'disabled';
                     const colorSet = COLORS[colorKey as keyof typeof COLORS];
-
                     const totalLevels = TIER_LEVELS.length;
                     const topRatio = index / totalLevels;
                     const bottomRatio = (index + 1) / totalLevels;
@@ -175,48 +203,20 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
                     const frontPath = `M ${xTopLeft} ${yTop} L ${xTopRight} ${yTop} L ${xBottomRight} ${yBottom} L ${xBottomLeft} ${yBottom} Z`;
                     const sidePath = `M ${xTopRight} ${yTop} L ${xTopRight + DEPTH_X} ${yTop + DEPTH_Y} L ${xBottomRight + DEPTH_X} ${yBottom + DEPTH_Y} L ${xBottomRight} ${yBottom} Z`;
 
-                    // --- [복구된 상세 텍스트 로직] ---
-                    let line1 = '';
-                    let line2 = '';
-                    let labelColor = '#9CA3AF';
+                    let line1 = '', line2 = '', labelColor = '#9CA3AF';
+                    if (isTarget) {
+                      const diff = level.minRmr - user.rmr;
+                      if (isCurrent) { line1 = `◀ ${level.name} (현재 ${user.rmr}점)`; line2 = `   구간: ${level.minRmr} ~ ${TIER_LEVELS[index - 1]?.minRmr - 1 || 'MAX'}점`; labelColor = '#34D399'; }
+                      else if (diff > 0) { line1 = `◀ ${level.name} (컷: ${level.minRmr}점)`; line2 = `   승급까지 +${diff}점 필요`; labelColor = '#F87171'; }
+                      else { line1 = `◀ ${level.name} (컷: ${level.minRmr}점)`; line2 = `   달성 완료 (여유 +${Math.abs(diff)}점)`; labelColor = '#60A5FA'; }
+                    }
 
-                     if (isTarget) {
-                       const diff = level.minRmr - user.rmr;
-                       if (isCurrent) {
-                         line1 = `◀ ${level.name} (현재 ${user.rmr}점)`;
-                         const nextTier = TIER_LEVELS[index - 1];
-                         const rangeEnd = nextTier ? nextTier.minRmr - 1 : 'MAX';
-                         line2 = `   구간: ${level.minRmr} ~ ${rangeEnd}점`;
-                         labelColor = '#34D399';
-                       } else if (diff > 0) {
-                         line1 = `◀ ${level.name} (컷: ${level.minRmr}점)`;
-                         line2 = `   승급까지 +${diff}점 필요`;
-                         labelColor = '#F87171';
-                       } else {
-                         line1 = `◀ ${level.name} (컷: ${level.minRmr}점)`;
-                         line2 = `   달성 완료 (여유 +${Math.abs(diff)}점)`;
-                         labelColor = '#60A5FA';
-                       }
-                     }
                     return (
                       <G key={level.name} onPress={() => handleTierPress(level.name)}>
                         <Path d={sidePath} fill={colorSet.side} stroke={colorSet.side} strokeWidth={1} />
-                        <Path
-                          d={frontPath}
-                          fill={`url(#grad_${colorKey})`}
-                          stroke={isSelected ? '#FFFFFF' : (isCurrent ? '#FFFFFF' : '#111827')}
-                          strokeWidth={isSelected ? 2 : (isCurrent ? 1.5 : 0.5)}
-                          strokeOpacity={isSelected ? 1 : 0.5}
-                        />
+                        <Path d={frontPath} fill={`url(#grad_${colorKey})`} stroke={isSelected ? '#FFFFFF' : (isCurrent ? '#FFFFFF' : '#111827')} strokeWidth={isSelected ? 2 : 0.5} />
                         {isTarget && (
-                          <SvgText
-                            fill={labelColor}
-                            fontSize="14"
-                            fontWeight="bold"
-                            x={xBottomRight + DEPTH_X + 12}
-                            y={yBottom - (PYRAMID_HEIGHT / totalLevels / 2)}
-                            textAnchor="start"
-                          >
+                          <SvgText fill={labelColor} fontSize="14" fontWeight="bold" x={xBottomRight + DEPTH_X + 12} y={yBottom - (PYRAMID_HEIGHT / totalLevels / 2)} textAnchor="start">
                             <TSpan x={xBottomRight + DEPTH_X + 12} dy="-6">{line1}</TSpan>
                             <TSpan x={xBottomRight + DEPTH_X + 12} dy="16" fontSize="11" fontWeight="normal" fill="#9CA3AF">{line2}</TSpan>
                           </SvgText>
@@ -233,8 +233,8 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
               <View style={styles.racketHeaderCard}>
                 <Dumbbell size={28} color="#34D399" />
                 <View style={{marginLeft: 12}}>
-                  <Text style={styles.racketMainStyle}>{racketResult.balance}</Text>
-                  <Text style={styles.racketSubStyle}>{racketResult.shaft}</Text>
+                  <Text style={styles.racketMainStyle}>플레이 스타일: {racketResult.balance}</Text>
+                  <Text style={styles.racketSubStyle}>추천 샤프트: {racketResult.shaft}</Text>
                 </View>
               </View>
 
@@ -244,17 +244,17 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
                 {/* 프리미엄 카드 */}
                 <View style={styles.productCard}>
                   <View style={styles.productBadge}><Award size={12} color="#FDB931" /><Text style={styles.productBadgeText}>프리미엄</Text></View>
-                  <Text style={styles.productName}>{racketResult.premiumModel}</Text>
+                  <Text style={styles.productName}>{racketResult.premium.name}</Text>
                   <Text style={styles.productTag}>숙련자용 최고 사양</Text>
-                  <TouchableOpacity style={styles.buyButton}><ShoppingBag size={16} color="white" /><Text style={styles.buyText}>상세보기</Text></TouchableOpacity>
+                  <TouchableOpacity style={[styles.buyButton, {backgroundColor: '#374151'}]} onPress={() => openRacketDetail(racketResult.premium)}><ShoppingBag size={16} color="white" /><Text style={styles.buyText}>상세보기</Text></TouchableOpacity>
                 </View>
 
                 {/* 가성비 카드 */}
                 <View style={styles.productCard}>
                   <View style={[styles.productBadge, {backgroundColor: 'rgba(96, 165, 250, 0.2)'}]}><Zap size={12} color="#60A5FA" /><Text style={[styles.productBadgeText, {color: '#60A5FA'}]}>가성비</Text></View>
-                  <Text style={styles.productName}>{racketResult.budgetModel}</Text>
+                  <Text style={styles.productName}>{racketResult.budget.name}</Text>
                   <Text style={styles.productTag}>최고의 효율과 퍼포먼스</Text>
-                  <TouchableOpacity style={[styles.buyButton, {backgroundColor: '#374151'}]}><ShoppingBag size={16} color="white" /><Text style={styles.buyText}>상세보기</Text></TouchableOpacity>
+                  <TouchableOpacity style={[styles.buyButton, {backgroundColor: '#374151'}]} onPress={() => openRacketDetail(racketResult.budget)}><ShoppingBag size={16} color="white" /><Text style={styles.buyText}>상세보기</Text></TouchableOpacity>
                 </View>
               </View>
             </View>
@@ -267,6 +267,44 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
           <TouchableOpacity style={styles.menuItem} onPress={onLogout}><LogOut size={22} color="#EF4444" /><Text style={[styles.menuText, {color: '#EF4444'}]}>로그아웃</Text></TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* 라켓 상세 정보 팝업 모달 */}
+      <Modal animationType="slide" transparent={true} visible={detailModalVisible} onRequestClose={() => setDetailModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>라켓 상세 정보</Text>
+              <TouchableOpacity onPress={() => setDetailModalVisible(false)}><X size={24} color="white" /></TouchableOpacity>
+            </View>
+
+            <View style={styles.modalScroll}>
+              <View style={styles.racketImagePlaceholder}>
+                {selectedRacket && RACKET_IMAGES[selectedRacket.id] ? (
+                  <Image source={RACKET_IMAGES[selectedRacket.id]} style={{ width: 200, height: 200, borderRadius: 20, resizeMode: 'contain' }} />
+                ) : (
+                  <Text style={{ color: '#4B5563' }}>이미지 불러오기 실패</Text>
+                )}
+              </View>
+
+              <Text style={styles.detailRacketName}>{selectedRacket?.name}</Text>
+
+              <View style={styles.specContainer}>
+                <View style={styles.specRow}><Target size={18} color="#34D399" /><Text style={styles.specLabel}>무게:</Text><Text style={styles.specValue}>{selectedRacket?.weight}</Text></View>
+                <View style={styles.specRow}><Zap size={18} color="#FDB931" /><Text style={styles.specLabel}>권장 장력:</Text><Text style={styles.specValue}>{selectedRacket?.tension}</Text></View>
+              </View>
+
+              <Text style={styles.featureTitle}>주요 특징</Text>
+              {selectedRacket?.features.map((f, i) => (
+                <View key={i} style={styles.featureRow}><CheckCircle2 size={16} color="#34D399" /><Text style={styles.featureText}>{f}</Text></View>
+              ))}
+            </View>
+
+            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setDetailModalVisible(false)}>
+              <Text style={styles.modalCloseBtnText}>확인</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -298,7 +336,7 @@ const styles = StyleSheet.create({
   mainTierImage: { width: '100%', height: '100%' },
   myScoreText: { fontSize: 20, fontWeight: 'bold', color: 'white' },
   myTierLabel: { color: '#9CA3AF', marginTop: 4, marginBottom: 40 },
-  pyramidSection: { alignItems: 'center', marginBottom: 0, marginTop: 2, },
+  pyramidSection: { alignItems: 'center', marginBottom: 0, marginTop: 2.7, },
   pyramidTitle: { color: '#9CA3AF', fontSize: 16, fontWeight: 'bold', marginBottom: 4, letterSpacing: 1.5 },
   pyramidSubtitle: { color: '#6B7280', fontSize: 11, marginBottom: 20, },
   svgContainer: { alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 10, elevation: 10, },
@@ -309,13 +347,31 @@ const styles = StyleSheet.create({
   analysisDesc: { color: '#9CA3AF', fontSize: 13, marginVertical: 16, lineHeight: 20, textAlign: 'center' },
   racketGrid: { flexDirection: 'row', gap: 12 },
   productCard: { flex: 1, backgroundColor: '#1F2937', borderRadius: 16, padding: 12, alignItems: 'center' },
-  productBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(253, 185, 49, 0.15)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginBottom: 8 },
+  productBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(253, 185, 49, 0.15)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, marginTop: 2, marginBottom: 8 },
   productBadgeText: { color: '#FDB931', fontSize: 10, fontWeight: 'bold', marginLeft: 4 },
-  productName: { color: 'white', fontSize: 13, fontWeight: 'bold', textAlign: 'center', marginBottom: 4, height: 36 },
-  productTag: { color: '#6B7280', fontSize: 10, marginBottom: 12 },
-  buyButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#34D399', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  productName: { color: 'white', fontSize: 13, fontWeight: 'bold', textAlign: 'center', marginTop:8, height: 28 },
+  productTag: { color: '#6B7280', fontSize: 10, marginBottom: 10 },
+  buyButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#34D399', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
   buyText: { color: 'white', fontSize: 11, fontWeight: 'bold', marginLeft: 4 },
   menuSection: { backgroundColor: '#1F2937', marginTop: 20 },
   menuItem: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#374151' },
   menuText: { flex: 1, color: 'white', marginLeft: 12, fontSize: 15 },
+
+  // 모달 스타일 (규격 보존 및 레이아웃 정의)
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { width: '85%', backgroundColor: '#1F2937', borderRadius: 24, padding: 20, borderWidth: 1, borderColor: '#374151' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { color: '#9CA3AF', fontSize: 14, fontWeight: 'bold' },
+  modalScroll: { alignItems: 'center' },
+  racketImagePlaceholder: { width: 200, height: 200, backgroundColor: '#111827', borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginBottom: 20, borderStyle: 'dashed', borderWidth: 1, borderColor: '#374151' },
+  detailRacketName: { color: 'white', fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+  specContainer: { width: '100%', backgroundColor: '#111827', borderRadius: 16, padding: 16, marginBottom: 20 },
+  specRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  specLabel: { color: '#9CA3AF', fontSize: 14, marginLeft: 10, width: 70 },
+  specValue: { color: 'white', fontSize: 14, fontWeight: 'bold' },
+  featureTitle: { color: 'white', fontSize: 15, fontWeight: 'bold', alignSelf: 'flex-start', marginBottom: 12 },
+  featureRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: 8 },
+  featureText: { color: '#D1D5DB', fontSize: 13, marginLeft: 10 },
+  modalCloseBtn: { backgroundColor: '#34D399', width: '100%', paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 10 },
+  modalCloseBtnText: { color: '#111827', fontWeight: 'bold', fontSize: 16 },
 });
