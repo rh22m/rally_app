@@ -15,7 +15,7 @@ import {
   Animated,
   ActivityIndicator
 } from 'react-native';
-import { RotateCcw, Play, Pause, ArrowLeft, XCircle, AlertTriangle, Timer, TrendingUp, Activity, Flame, Trophy, Zap, ShieldAlert, Lightbulb } from 'lucide-react-native';
+import { RotateCcw, Play, Pause, ArrowLeft, XCircle, AlertTriangle, Timer, TrendingUp, Activity, Flame, Trophy, Zap, ShieldAlert, Lightbulb, Watch } from 'lucide-react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { sendMessage, watchEvents } from 'react-native-wear-connectivity';
 
@@ -134,7 +134,7 @@ const loadingStyles = StyleSheet.create({
 export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
   // Setup State
   const [isSetupMode, setIsSetupMode] = useState(true);
-  const [isLoading, setIsLoading] = useState(false); // 로딩 상태
+  const [isLoading, setIsLoading] = useState(false);
   const [team1Name, setTeam1Name] = useState('');
   const [team2Name, setTeam2Name] = useState('');
 
@@ -147,45 +147,43 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
 
+  // 워치 연결 상태 및 가이드
+  const [isWatchConnected, setIsWatchConnected] = useState(false); // [추가] 실제 연결 여부
+  const [showWatchGuide, setShowWatchGuide] = useState(false);
+  const guideOpacity = useRef(new Animated.Value(0)).current;
+
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const lastPointTimeRef = useRef<number>(0);
   const [scoreHistory, setScoreHistory] = useState<any[]>([]);
   const [pointLogs, setPointLogs] = useState<PointLog[]>([]);
 
-  // 시간 포맷 헬퍼
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
     const secs = (seconds % 60).toString().padStart(2, '0');
     return `${mins}:${secs}`;
   };
 
-  // --- Watch Connectivity Logic (Modified) ---
+  // --- Watch Connectivity Logic ---
 
-  // 1. 상태 동기화: 점수, 게임 상태, 타이머가 바뀔 때마다 워치로 전송
+  // [추가] 로딩 중에 워치에 생존 확인(PING) 요청
   useEffect(() => {
-    if (isSetupMode) return;
+    let interval: NodeJS.Timeout;
+    if (isLoading) {
+      interval = setInterval(() => {
+        // 워치앱이 켜져있다면 PONG으로 응답할 것임
+        sendMessage({ type: 'PING' });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isLoading]);
 
-    const message = {
-      type: 'SYNC_UPDATE',
-      // Team 2가 '나(User)', Team 1이 '상대(Opponent)'로 매핑
-      myScore: team2Score,
-      opponentScore: team1Score,
-      isPause: !isTimerRunning,
-      timer: formatTime(elapsedTime), // [수정] 타이머 정보 추가
-    };
-
-    sendMessage(message);
-  }, [team1Score, team2Score, isTimerRunning, isSetupMode, elapsedTime]); // elapsedTime 의존성 추가
-
-  // 2. 명령 수신: 워치에서 보내는 버튼 입력 처리
-  // [수정] 핸들러 함수들을 최신 상태로 유지하기 위한 Ref
+  // 통합 메시지 수신 핸들러 (연결 확인 + 게임 명령)
   const handlersRef = useRef({
     handleScore: (team: 'team1' | 'team2') => {},
     handleUndo: () => {},
     togglePause: () => {}
   });
 
-  // [수정] 최신 핸들러를 Ref에 업데이트 (렌더링 될 때마다)
   useEffect(() => {
     handlersRef.current = {
       handleScore: (team) => handleScore(team),
@@ -195,31 +193,88 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
   });
 
   useEffect(() => {
-    if (isSetupMode) return;
-
-    // [수정] 의존성 배열을 비우거나 최소화하여 리스너가 자주 재생성되지 않도록 함
-    // 내부 로직은 handlersRef를 통해 최신 함수에 접근
     const unsubscribe = watchEvents.on('message', (msg) => {
-      if (!msg || !msg.command) return;
+      if (!msg) return;
 
-      switch (msg.command) {
-        case 'INCREMENT_MY': // 워치: 내 점수 +1 (Team 2)
-          handlersRef.current.handleScore('team2');
-          break;
-        case 'INCREMENT_OPP': // 워치: 상대 점수 +1 (Team 1)
-          handlersRef.current.handleScore('team1');
-          break;
-        case 'UNDO':
-          handlersRef.current.handleUndo();
-          break;
-        case 'PAUSE_TOGGLE':
-          handlersRef.current.togglePause();
-          break;
+      // 1. [추가] 연결 확인 응답 (PONG) 수신
+      if (msg.type === 'PONG') {
+        if (!isWatchConnected) setIsWatchConnected(true);
+        return;
+      }
+
+      // 2. 게임 명령 처리 (게임 중일 때만)
+      if (!isSetupMode && msg.command) {
+        switch (msg.command) {
+          case 'INCREMENT_MY':
+            handlersRef.current.handleScore('team2');
+            break;
+          case 'INCREMENT_OPP':
+            handlersRef.current.handleScore('team1');
+            break;
+          case 'UNDO':
+            handlersRef.current.handleUndo();
+            break;
+          case 'PAUSE_TOGGLE':
+            handlersRef.current.togglePause();
+            break;
+        }
       }
     });
 
     return () => unsubscribe();
-  }, [isSetupMode]); // 의존성 대폭 축소 (이벤트 리스너 안정화)
+  }, [isSetupMode, isWatchConnected]); // 상태 변경 시 리스너 갱신
+
+  // 1. 타이머 동기화
+  useEffect(() => {
+    if (isSetupMode) return;
+    sendMessage({
+      type: 'SYNC_TIMER',
+      timer: formatTime(elapsedTime),
+    });
+  }, [elapsedTime, isSetupMode]);
+
+  // 2. 상태 동기화
+  useEffect(() => {
+    if (isSetupMode) return;
+    sendMessage({
+      type: 'SYNC_STATE',
+      myScore: team2Score,
+      opponentScore: team1Score,
+      isPause: !isTimerRunning,
+    });
+  }, [team1Score, team2Score, isTimerRunning, isSetupMode]);
+
+  // 3. 종료 신호
+  useEffect(() => {
+    return () => {
+      if (!isSetupMode) {
+        sendMessage({ type: 'GAME_END' });
+      }
+    };
+  }, [isSetupMode]);
+
+
+  // [수정] 워치 가이드 표시 로직: 연결된 상태(isWatchConnected)일 때만 표시
+  useEffect(() => {
+    if (!isSetupMode && isWatchConnected) {
+        setTimeout(() => {
+            setShowWatchGuide(true);
+            Animated.timing(guideOpacity, {
+                toValue: 1,
+                duration: 500,
+                useNativeDriver: true
+            }).start();
+
+            setTimeout(() => {
+                Animated.timing(guideOpacity, {
+                    toValue: 0,
+                    duration: 500,
+                    useNativeDriver: true
+                }).start(() => setShowWatchGuide(false));
+            }, 6000);
+        }, 1000);
+    }
+  }, [isSetupMode, isWatchConnected]);
 
 
   // Timer Logic
@@ -238,12 +293,14 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
     if (!team1Name.trim()) setTeam1Name("TEAM 1");
     if (!team2Name.trim()) setTeam2Name("TEAM 2");
     Keyboard.dismiss();
-    setIsLoading(true); // 로딩 시작
+    // 로딩 시작 시 연결 상태 초기화
+    setIsWatchConnected(false);
+    setIsLoading(true);
   };
 
   const handleLoadingFinish = () => {
     setIsLoading(false);
-    setIsSetupMode(false); // 게임 화면 진입
+    setIsSetupMode(false);
     setIsTimerRunning(true);
     lastPointTimeRef.current = Date.now();
   };
@@ -273,7 +330,6 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
     const updatedLogs = [...pointLogs, newLog];
     setPointLogs(updatedLogs);
 
-    // 세트 승리 조건 (21점 이상, 2점차, 혹은 30점 도달)
     let setWinner = null;
     if ((newT1 >= 21 || newT2 >= 21) && Math.abs(newT1 - newT2) >= 2) {
        if (newT1 > newT2) setWinner = 'team1'; else setWinner = 'team2';
@@ -284,7 +340,7 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
     if (setWinner) {
       if (setWinner === 'team1') newSet1++; else newSet2++;
       newT1 = 0; newT2 = 0;
-      setScoreHistory([]); // 세트 종료 시 되돌리기 초기화
+      setScoreHistory([]);
     }
 
     setTeam1Score(newT1); setTeam2Score(newT2);
@@ -315,6 +371,8 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
 
   const handleExitConfirm = (reason: 'injury' | 'etc' | 'cancel') => {
     setShowExitModal(false);
+    sendMessage({ type: 'GAME_END' });
+
     if (reason === 'cancel') {
         onCancel();
         return;
@@ -411,6 +469,16 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
         </View>
       </Modal>
 
+      {/* 워치 가이드 */}
+      {showWatchGuide && (
+        <Animated.View style={[styles.watchGuideContainer, { opacity: guideOpacity }]} pointerEvents="none">
+            <View style={styles.watchGuideContent}>
+                <Watch size={24} color="#34D399" />
+                <Text style={styles.watchGuideText}>워치 연결됨! 터치하여 득점 기록</Text>
+            </View>
+        </Animated.View>
+      )}
+
       <View style={styles.gameContainer}>
         {/* Team 1 Area */}
         <LinearGradient colors={['#6EE7B7', '#34D399']} style={styles.scoreArea}>
@@ -433,13 +501,23 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
                 <Text style={styles.bigScore}>{team2Score}</Text>
                 <View style={styles.playerBadge}><Text style={styles.playerName}>{team2Name || "TEAM 2"}</Text></View>
             </TouchableOpacity>
+
             <View style={styles.controlsBar}>
-                <TouchableOpacity onPress={handleUndo} style={styles.controlButtonSide} disabled={scoreHistory.length === 0}>
+                <TouchableOpacity
+                    onPress={handleUndo}
+                    style={styles.controlButtonSide}
+                    disabled={scoreHistory.length === 0}
+                    hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}
+                >
                     <RotateCcw size={28} color={scoreHistory.length === 0 ? "rgba(255,255,255,0.4)" : "white"} />
                     <Text style={[styles.controlLabel, scoreHistory.length === 0 && {opacity: 0.4}]}>되돌리기</Text>
                 </TouchableOpacity>
                 <View style={{flex: 1}} />
-                <TouchableOpacity onPress={() => setIsTimerRunning(!isTimerRunning)} style={styles.controlButtonSide}>
+                <TouchableOpacity
+                    onPress={() => setIsTimerRunning(!isTimerRunning)}
+                    style={styles.controlButtonSide}
+                    hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}
+                >
                     {isTimerRunning ? <Pause size={32} color="white" fill="white" /> : <Play size={32} color="white" fill="white" />}
                     <Text style={styles.controlLabel}>{isTimerRunning ? "일시정지" : "계속하기"}</Text>
                 </TouchableOpacity>
@@ -484,7 +562,7 @@ const styles = StyleSheet.create({
   setScoreContainerTop: { marginBottom: 20, alignItems: 'center', opacity: 0.9 },
   setScoreLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: 'bold', letterSpacing: 1 },
   setScoreValue: { color: 'white', fontSize: 32, fontWeight: 'bold' },
-  controlsBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', paddingHorizontal: 30, paddingBottom: 20, paddingTop: 10 },
+  controlsBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', paddingHorizontal: 30, paddingBottom: 40, paddingTop: 10 },
   controlButtonSide: { alignItems: 'center', gap: 4, minWidth: 60 },
   controlLabel: { color: 'white', fontSize: 12, fontWeight: '600' },
   // Modal Styles
@@ -499,5 +577,33 @@ const styles = StyleSheet.create({
   reasonTitle: { fontSize: 16, fontWeight: 'bold' },
   reasonDesc: { fontSize: 12, color: '#64748b' },
   resumeButton: { marginTop: 20, padding: 16, alignItems: 'center', backgroundColor: '#334155', borderRadius: 12 },
-  resumeButtonText: { color: 'white', fontWeight: 'bold' }
+  resumeButtonText: { color: 'white', fontWeight: 'bold' },
+  // Watch Guide Styles
+  watchGuideContainer: {
+    position: 'absolute',
+    top: 100, // 타이머 아래쪽 위치
+    alignSelf: 'center',
+    zIndex: 50,
+  },
+  watchGuideContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 30,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#34D399',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    elevation: 8,
+  },
+  watchGuideText: {
+    color: '#34D399',
+    fontWeight: 'bold',
+    fontSize: 14,
+  }
 });
