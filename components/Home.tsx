@@ -20,14 +20,12 @@ import {
   ImageSourcePropType
 } from 'react-native';
 import DatePicker from 'react-native-date-picker';
-import { Calendar as RNCalendar, LocaleConfig } from 'react-native-calendars';
-import LinearGradient from 'react-native-linear-gradient';
 import {
   Search,
   ChevronLeft,
   ChevronRight,
   Plus,
-  Calendar,
+  Calendar as CalendarIcon,
   MapPin,
   User,
   Users,
@@ -36,6 +34,8 @@ import {
   X,
   Megaphone
 } from 'lucide-react-native';
+import { Calendar as RNCalendar, LocaleConfig } from 'react-native-calendars';
+import LinearGradient from 'react-native-linear-gradient';
 import { MatchCard } from './MatchCard';
 import { RMRGuideModal } from './RMRGuideModal';
 
@@ -49,7 +49,7 @@ LocaleConfig.locales['kr'] = {
 };
 LocaleConfig.defaultLocale = 'kr';
 
-// --- Helper Types & Constants ---
+// --- 경기 정보 ---
 interface HostProfile {
   name: string;
   location: string;
@@ -66,7 +66,7 @@ const NOTICE_ITEMS = [
       badge: 'RMR 가이드',
       title: '단순 승패 그 이상',
       subtitle: '경기 내용까지 분석하는 RMR 시스템을 소개합니다.',
-      image: require('../assets/images/notice/notice_1.png') // 이미지 파일이 없다면 기존 이미지 사용 (파일명 확인 필요)
+      image: require('../assets/images/notice/notice_1.png')
   },
   {
       id: 2,
@@ -100,7 +100,7 @@ const NOTICE_ITEMS = [
       id: 6,
       badge: '경기 모드',
       title: '손목 위의 점수판',
-      subtitle: '흐름 끊김 없이, 워치로 점수를 기록하세요.',
+      subtitle: '경기 흐름 끊김 없이, 워치와 연동하여 점수를 편하게 기록하세요.',
       image: require('../assets/images/notice/notice_6.png')
   }
 ];
@@ -150,61 +150,48 @@ const SUB_REGIONS: { [key: string]: string[] } = {
 
 const getHolidays = () => ['2025-01-01', '2025-03-01', '2025-05-05', '2025-08-15', '2025-10-03', '2025-12-25'];
 
-// --- 2. 헬퍼 컴포넌트 ---
+// --- 2. 공지 컴포넌트 ---
 
 const NoticeSection = ({ onNoticePress }: { onNoticePress: () => void }) => {
   const scrollRef = useRef<ScrollView>(null);
   const screenWidth = Dimensions.get('window').width;
 
-  // UI에 표시될 현재 페이지 인덱스 (0 ~ NOTICE_ITEMS.length - 1)
   const [displayIndex, setDisplayIndex] = useState(0);
-
-  // 실제 스크롤 로직을 위한 인덱스 Ref (타이머 내에서 최신값 참조용)
   const scrollIndexRef = useRef(0);
 
-  // 무한 스크롤을 위해 마지막에 첫 번째 아이템 복제
   const extendedNotices = useMemo(() => {
     return [...NOTICE_ITEMS, { ...NOTICE_ITEMS[0], id: 'clone' }];
   }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      // 1. 다음 이동할 인덱스 계산
       let nextIndex = scrollIndexRef.current + 1;
 
-      // 2. 범위를 벗어나지 않도록 보정 (안전장치)
       if (nextIndex >= extendedNotices.length) {
         nextIndex = 0;
       }
 
-      // 3. 스크롤 이동
       scrollRef.current?.scrollTo({ x: nextIndex * screenWidth, animated: true });
       scrollIndexRef.current = nextIndex;
 
-      // 4. UI 인디케이터 업데이트 (복제본인 경우 0번 점 활성화)
       setDisplayIndex(nextIndex === extendedNotices.length - 1 ? 0 : nextIndex);
 
-      // 5. 무한 스크롤 리셋: 마지막(복제본)에 도달했다면 애니메이션 후 처음으로 조용히 이동
       if (nextIndex === extendedNotices.length - 1) {
         setTimeout(() => {
           scrollRef.current?.scrollTo({ x: 0, animated: false });
           scrollIndexRef.current = 0;
-          // 여기서 setDisplayIndex(0)은 이미 위에서 처리했으므로 생략 가능하나 확실히 하기 위해 둠
           setDisplayIndex(0);
-        }, 500); // 스크롤 애니메이션 시간(약 300~500ms) 얼추 맞춤
+        }, 500);
       }
     }, 4000);
 
     return () => clearInterval(interval);
   }, [screenWidth, extendedNotices.length]);
 
-  // 사용자가 수동으로 스크롤했을 때 동기화
   const onMomentumScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const index = Math.round(event.nativeEvent.contentOffset.x / screenWidth);
 
-    // 만약 끝까지 스크롤해서 복제본(마지막)에 도달했다면
     if (index === extendedNotices.length - 1) {
-      // 즉시 처음으로 되돌림 (사용자 모르게)
       scrollRef.current?.scrollTo({ x: 0, animated: false });
       scrollIndexRef.current = 0;
       setDisplayIndex(0);
@@ -221,7 +208,7 @@ const NoticeSection = ({ onNoticePress }: { onNoticePress: () => void }) => {
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={onMomentumScrollEnd} // 스크롤이 멈췄을 때만 처리 (버벅임 방지)
+        onMomentumScrollEnd={onMomentumScrollEnd}
         scrollEventThrottle={16}
       >
         {extendedNotices.map((item, index) => (
@@ -342,9 +329,7 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
   const [filterCount, setFilterCount] = useState<2 | 4 | '전체'>('전체');
   const [activeFilterTab, setActiveFilterTab] = useState<'date' | 'region' | 'gender' | 'count'>('date');
 
-  // 변경: selectedDate를 Date 객체로 관리하며, 초기값은 null로 설정 (아무 날짜도 선택되지 않음)
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  // 추가: 실시간 필터링을 위한 현재 시간 상태
   const [now, setNow] = useState(new Date());
 
   const [isModalVisible, setModalVisible] = useState(false);
@@ -372,7 +357,6 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
     { id: 2, type: 'request', title: '참가 신청', message: "'주말 배드민턴'에 이영희님이 참가를 희망합니다.", time: '10분 전' },
   ]);
 
-  // 실시간 시간 업데이트 (1분마다)
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(timer);
@@ -391,10 +375,8 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
   const displayMatches = useMemo(() => {
     return matches.filter(match => {
       const matchDate = parseMatchDateStr(match.date);
-      // 1. 이미 지난 경기 필터링 (실시간)
       if (matchDate <= now) return false;
 
-      // [추가된 로직] 검색 모드가 아니고 날짜가 선택되어 있으면 해당 날짜 경기만 표시
       if (!isSearching && selectedDate) {
         const isSameDay = matchDate.getFullYear() === selectedDate.getFullYear() &&
                           matchDate.getMonth() === selectedDate.getMonth() &&
@@ -402,7 +384,6 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
         if (!isSameDay) return false;
       }
 
-      // 2. 검색 모드일 때 필터링
       if (isSearching) {
         if (searchText && !match.title.toLowerCase().includes(searchText.toLowerCase()) && !match.location.toLowerCase().includes(searchText.toLowerCase())) return false;
         if (filterDate) {
@@ -464,11 +445,8 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
     const textColor = state === 'disabled' ? '#D1D5DB' : getDayTextColor(dateString);
     const hasMatch = calendarMarks[dateString]?.hasMatch;
 
-    // isToday check (using local date string)
     const isToday = dateString === getLocalDateString(new Date());
 
-    // Check if this date is the selectedDate
-    // Construct Date object for accurate comparison
     const currentDay = new Date(date.year, date.month - 1, date.day);
     const isSelected = selectedDate ? (
         selectedDate.getFullYear() === currentDay.getFullYear() &&
@@ -479,7 +457,6 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
     return (
       <TouchableOpacity
         onPress={() => {
-            // Select the date and close calendar
             setSelectedDate(currentDay);
             setCalendarModalVisible(false);
         }}
@@ -488,7 +465,7 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
         <View style={[
             styles.calendarDayTextContainer,
             isToday && styles.todayBackground,
-            isSelected && styles.dateButtonSelected // Use same green color for selection
+            isSelected && styles.dateButtonSelected
         ]}>
           <Text style={[
               styles.calendarDayText,
@@ -546,6 +523,20 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
 
   const renderListHeader = () => {
     if (isSearching) return null;
+
+    // 동적 너비 계산 로직 (7번째 날짜가 반쯤 보이도록)
+    const screenWidth = Dimensions.get('window').width;
+    const containerPadding = 24; // styles.dateSelectorContainer paddingHorizontal 12 * 2
+    const arrowButtonWidth = 32;
+    const arrowMargin = 8; // styles.calendarButton marginHorizontal 4 * 2
+    const scrollMarginRight = 10; // ScrollView style marginRight
+    const totalDeduction = containerPadding + arrowButtonWidth + arrowMargin + scrollMarginRight;
+
+    const visibleItems = 6.5; // 6.5 items visible
+    const gap = 10;
+    const availableWidth = screenWidth - totalDeduction;
+    const itemWidth = (availableWidth - (Math.floor(visibleItems) * gap)) / visibleItems;
+
     return (
       <View>
         <NoticeSection onNoticePress={() => setIsRmrGuideVisible(true)} />
@@ -554,10 +545,9 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
               horizontal
               showsHorizontalScrollIndicator={false}
               style={{ flex: 1, marginRight: 10 }}
-              contentContainerStyle={{ gap: 10, paddingRight: 10 }}
+              contentContainerStyle={{ gap: gap, paddingRight: 10 }}
             >
             {dates.map((item) => {
-                // 비교 로직 수정: selectedDate가 존재하고 날짜가 일치하는지 확인
                 const isSelected = selectedDate ? (
                     selectedDate.getFullYear() === item.fullDate.getFullYear() &&
                     selectedDate.getMonth() === item.fullDate.getMonth() &&
@@ -571,24 +561,31 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
                 <TouchableOpacity
                     key={dateStr}
                     onPress={() => {
-                        // 이미 선택된 날짜면 선택 해제(전체 보기), 아니면 선택
                         if (isSelected) setSelectedDate(null);
                         else setSelectedDate(item.fullDate);
                     }}
                     activeOpacity={0.7}
-                    style={[styles.dateButton, isSelected && styles.dateButtonSelected]}
+                    style={[
+                        styles.dateButton,
+                        isSelected && styles.dateButtonSelected,
+                        { width: itemWidth }
+                    ]}
                 >
                     <Text style={[styles.dateButtonDay, { color: isSelected ? 'white' : getDayTextColor(dateStr) }]}>{item.day}</Text>
                     <Text style={[styles.dateButtonLabel, isSelected && styles.dateButtonTextSelected]}>{item.label}</Text>
-                    {/* 추가: 경기가 있는 날짜에 초록색 점 표시 */}
                     {hasMatch && !isSelected && <View style={styles.sliderMatchDot} />}
                     {hasMatch && isSelected && <View style={[styles.sliderMatchDot, { backgroundColor: 'white' }]} />}
                 </TouchableOpacity>
                 );
             })}
             </ScrollView>
-            <TouchableOpacity style={styles.dateArrowButton} onPress={() => setCalendarModalVisible(true)}>
-                <Calendar size={20} color="white" />
+            {/* [수정] style 및 onPress 확인, hitSlop 추가 */}
+            <TouchableOpacity
+                style={styles.calendarButton}
+                onPress={() => setCalendarModalVisible(true)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+                <CalendarIcon size={20} color="white" />
             </TouchableOpacity>
         </View>
       </View>
@@ -688,7 +685,7 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
                     {activeFilterTab === 'date' && (
                         <View style={styles.filterRow}>
                             <TouchableOpacity style={styles.filterInputButton} onPress={() => { setDatePickerMode('filter'); setDatePickerVisible(true); }}>
-                                <Calendar size={18} color="#6B7280" />
+                                <CalendarIcon size={18} color="#6B7280" />
                                 <Text style={styles.modalInputText}>{filterDate ? formatDateSimple(filterDate) : '날짜 선택 (전체)'}</Text>
                             </TouchableOpacity>
                             {filterDate && <TouchableOpacity style={styles.resetBadge} onPress={() => setFilterDate(null)}><X size={12} color="white" /></TouchableOpacity>}
@@ -786,7 +783,7 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>새로운 방 생성</Text>
             <TextInput style={styles.modalInput} placeholder="모임 이름" placeholderTextColor="#9CA3AF" value={roomName} onChangeText={setRoomName} />
-            <TouchableOpacity style={styles.modalInputButton} onPress={() => { setDatePickerMode('create'); setDatePickerVisible(true); }}><Calendar size={18} color="#6B7280" /><Text style={styles.modalInputText}>{formatMatchDate(createDate)}</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.modalInputButton} onPress={() => { setDatePickerMode('create'); setDatePickerVisible(true); }}><CalendarIcon size={18} color="#6B7280" /><Text style={styles.modalInputText}>{formatMatchDate(createDate)}</Text></TouchableOpacity>
             <Text style={styles.modalLabel}>지역 선택</Text>
             <TouchableOpacity style={styles.modalInputButton} onPress={() => { setRegionModalMode('create'); setTempMainRegion(null); setIsRegionModalVisible(true); }}><MapPin size={18} color={createRegion ? '#1F2937' : '#6B7280'} /><Text style={[styles.modalInputText, !createRegion && styles.placeholderText]}>{createRegion || '시/도를 선택하세요'}</Text></TouchableOpacity>
             <Text style={styles.modalLabel}>상세 장소</Text>
@@ -850,9 +847,9 @@ const styles = StyleSheet.create({
   paginationDotActive: { backgroundColor: '#34D399', width: 18 },
 
   dateSelectorContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', paddingVertical: 16, paddingHorizontal: 12 },
-  dateArrowButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#1F2937', justifyContent: 'center', alignItems: 'center', marginHorizontal: 4 },
+  calendarButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#1F2937', justifyContent: 'center', alignItems: 'center', marginHorizontal: 4 },
   dateList: { flex: 1, flexDirection: 'row', justifyContent: 'space-around' },
-  dateButton: { alignItems: 'center', justifyContent: 'center', borderRadius: 22, width: 44, height: 48 },
+  dateButton: { alignItems: 'center', justifyContent: 'center', borderRadius: 22, height: 48 },
   dateButtonSelected: { backgroundColor: '#34D399' },
   dateButtonDay: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
   dateButtonLabel: { fontSize: 12, color: '#374151' },
