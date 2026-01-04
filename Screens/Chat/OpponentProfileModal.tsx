@@ -10,8 +10,10 @@ import {
   ImageSourcePropType,
   Alert
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+// 이모티콘 대체용 아이콘 추가
+import { MessageCircleMore, UserPlus, UserMinus, Siren, Ban } from 'lucide-react-native';
 
-// 데이터 타입 정의
 interface UserProfile {
   id: string;
   name: string;
@@ -27,47 +29,52 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   userProfile: UserProfile | null;
+  relationType: 'friend' | 'opponent';
 }
 
-const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile }) => {
+const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile, relationType = 'opponent' }) => {
+  const navigation = useNavigation<any>();
+
   if (!userProfile) return null;
 
-  // 신고 버튼 핸들러
-  const handleReport = () => {
-    Alert.alert(
-      "신고하기",
-      `${userProfile.name}님을 신고하시겠습니까?\n허위 신고 시 제재를 받을 수 있습니다.`,
-      [
-        { text: "취소", style: "cancel" },
-        {
-          text: "신고",
-          onPress: () => {
-            Alert.alert("신고 완료", "신고가 정상적으로 접수되었습니다.");
-            // 여기에 실제 신고 API 호출 로직 추가
-          }
-        }
-      ]
-    );
+  // 1:1 대화하기
+  const handleChat = () => {
+    onClose();
+    navigation.navigate('ChatRoom', {
+      title: userProfile.name,
+      opponentName: userProfile.name,
+      roomId: 'new_chat',
+    });
   };
 
-  // 차단 버튼 핸들러
+  // 친구 추가
+  const handleAddFriend = () => {
+    Alert.alert("친구 추가", `${userProfile.name}님을 친구로 추가했습니다.`);
+    onClose();
+  };
+
+  // 친구 삭제
+  const handleDeleteFriend = () => {
+    Alert.alert("친구 삭제", `${userProfile.name}님을 친구 목록에서 삭제하시겠습니까?`, [
+      { text: "취소", style: "cancel" },
+      { text: "삭제", style: "destructive", onPress: () => onClose() }
+    ]);
+  };
+
+  // 신고
+  const handleReport = () => {
+    Alert.alert("신고하기", `${userProfile.name}님을 신고하시겠습니까?`, [
+      { text: "취소", style: "cancel" },
+      { text: "신고", onPress: () => onClose() }
+    ]);
+  };
+
+  // 차단
   const handleBlock = () => {
-    Alert.alert(
-      "차단하기",
-      `${userProfile.name}님을 차단하시겠습니까?\n더 이상 서로의 메시지를 볼 수 없습니다.`,
-      [
-        { text: "취소", style: "cancel" },
-        {
-          text: "차단",
-          style: "destructive", // 아이폰에서 빨간색으로 표시됨
-          onPress: () => {
-            onClose(); // 모달 닫기
-            Alert.alert("차단 완료", "해당 사용자를 차단했습니다.");
-            // 여기에 실제 차단 API 호출 로직 추가
-          }
-        }
-      ]
-    );
+    Alert.alert("차단하기", `${userProfile.name}님을 차단하시겠습니까?`, [
+      { text: "취소", style: "cancel" },
+      { text: "차단", style: "destructive", onPress: () => onClose() }
+    ]);
   };
 
   return (
@@ -81,7 +88,7 @@ const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile }
         <View style={styles.modalOverlay}>
           <TouchableWithoutFeedback>
             <View style={styles.modalContent}>
-              {/* 프로필 이미지 & 이름 섹션 */}
+              {/* 프로필 섹션 */}
               <View style={styles.profileSection}>
                 <Image
                   source={userProfile.avatar}
@@ -95,37 +102,66 @@ const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile }
               <View style={styles.statsContainer}>
                 <View style={styles.statItem}>
                   <Text style={styles.statLabel}>티어</Text>
-                  <Text style={[styles.statValue, { color: '#00E0C6' }]}>{userProfile.tier}</Text>
+                  <Text style={[styles.statValue, { color: '#34D399' }]}>{userProfile.tier}</Text>
                 </View>
                 <View style={styles.divider} />
-
                 <View style={styles.statItem}>
                   <Text style={styles.statLabel}>승/패</Text>
                   <Text style={styles.statValue}>{userProfile.win}승 {userProfile.loss}패</Text>
                 </View>
                 <View style={styles.divider} />
-
                 <View style={styles.statItem}>
                   <Text style={styles.statLabel}>매너 점수</Text>
                   <Text style={styles.statValue}>{userProfile.mannerScore} / 5.0</Text>
                 </View>
               </View>
 
-              {/* 추가된 기능: 신고/차단 버튼 영역 */}
-              <View style={styles.actionRow}>
-                <TouchableOpacity style={styles.actionButton} onPress={handleReport}>
-                  <Text style={styles.reportText}>🚨 신고하기</Text>
-                </TouchableOpacity>
-                <View style={styles.actionDivider} />
-                <TouchableOpacity style={styles.actionButton} onPress={handleBlock}>
-                  <Text style={styles.blockText}>🚫 차단하기</Text>
-                </TouchableOpacity>
-              </View>
+              {/* 기능 버튼 영역 */}
+              <View style={styles.actionContainer}>
+                {relationType === 'friend' ? (
+                  // [친구 모드]
+                  <>
+                    <TouchableOpacity style={styles.mainActionButton} onPress={handleChat}>
+                      <View style={styles.iconRow}>
+                        <MessageCircleMore size={20} color="#064E3B" />
+                        <Text style={styles.mainActionText}>1:1 대화하기</Text>
+                      </View>
+                    </TouchableOpacity>
 
-              {/* 닫기 버튼 */}
-              <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-                <Text style={styles.closeButtonText}>닫기</Text>
-              </TouchableOpacity>
+                    <TouchableOpacity style={styles.subActionButton} onPress={handleDeleteFriend}>
+                      <View style={styles.iconRow}>
+                        <UserMinus size={18} color="#9CA3AF" />
+                        <Text style={styles.subActionText}>친구 삭제</Text>
+                      </View>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  // [상대방 모드]
+                  <>
+                    <TouchableOpacity style={styles.mainActionButton} onPress={handleAddFriend}>
+                      <View style={styles.iconRow}>
+                        <UserPlus size={20} color="#064E3B" />
+                        <Text style={styles.mainActionText}>친구 추가</Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    <View style={styles.secondaryRow}>
+                      <TouchableOpacity style={[styles.halfBtn, { marginRight: 8 }]} onPress={handleReport}>
+                        <View style={styles.iconRow}>
+                          <Siren size={18} color="#FFB74D" />
+                          <Text style={[styles.halfBtnText, { color: '#FFB74D' }]}>신고</Text>
+                        </View>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.halfBtn} onPress={handleBlock}>
+                        <View style={styles.iconRow}>
+                          <Ban size={18} color="#EF4444" />
+                          <Text style={[styles.halfBtnText, { color: '#EF4444' }]}>차단</Text>
+                        </View>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </View>
             </View>
           </TouchableWithoutFeedback>
         </View>
@@ -137,28 +173,30 @@ const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile }
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalContent: {
     width: '85%',
-    backgroundColor: '#1C1D2B',
-    borderRadius: 20,
-    padding: 25,
+    backgroundColor: '#1F2937',
+    borderRadius: 24,
+    padding: 24,
     alignItems: 'center',
-    elevation: 5,
+    elevation: 10,
   },
   profileSection: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
   },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    marginBottom: 10,
-    backgroundColor: '#333',
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    marginBottom: 16,
+    backgroundColor: '#374151',
+    borderWidth: 4,
+    borderColor: '#374151',
   },
   nameText: {
     fontSize: 22,
@@ -168,17 +206,17 @@ const styles = StyleSheet.create({
   },
   locationText: {
     fontSize: 14,
-    color: '#A0A0A0',
+    color: '#9CA3AF',
   },
   statsContainer: {
     flexDirection: 'row',
-    backgroundColor: '#25263A',
-    borderRadius: 15,
-    paddingVertical: 15,
+    backgroundColor: '#111827',
+    borderRadius: 16,
+    paddingVertical: 16,
     width: '100%',
     justifyContent: 'space-around',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
   },
   statItem: {
     alignItems: 'center',
@@ -186,66 +224,76 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 12,
-    color: '#888',
-    marginBottom: 5,
+    color: '#9CA3AF',
+    marginBottom: 6,
   },
   statValue: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#FFF',
+    fontWeight: '700',
+    color: '#F3F4F6',
   },
   divider: {
     width: 1,
     height: '60%',
-    backgroundColor: '#444',
+    backgroundColor: '#374151',
   },
 
-  // --- 새로 추가된 스타일 ---
-  actionRow: {
-    flexDirection: 'row',
+  // 버튼 스타일
+  actionContainer: {
+    width: '100%',
+  },
+  mainActionButton: {
+    width: '100%',
+    backgroundColor: '#34D399',
+    paddingVertical: 16,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
-    backgroundColor: '#25263A', // 통계 박스와 같은 배경색 사용 (통일감)
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    width: '100%',
+    marginBottom: 12,
+    elevation: 2,
   },
-  actionButton: {
-    padding: 5,
-    flex: 1, // 공간을 반반 차지하도록
+  iconRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 0, // 아이콘과 텍스트 사이 간격
   },
-  actionDivider: {
-    width: 1,
-    height: 15,
-    backgroundColor: '#444',
-    marginHorizontal: 10,
+  mainActionText: {
+    color: '#064E3B',
+    fontWeight: 'bold',
+    fontSize: 16,
+    marginLeft: 6,
   },
-  reportText: {
-    color: '#FFB800', // 노란색 계열 (주의)
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  blockText: {
-    color: '#FF4D4D', // 빨간색 계열 (위험/금지)
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  // -----------------------
-
-  closeButton: {
+  subActionButton: {
     width: '100%',
     paddingVertical: 12,
-    backgroundColor: '#333',
+    alignItems: 'center',
+    borderRadius: 12,
+    backgroundColor: '#111827',
+  },
+  subActionText: {
+    color: '#9CA3AF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  secondaryRow: {
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'space-between',
+  },
+  halfBtn: {
+    flex: 1,
+    backgroundColor: '#111827',
+    paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#374151',
   },
-  closeButtonText: {
-    color: '#FFF',
-    fontSize: 15,
-    fontWeight: 'bold',
+  halfBtnText: {
+    fontWeight: '600',
+    fontSize: 14,
+    marginLeft: 6,
   },
 });
 
