@@ -61,9 +61,48 @@ interface HostProfile {
 }
 
 const NOTICE_ITEMS = [
-  { id: 1, badge: 'RMR 가이드', title: '단순 승패 그 이상', subtitle: '경기 내용까지 분석하는 RMR 시스템을 소개합니다.', image: require('../assets/images/badminton_1.png') },
-  { id: 2, badge: '플레이 스타일', title: '나만의 강점을 찾으세요', subtitle: '지구력, 속도, 위기관리 등 다양한 지표를 분석해 드려요.', image: require('../assets/images/badminton_2.png') },
-  { id: 3, badge: '매너 플레이', title: '끝까지 최선을 다해주세요', subtitle: '강제 종료는 패배보다 더 큰 페널티를 받게 됩니다.', image: require('../assets/images/badminton_3.png') }
+  {
+      id: 1,
+      badge: 'RMR 가이드',
+      title: '단순 승패 그 이상',
+      subtitle: '경기 내용까지 분석하는 RMR 시스템을 소개합니다.',
+      image: require('../assets/images/notice/notice_1.png') // 이미지 파일이 없다면 기존 이미지 사용 (파일명 확인 필요)
+  },
+  {
+      id: 2,
+      badge: '플레이 스타일',
+      title: '나만의 강점을 찾으세요',
+      subtitle: '지구력, 속도, 위기관리 등 다양한 지표를 분석해 드려요.',
+      image: require('../assets/images/notice/notice_2.png')
+  },
+  {
+      id: 3,
+      badge: '매너 플레이',
+      title: '끝까지 최선을 다해주세요',
+      subtitle: '강제 종료는 패배보다 더 큰 페널티를 받게 됩니다.',
+      image: require('../assets/images/notice/notice_3.png')
+  },
+  {
+      id: 4,
+      badge: 'AI 분석',
+      title: '나만의 AI 코치',
+      subtitle: '스윙, 준비자세, 풋워크까지 스마트하게 훈련하세요.',
+      image: require('../assets/images/notice/notice_4.png')
+  },
+  {
+      id: 5,
+      badge: '장비 추천',
+      title: '나에게 딱 맞는 장비',
+      subtitle: '나의 데이터를 분석해 최적의 라켓을 제안해 드려요.',
+      image: require('../assets/images/notice/notice_5.png')
+  },
+  {
+      id: 6,
+      badge: '경기 모드',
+      title: '손목 위의 점수판',
+      subtitle: '흐름 끊김 없이, 워치로 점수를 기록하세요.',
+      image: require('../assets/images/notice/notice_6.png')
+  }
 ];
 
 const parseMatchDateStr = (dateStr: string): Date => {
@@ -113,43 +152,76 @@ const getHolidays = () => ['2025-01-01', '2025-03-01', '2025-05-05', '2025-08-15
 
 // --- 2. 헬퍼 컴포넌트 ---
 
-const HeroSection = ({ onNoticePress }: { onNoticePress: () => void }) => {
+const NoticeSection = ({ onNoticePress }: { onNoticePress: () => void }) => {
   const scrollRef = useRef<ScrollView>(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
   const screenWidth = Dimensions.get('window').width;
-  const extendedNotices = useMemo(() => [...NOTICE_ITEMS, { ...NOTICE_ITEMS[0], id: 'clone' }], []);
+
+  // UI에 표시될 현재 페이지 인덱스 (0 ~ NOTICE_ITEMS.length - 1)
+  const [displayIndex, setDisplayIndex] = useState(0);
+
+  // 실제 스크롤 로직을 위한 인덱스 Ref (타이머 내에서 최신값 참조용)
+  const scrollIndexRef = useRef(0);
+
+  // 무한 스크롤을 위해 마지막에 첫 번째 아이템 복제
+  const extendedNotices = useMemo(() => {
+    return [...NOTICE_ITEMS, { ...NOTICE_ITEMS[0], id: 'clone' }];
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      let nextIndex = currentIndex + 1;
-      scrollRef.current?.scrollTo({ x: nextIndex * screenWidth, animated: true });
-      setCurrentIndex(nextIndex);
+      // 1. 다음 이동할 인덱스 계산
+      let nextIndex = scrollIndexRef.current + 1;
 
-      if (nextIndex === NOTICE_ITEMS.length) {
+      // 2. 범위를 벗어나지 않도록 보정 (안전장치)
+      if (nextIndex >= extendedNotices.length) {
+        nextIndex = 0;
+      }
+
+      // 3. 스크롤 이동
+      scrollRef.current?.scrollTo({ x: nextIndex * screenWidth, animated: true });
+      scrollIndexRef.current = nextIndex;
+
+      // 4. UI 인디케이터 업데이트 (복제본인 경우 0번 점 활성화)
+      setDisplayIndex(nextIndex === extendedNotices.length - 1 ? 0 : nextIndex);
+
+      // 5. 무한 스크롤 리셋: 마지막(복제본)에 도달했다면 애니메이션 후 처음으로 조용히 이동
+      if (nextIndex === extendedNotices.length - 1) {
         setTimeout(() => {
           scrollRef.current?.scrollTo({ x: 0, animated: false });
-          setCurrentIndex(0);
-        }, 500);
+          scrollIndexRef.current = 0;
+          // 여기서 setDisplayIndex(0)은 이미 위에서 처리했으므로 생략 가능하나 확실히 하기 위해 둠
+          setDisplayIndex(0);
+        }, 500); // 스크롤 애니메이션 시간(약 300~500ms) 얼추 맞춤
       }
     }, 4000);
-    return () => clearInterval(interval);
-  }, [currentIndex, screenWidth]);
 
-  const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    return () => clearInterval(interval);
+  }, [screenWidth, extendedNotices.length]);
+
+  // 사용자가 수동으로 스크롤했을 때 동기화
+  const onMomentumScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const index = Math.round(event.nativeEvent.contentOffset.x / screenWidth);
-    if (index !== currentIndex && index < extendedNotices.length) {
-      setCurrentIndex(index);
+
+    // 만약 끝까지 스크롤해서 복제본(마지막)에 도달했다면
+    if (index === extendedNotices.length - 1) {
+      // 즉시 처음으로 되돌림 (사용자 모르게)
+      scrollRef.current?.scrollTo({ x: 0, animated: false });
+      scrollIndexRef.current = 0;
+      setDisplayIndex(0);
+    } else {
+      scrollIndexRef.current = index;
+      setDisplayIndex(index);
     }
   };
 
   return (
-    <View style={styles.heroContainer}>
+    <View style={styles.noticeContainer}>
       <ScrollView
         ref={scrollRef}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
-        onScroll={onScroll}
+        onMomentumScrollEnd={onMomentumScrollEnd} // 스크롤이 멈췄을 때만 처리 (버벅임 방지)
         scrollEventThrottle={16}
       >
         {extendedNotices.map((item, index) => (
@@ -159,15 +231,15 @@ const HeroSection = ({ onNoticePress }: { onNoticePress: () => void }) => {
             activeOpacity={0.95}
             style={{ width: screenWidth, height: 200 }}
           >
-            <Image source={item.image} style={styles.heroImage} resizeMode="cover" />
-            <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={styles.heroGradientOverlay}>
-              <View style={styles.heroBadge}>
+            <Image source={item.image} style={styles.noticeImage} resizeMode="cover" />
+            <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={styles.noticeGradientOverlay}>
+              <View style={styles.noticeBadge}>
                 <Megaphone size={12} color="white" />
-                <Text style={styles.heroBadgeText}>{item.badge}</Text>
+                <Text style={styles.noticeBadgeText}>{item.badge}</Text>
               </View>
               <View>
-                <Text style={styles.heroTitle}>{item.title}</Text>
-                <Text style={styles.heroSubtitle}>{item.subtitle}</Text>
+                <Text style={styles.noticeTitle}>{item.title}</Text>
+                <Text style={styles.noticeSubtitle}>{item.subtitle}</Text>
               </View>
             </LinearGradient>
           </TouchableOpacity>
@@ -177,7 +249,7 @@ const HeroSection = ({ onNoticePress }: { onNoticePress: () => void }) => {
         {NOTICE_ITEMS.map((_, index) => (
           <View
             key={index}
-            style={[styles.paginationDot, (currentIndex % NOTICE_ITEMS.length) === index && styles.paginationDotActive]}
+            style={[styles.paginationDot, displayIndex === index && styles.paginationDotActive]}
           />
         ))}
       </View>
@@ -244,14 +316,14 @@ const MatchHostModal = ({ visible, onClose, host, matchTitle }: { visible: boole
 
 // --- 3. Home 컴포넌트 ---
 const initialMatches = [
-  { id: 101, status: '모집 중', playerCount: '4명', title: '12월 송년 배드민턴', date: '2026년 3월 20일 18시 00분', location: '안양 호계체육관', region: '경기', gender: '무관', maxCount: 4, host: { name: '김민수', location: '안양시', tier: 'Silver 2', win: 15, loss: 8, mannerScore: 4.5, avatar: require('../assets/images/badminton_1.png') } },
-  { id: 102, status: '모집 중', playerCount: '2명', title: '2026 신년맞이 단식', date: '2026년 1월 10일 14시 00분', location: '수원 만석공원', region: '경기', gender: '남성', maxCount: 2, host: { name: '이영희', location: '수원시', tier: 'Gold 1', win: 42, loss: 12, mannerScore: 4.9, avatar: require('../assets/images/badminton_2.png') } },
-  { id: 103, status: '모집 중', playerCount: '4명', title: '서울 주말 아침 운동', date: '2026년 4월 21일 07시 00분', location: '서울 마곡 배드민턴장', region: '서울', gender: '무관', maxCount: 4, host: { name: '박철수', location: '서울 강서구', tier: 'Bronze 3', win: 5, loss: 5, mannerScore: 4.0, avatar: require('../assets/images/badminton_3.png') } },
-  { id: 104, status: '모집 중', playerCount: '4명', title: '강남 저녁 내기 게임', date: '2026년 5월 22일 19시 30분', location: '서울 강남구민회관', region: '서울', gender: '무관', maxCount: 4, host: { name: '최강남', location: '서울 강남구', tier: 'Gold 3', win: 60, loss: 40, mannerScore: 4.8, avatar: require('../assets/images/badminton_1.png') } },
-  { id: 105, status: '모집 중', playerCount: '2명', title: '성남 탄천 아침 단식', date: '2026년 6월 23일 06시 00분', location: '성남 탄천종합운동장', region: '경기', gender: '여성', maxCount: 2, host: { name: '정성남', location: '성남시 분당구', tier: 'Silver 1', win: 22, loss: 10, mannerScore: 5.0, avatar: require('../assets/images/badminton_2.png') } },
-  { id: 106, status: '모집 중', playerCount: '4명', title: '용인 수지 주말 번개', date: '2026년 4월 24일 14시 00분', location: '용인 수지체육공원', region: '경기', gender: '무관', maxCount: 4, host: { name: '한용인', location: '용인시 수지구', tier: 'Bronze 1', win: 2, loss: 8, mannerScore: 3.5, avatar: require('../assets/images/badminton_3.png') } },
-  { id: 107, status: '모집 중', playerCount: '4명', title: '인천 부평 퇴근 후 한판', date: '2026년 4월 26일 20시 00분', location: '인천 부평남부체육센터', region: '인천', gender: '남성', maxCount: 4, host: { name: '유인천', location: '인천 부평구', tier: 'Silver 3', win: 30, loss: 30, mannerScore: 4.2, avatar: require('../assets/images/badminton_1.png') } },
-  { id: 108, status: '모집 중', playerCount: '2명', title: '마포 고수분 모십니다', date: '2026년 5월 27일 10시 00분', location: '서울 마포구민체육센터', region: '서울', gender: '무관', maxCount: 2, host: { name: '임마포', location: '서울 마포구', tier: 'Platinum 4', win: 120, loss: 15, mannerScore: 4.9, avatar: require('../assets/images/badminton_2.png') } },
+  { id: 101, status: '모집 중', playerCount: '4명', title: '12월 송년 배드민턴', date: '2026년 3월 20일 18시 00분', location: '안양 호계체육관', region: '경기', gender: '무관', maxCount: 4, host: { name: '김민수', location: '안양시', tier: 'Silver 2', win: 15, loss: 8, mannerScore: 4.5, avatar: require('../assets/images/notice/notice_1.png') } },
+  { id: 102, status: '모집 중', playerCount: '2명', title: '2026 신년맞이 단식', date: '2026년 1월 10일 14시 00분', location: '수원 만석공원', region: '경기', gender: '남성', maxCount: 2, host: { name: '이영희', location: '수원시', tier: 'Gold 1', win: 42, loss: 12, mannerScore: 4.9, avatar: require('../assets/images/notice/notice_2.png') } },
+  { id: 103, status: '모집 중', playerCount: '4명', title: '서울 주말 아침 운동', date: '2026년 4월 21일 07시 00분', location: '서울 마곡 배드민턴장', region: '서울', gender: '무관', maxCount: 4, host: { name: '박철수', location: '서울 강서구', tier: 'Bronze 3', win: 5, loss: 5, mannerScore: 4.0, avatar: require('../assets/images/notice/notice_3.png') } },
+  { id: 104, status: '모집 중', playerCount: '4명', title: '강남 저녁 내기 게임', date: '2026년 5월 22일 19시 30분', location: '서울 강남구민회관', region: '서울', gender: '무관', maxCount: 4, host: { name: '최강남', location: '서울 강남구', tier: 'Gold 3', win: 60, loss: 40, mannerScore: 4.8, avatar: require('../assets/images/notice/notice_1.png') } },
+  { id: 105, status: '모집 중', playerCount: '2명', title: '성남 탄천 아침 단식', date: '2026년 6월 23일 06시 00분', location: '성남 탄천종합운동장', region: '경기', gender: '여성', maxCount: 2, host: { name: '정성남', location: '성남시 분당구', tier: 'Silver 1', win: 22, loss: 10, mannerScore: 5.0, avatar: require('../assets/images/notice/notice_2.png') } },
+  { id: 106, status: '모집 중', playerCount: '4명', title: '용인 수지 주말 번개', date: '2026년 4월 24일 14시 00분', location: '용인 수지체육공원', region: '경기', gender: '무관', maxCount: 4, host: { name: '한용인', location: '용인시 수지구', tier: 'Bronze 1', win: 2, loss: 8, mannerScore: 3.5, avatar: require('../assets/images/notice/notice_3.png') } },
+  { id: 107, status: '모집 중', playerCount: '4명', title: '인천 부평 퇴근 후 한판', date: '2026년 4월 26일 20시 00분', location: '인천 부평남부체육센터', region: '인천', gender: '남성', maxCount: 4, host: { name: '유인천', location: '인천 부평구', tier: 'Silver 3', win: 30, loss: 30, mannerScore: 4.2, avatar: require('../assets/images/notice/notice_1.png') } },
+  { id: 108, status: '모집 중', playerCount: '2명', title: '마포 고수분 모십니다', date: '2026년 5월 27일 10시 00분', location: '서울 마포구민체육센터', region: '서울', gender: '무관', maxCount: 2, host: { name: '임마포', location: '서울 마포구', tier: 'Platinum 4', win: 120, loss: 15, mannerScore: 4.9, avatar: require('../assets/images/notice/notice_2.png') } },
 ];
 
 export interface HomeProps {
@@ -270,8 +342,8 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
   const [filterCount, setFilterCount] = useState<2 | 4 | '전체'>('전체');
   const [activeFilterTab, setActiveFilterTab] = useState<'date' | 'region' | 'gender' | 'count'>('date');
 
-  // 변경: selectedDate를 Date 객체로 관리하여 정확한 날짜 비교
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  // 변경: selectedDate를 Date 객체로 관리하며, 초기값은 null로 설정 (아무 날짜도 선택되지 않음)
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   // 추가: 실시간 필터링을 위한 현재 시간 상태
   const [now, setNow] = useState(new Date());
 
@@ -321,6 +393,14 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
       const matchDate = parseMatchDateStr(match.date);
       // 1. 이미 지난 경기 필터링 (실시간)
       if (matchDate <= now) return false;
+
+      // [추가된 로직] 검색 모드가 아니고 날짜가 선택되어 있으면 해당 날짜 경기만 표시
+      if (!isSearching && selectedDate) {
+        const isSameDay = matchDate.getFullYear() === selectedDate.getFullYear() &&
+                          matchDate.getMonth() === selectedDate.getMonth() &&
+                          matchDate.getDate() === selectedDate.getDate();
+        if (!isSameDay) return false;
+      }
 
       // 2. 검색 모드일 때 필터링
       if (isSearching) {
@@ -383,11 +463,38 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
     const dateString = date.dateString;
     const textColor = state === 'disabled' ? '#D1D5DB' : getDayTextColor(dateString);
     const hasMatch = calendarMarks[dateString]?.hasMatch;
-    const isToday = dateString === new Date().toISOString().split('T')[0];
+
+    // isToday check (using local date string)
+    const isToday = dateString === getLocalDateString(new Date());
+
+    // Check if this date is the selectedDate
+    // Construct Date object for accurate comparison
+    const currentDay = new Date(date.year, date.month - 1, date.day);
+    const isSelected = selectedDate ? (
+        selectedDate.getFullYear() === currentDay.getFullYear() &&
+        selectedDate.getMonth() === currentDay.getMonth() &&
+        selectedDate.getDate() === currentDay.getDate()
+    ) : false;
+
     return (
-      <TouchableOpacity onPress={() => setCalendarModalVisible(false)} style={styles.calendarDayContainer}>
-        <View style={[styles.calendarDayTextContainer, isToday && styles.todayBackground]}>
-          <Text style={[styles.calendarDayText, { color: isToday ? 'white' : textColor }, (state === 'today') && { fontWeight: 'bold' }]}>{date.day}</Text>
+      <TouchableOpacity
+        onPress={() => {
+            // Select the date and close calendar
+            setSelectedDate(currentDay);
+            setCalendarModalVisible(false);
+        }}
+        style={styles.calendarDayContainer}
+      >
+        <View style={[
+            styles.calendarDayTextContainer,
+            isToday && styles.todayBackground,
+            isSelected && styles.dateButtonSelected // Use same green color for selection
+        ]}>
+          <Text style={[
+              styles.calendarDayText,
+              { color: (isToday || isSelected) ? 'white' : textColor },
+              (state === 'today') && { fontWeight: 'bold' }
+          ]}>{date.day}</Text>
         </View>
         {hasMatch && <View style={styles.matchDot} />}
       </TouchableOpacity>
@@ -412,7 +519,7 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
       region: createRegion || '기타',
       gender: createGender,
       maxCount: createCount,
-      host: { name: '나(본인)', location: createRegion || '미정', tier: 'Unranked', win: 0, loss: 0, mannerScore: 5.0, avatar: require('../assets/images/badminton_1.png') }
+      host: { name: '나(본인)', location: createRegion || '미정', tier: 'Unranked', win: 0, loss: 0, mannerScore: 5.0, avatar: require('../assets/images/notice/notice_1.png') }
     };
     setMatches(prev => [...prev, newMatch]);
     setModalVisible(false);
@@ -441,7 +548,7 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
     if (isSearching) return null;
     return (
       <View>
-        <HeroSection onNoticePress={() => setIsRmrGuideVisible(true)} />
+        <NoticeSection onNoticePress={() => setIsRmrGuideVisible(true)} />
         <View style={styles.dateSelectorContainer}>
             <ScrollView
               horizontal
@@ -450,16 +557,27 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
               contentContainerStyle={{ gap: 10, paddingRight: 10 }}
             >
             {dates.map((item) => {
-                // 비교 로직 수정: 날짜 객체끼리 비교 (년, 월, 일)
-                const isSelected = selectedDate.getFullYear() === item.fullDate.getFullYear() &&
-                                   selectedDate.getMonth() === item.fullDate.getMonth() &&
-                                   selectedDate.getDate() === item.fullDate.getDate();
+                // 비교 로직 수정: selectedDate가 존재하고 날짜가 일치하는지 확인
+                const isSelected = selectedDate ? (
+                    selectedDate.getFullYear() === item.fullDate.getFullYear() &&
+                    selectedDate.getMonth() === item.fullDate.getMonth() &&
+                    selectedDate.getDate() === item.fullDate.getDate()
+                ) : false;
+
                 const dateStr = getLocalDateString(item.fullDate);
-                // 추가: 해당 날짜에 경기가 있는지 확인
                 const hasMatch = calendarMarks[dateStr]?.hasMatch;
 
                 return (
-                <TouchableOpacity key={dateStr} onPress={() => setSelectedDate(item.fullDate)} activeOpacity={0.7} style={[styles.dateButton, isSelected && styles.dateButtonSelected]}>
+                <TouchableOpacity
+                    key={dateStr}
+                    onPress={() => {
+                        // 이미 선택된 날짜면 선택 해제(전체 보기), 아니면 선택
+                        if (isSelected) setSelectedDate(null);
+                        else setSelectedDate(item.fullDate);
+                    }}
+                    activeOpacity={0.7}
+                    style={[styles.dateButton, isSelected && styles.dateButtonSelected]}
+                >
                     <Text style={[styles.dateButtonDay, { color: isSelected ? 'white' : getDayTextColor(dateStr) }]}>{item.day}</Text>
                     <Text style={[styles.dateButtonLabel, isSelected && styles.dateButtonTextSelected]}>{item.label}</Text>
                     {/* 추가: 경기가 있는 날짜에 초록색 점 표시 */}
@@ -494,7 +612,7 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
     }
     const subRegions = SUB_REGIONS[tempMainRegion] || ['전체'];
     return (
-        <View style={{flex: 1}}>
+        <View style={{flex: 1, width: '100%'}}>
             <TouchableOpacity style={styles.regionHeaderBack} onPress={() => setTempMainRegion(null)}>
                 <ChevronLeft size={20} color="#374151" />
                 <Text style={styles.regionHeaderBackText}>{tempMainRegion} (다시 선택)</Text>
@@ -720,13 +838,13 @@ const styles = StyleSheet.create({
   filterInputButton: { flex: 1, backgroundColor: 'white', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#E5E7EB' },
   resetBadge: { backgroundColor: '#EF4444', borderRadius: 12, padding: 6, marginLeft: 8 },
 
-  heroContainer: { width: '100%', height: 200, position: 'relative', overflow: 'hidden' },
-  heroImage: { width: '100%', height: '100%' },
-  heroGradientOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, height: '70%', paddingHorizontal: 20, paddingBottom: 32, justifyContent: 'flex-end' },
-  heroBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#34D399', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 12, alignSelf: 'flex-start', marginBottom: 8, gap: 4 },
-  heroBadgeText: { color: 'white', fontSize: 11, fontWeight: 'bold' },
-  heroTitle: { color: 'white', fontSize: 20, fontWeight: 'bold', marginBottom: 4 },
-  heroSubtitle: { color: 'rgba(255,255,255,0.9)', fontSize: 14 },
+  noticeContainer: { width: '100%', height: 200, position: 'relative', overflow: 'hidden' },
+  noticeImage: { width: '100%', height: '100%' },
+  noticeGradientOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, height: '70%', paddingHorizontal: 20, paddingBottom: 32, justifyContent: 'flex-end' },
+  noticeBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#34D399', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 12, alignSelf: 'flex-start', marginBottom: 8, gap: 4 },
+  noticeBadgeText: { color: 'white', fontSize: 11, fontWeight: 'bold' },
+  noticeTitle: { color: 'white', fontSize: 20, fontWeight: 'bold', marginBottom: 4 },
+  noticeSubtitle: { color: 'rgba(255,255,255,0.9)', fontSize: 14 },
   paginationContainer: { position: 'absolute', bottom: 8, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 },
   paginationDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.4)' },
   paginationDotActive: { backgroundColor: '#34D399', width: 18 },
@@ -762,7 +880,7 @@ const styles = StyleSheet.create({
   modalAddButton: { backgroundColor: '#34D399', paddingVertical: 16, borderRadius: 8, alignItems: 'center', marginTop: 8 },
   modalAddButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
 
-  regionModalContent: { width: '100%', backgroundColor: 'white', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 32, maxHeight: '70%', minHeight: 400, marginTop: 'auto' },
+  regionModalContent: { width: '100%', backgroundColor: 'white', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 32, height: '70%', marginTop: 'auto' },
   regionItem: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 8 },
   regionItemText: { fontSize: 18, color: '#1F2937' },
   regionHeaderBack: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#E5E7EB', marginBottom: 8 },
