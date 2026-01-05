@@ -100,7 +100,7 @@ const NOTICE_ITEMS = [
       id: 6,
       badge: '경기 모드',
       title: '손목 위의 점수판',
-      subtitle: '경기 흐름 끊김 없이, 워치와 연동하여 점수를 편하게 기록하세요.',
+      subtitle: '흐름 끊김 없이, 워치로 점수를 편하게 기록하세요.',
       image: require('../assets/images/notice/notice_6.png')
   }
 ];
