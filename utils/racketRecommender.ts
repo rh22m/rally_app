@@ -21,18 +21,18 @@ export interface RacketRecommendation {
 }
 
 const RACKET_SPECS: Record<string, RacketDetail> = {
-  "요넥스 아스트록스 100ZZ": { id: "ast_100ZZ", name: "요넥스 아스트록스 100ZZ", weight: "3U, 4U", tension: "20-28 Lbs", features: ["하이퍼 슬림 샤프트", "부드러운 타구감", "파워풀한 연속 스매시"] },
-  "아펙스 Z-지글러": { id: "apx_ziggler", name: "아펙스 Z-지글러", weight: "4U", tension: "최대 38 Lbs", features: ["컴팩트 프레임", "고탄성 카본", "강력한 가성비 공격력"] },
-  "요넥스 아스트록스 77 프로": { id: "ast_77PRO", name: "요넥스 아스트록스 77 프로", weight: "4U", tension: "20-28 Lbs", features: ["플렉스 퓨즈 기술", "부드러운 타구감", "공격적 올라운더"] },
-  "빅터 스러스터 K 12": { id: "vic_K12", name: "빅터 스러스터 K 12", weight: "4U, 5U", tension: "최대 30 Lbs", features: ["헤드무게 중심", "입문자용 파워형", "빠른 복원력"] },
-  "요넥스 아크세이버 11 프로": { id: "acs_11PRO", name: "요넥스 아크세이버 11 프로", weight: "3U, 4U", tension: "20-28 Lbs", features: ["포켓팅 부스터", "정교한 컨트롤", "전통의 올라운드"] },
-  "빅터 드라이브X 7K": { id: "vic_7K", name: "빅터 드라이브X 7K", weight: "3U, 4U", tension: "최대 31 Lbs", features: ["안정적인 드라이브", "나노 포트 기술", "단단한 프레임"] },
-  "빅터 드라이브X 09": { id: "vic_09", name: "빅터 드라이브X 09", weight: "4U", tension: "최대 26 Lbs", features: ["부드러운 반발력", "편안한 핸들링", "안정적 수비"] },
-  "요넥스 머슬파워 29": { id: "mus_POW", name: "요넥스 머슬파워 29", weight: "3U", tension: "19-24 Lbs", features: ["머슬파워 프레임", "높은 내구성", "입문용 정석"] },
-  "요넥스 나노플레어 1000Z": { id: "nano_1000Z", name: "요넥스 나노플레어 1000Z", weight: "3U, 4U", tension: "20-28 Lbs", features: ["소닉 플레어 시스템", "최고속 스윙", "날카로운 드라이브"] },
-  "아펙스 나노 900 파워": { id: "nano_900POW", name: "아펙스 나노 900 파워", weight: "4U", tension: "최대 30 Lbs", features: ["경량 헤드 라이트", "빠른 반응성", "연속 수비 최적화"] },
-  "요넥스 나노플레어 700": { id: "nano_700", name: "요넥스 나노플레어 700", weight: "4U, 5U", tension: "20-28 Lbs", features: ["와이드 프레임", "피로도 감소", "국민 배드민턴 채"] },
-  "요넥스 나노플레어 001 어빌리티": { id: "nano_001", name: "요넥스 나노플레어 001 어빌리티", weight: "5U (초경량)", tension: "최대 27 Lbs", features: ["초보자용 경량형", "부드러운 조작", "손목 부담 최소화"] }
+  "요넥스 아스트록스 100ZZ": { id: "ast_100ZZ", name: "요넥스 아스트록스 100ZZ", weight: "3U (85-89g), 4U (80-84g)", tension: "20-28 Lbs", features: ["하이퍼 슬림 샤프트", "부드러운 타구감", "파워풀한 연속 스매시"] },
+  "아펙스 Z-지글러": { id: "apx_ziggler", name: "아펙스 Z-지글러", weight: "4U (80-84g)", tension: "최대 38 Lbs", features: ["컴팩트 프레임", "고탄성 카본", "강력한 가성비 공격력"] },
+  "요넥스 아스트록스 77 프로": { id: "ast_77PRO", name: "요넥스 아스트록스 77 프로", weight: "4U (80-84g)", tension: "20-28 Lbs", features: ["플렉스 퓨즈 기술", "부드러운 타구감", "공격적 올라운더"] },
+  "빅터 스러스터 K 12": { id: "vic_K12", name: "빅터 스러스터 K 12", weight: "4U (80-84g), 5U (75-79g)", tension: "최대 30 Lbs", features: ["헤드무게 중심", "입문자용 파워형", "빠른 복원력"] },
+  "요넥스 아크세이버 11 프로": { id: "acs_11PRO", name: "요넥스 아크세이버 11 프로", weight: "3U (85-89g), 4U (80-84g)", tension: "20-28 Lbs", features: ["포켓팅 부스터", "정교한 컨트롤", "전통의 올라운드"] },
+  "빅터 드라이브X 7K": { id: "vic_7K", name: "빅터 드라이브X 7K", weight: "3U (85-89g), 4U (80-84g)", tension: "최대 31 Lbs", features: ["안정적인 드라이브", "나노 포트 기술", "단단한 프레임"] },
+  "빅터 드라이브X 09": { id: "vic_09", name: "빅터 드라이브X 09", weight: "4U (80-84g)", tension: "최대 26 Lbs", features: ["부드러운 반발력", "편안한 핸들링", "안정적 수비"] },
+  "요넥스 머슬파워 29": { id: "mus_POW", name: "요넥스 머슬파워 29", weight: "3U (85-89g)", tension: "19-24 Lbs", features: ["머슬파워 프레임", "높은 내구성", "입문용 정석"] },
+  "요넥스 나노플레어 1000Z": { id: "nano_1000Z", name: "요넥스 나노플레어 1000Z", weight: "3U (85-89g), 4U (80-84g)", tension: "20-28 Lbs", features: ["소닉 플레어 시스템", "최고속 스윙", "날카로운 드라이브"] },
+  "아펙스 나노 900 파워": { id: "nano_900POW", name: "아펙스 나노 900 파워", weight: "4U (80-84g)", tension: "최대 30 Lbs", features: ["경량 헤드 라이트", "빠른 반응성", "연속 수비 최적화"] },
+  "요넥스 나노플레어 700": { id: "nano_700", name: "요넥스 나노플레어 700", weight: "4U (80-84g), 5U (75-79g)", tension: "20-28 Lbs", features: ["와이드 프레임", "피로도 감소", "국민 배드민턴 채"] },
+  "요넥스 나노플레어 001 어빌리티": { id: "nano_001", name: "요넥스 나노플레어 001 어빌리티", weight: "5U (75-79g, 초경량)", tension: "최대 27 Lbs", features: ["초보자용 경량형", "부드러운 조작", "손목 부담 최소화"] }
 };
 
 export const recommendRacket = (
