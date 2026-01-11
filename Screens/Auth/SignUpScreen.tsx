@@ -13,6 +13,8 @@ import {
   Modal,
   SafeAreaView,
   Dimensions,
+  FlatList,
+  Pressable,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import {
@@ -25,6 +27,8 @@ import {
   X,
   ChevronRight,
   Smartphone,
+  MapPin,
+  ChevronLeft, // [추가] 아이콘
 } from 'lucide-react-native';
 
 const { width, height } = Dimensions.get('window');
@@ -34,6 +38,27 @@ interface SignUpScreenProps {
   onGoToLogin: () => void;
   onSignUp: () => void;
 }
+
+// -----------------------------------------------------------------------------------------
+// [지역 데이터 상수] (Home.tsx와 동일하게 사용)
+// -----------------------------------------------------------------------------------------
+const MAIN_REGIONS = [
+  { label: '서울', value: '서울' },
+  { label: '경기', value: '경기' },
+  { label: '인천', value: '인천' },
+  { label: '강원', value: '강원' },
+  { label: '충청', value: '충청' },
+  { label: '전라', value: '전라' },
+  { label: '경상', value: '경상' },
+  { label: '제주', value: '제주' },
+];
+
+const SUB_REGIONS: { [key: string]: string[] } = {
+  '서울': ['강남구', '강동구', '강북구', '강서구', '관악구', '광진구', '구로구', '금천구', '노원구', '도봉구', '동대문구', '동작구', '마포구', '서대문구', '서초구', '성동구', '성북구', '송파구', '양천구', '영등포구', '용산구', '은평구', '종로구', '중구', '중랑구'],
+  '경기': ['수원시', '성남시', '고양시', '용인시', '부천시', '안산시', '안양시', '남양주시', '화성시', '평택시', '의정부시', '시흥시', '파주시', '광명시', '김포시', '군포시', '광주시', '이천시', '양주시', '오산시', '구리시', '안성시', '포천시', '의왕시', '하남시', '여주시', '양평군', '동두천시', '과천시', '가평군', '연천군'],
+  '인천': ['중구', '동구', '미추홀구', '연수구', '남동구', '부평구', '계양구', '서구', '강화군', '옹진군'],
+  '강원': ['전체'], '충청': ['전체'], '전라': ['전체'], '경상': ['전체'], '제주': ['전체']
+};
 
 // -----------------------------------------------------------------------------------------
 // [실제 효력이 있는 수준의 약관 데이터 예시]
@@ -52,7 +77,7 @@ const LEGAL_TEXTS = {
 
   privacy: `1. 개인정보 수집 항목
 회사는 회원가입, 서비스 이용 등을 위해 아래와 같은 개인정보를 수집합니다.
-- 필수항목: 이메일 주소, 비밀번호, 닉네임, 휴대폰 번호, 생년월일
+- 필수항목: 이메일 주소, 비밀번호, 닉네임, 휴대폰 번호, 생년월일, 활동 지역, 성별
 - 선택항목: 프로필 사진, 구력 정보, 선호 시간대
 
 2. 개인정보의 수집 및 이용목적
@@ -75,8 +100,6 @@ const LEGAL_TEXTS = {
 
 // -----------------------------------------------------------------------------------------
 // [가상 본인인증 모듈 HTML]
-// 실제 PG사(NICE, KG이니시스 등) 연동 시에는 해당 업체의 URL을 사용해야 합니다.
-// 여기서는 WebView가 정상 작동함을 보여주기 위해 가상의 인증 화면을 렌더링합니다.
 // -----------------------------------------------------------------------------------------
 const MOCK_VERIFICATION_HTML = `
 <!DOCTYPE html>
@@ -105,7 +128,6 @@ const MOCK_VERIFICATION_HTML = `
 
   <script>
     function verify() {
-      // 1초 뒤 인증 성공으로 간주하고 React Native로 메시지 전송
       setTimeout(() => {
         if (window.ReactNativeWebView) {
           window.ReactNativeWebView.postMessage(JSON.stringify({
@@ -153,7 +175,7 @@ const StepIndicator = ({ currentStep }: { currentStep: number }) => (
 );
 
 // -------------------------------------------------------------------------
-// 1단계: 약관 동의 (모달 적용)
+// 1단계: 약관 동의
 // -------------------------------------------------------------------------
 const Step1_TOS = ({ onNext }: { onNext: () => void }) => {
   const [agreeAll, setAgreeAll] = useState(false);
@@ -197,7 +219,6 @@ const Step1_TOS = ({ onNext }: { onNext: () => void }) => {
 
       <View style={styles.divider} />
 
-      {/* 이용약관 */}
       <View style={styles.termRow}>
         <TouchableOpacity
           style={styles.termCheckArea}
@@ -213,7 +234,6 @@ const Step1_TOS = ({ onNext }: { onNext: () => void }) => {
         </TouchableOpacity>
       </View>
 
-      {/* 개인정보 처리방침 */}
       <View style={styles.termRow}>
         <TouchableOpacity
           style={styles.termCheckArea}
@@ -229,7 +249,6 @@ const Step1_TOS = ({ onNext }: { onNext: () => void }) => {
         </TouchableOpacity>
       </View>
 
-      {/* 위치정보 이용약관 */}
       <View style={styles.termRow}>
         <TouchableOpacity
           style={styles.termCheckArea}
@@ -253,7 +272,6 @@ const Step1_TOS = ({ onNext }: { onNext: () => void }) => {
         <Text style={styles.buttonText}>다음</Text>
       </TouchableOpacity>
 
-      {/* 약관 상세 모달 */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -285,14 +303,13 @@ const Step1_TOS = ({ onNext }: { onNext: () => void }) => {
 };
 
 // -------------------------------------------------------------------------
-// 2단계: 휴대폰 본인인증 (웹뷰 모듈 연동 방식)
+// 2단계: 휴대폰 본인인증
 // -------------------------------------------------------------------------
 const Step2_PhoneVerify = ({ onNext }: { onNext: () => void }) => {
   const [isVerified, setIsVerified] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [showWebView, setShowWebView] = useState(false);
 
-  // 웹뷰로부터 메시지 수신 (인증 결과)
   const handleWebViewMessage = (event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
@@ -302,7 +319,7 @@ const Step2_PhoneVerify = ({ onNext }: { onNext: () => void }) => {
         setShowWebView(false);
         Alert.alert('인증 성공', '본인인증이 완료되었습니다.');
       } else {
-        setShowWebView(false); // 취소 시 닫기
+        setShowWebView(false);
       }
     } catch (e) {
       console.log('Verification parse error', e);
@@ -314,7 +331,6 @@ const Step2_PhoneVerify = ({ onNext }: { onNext: () => void }) => {
       <Text style={styles.title}>본인 인증</Text>
       <Text style={styles.subtitle}>안전한 매칭을 위해 본인인증을 진행합니다.</Text>
 
-      {/* 인증 상태 표시 */}
       <View style={[styles.inputContainer, isVerified && styles.inputVerified]}>
         <Phone size={20} color={isVerified ? "#34D399" : "#9CA3AF"} style={styles.inputIcon} />
         <TextInput
@@ -347,7 +363,6 @@ const Step2_PhoneVerify = ({ onNext }: { onNext: () => void }) => {
         <Text style={styles.buttonText}>다음</Text>
       </TouchableOpacity>
 
-      {/* [개발자용] 건너뛰기 버튼 */}
       <TouchableOpacity
         style={styles.skipButton}
         onPress={() => {
@@ -359,7 +374,6 @@ const Step2_PhoneVerify = ({ onNext }: { onNext: () => void }) => {
         <Text style={styles.linkText}>[개발용] 본인인증 건너뛰기</Text>
       </TouchableOpacity>
 
-      {/* 본인인증 웹뷰 모달 */}
       <Modal
         visible={showWebView}
         animationType="slide"
@@ -373,7 +387,7 @@ const Step2_PhoneVerify = ({ onNext }: { onNext: () => void }) => {
             </TouchableOpacity>
           </View>
           <WebView
-            source={{ html: MOCK_VERIFICATION_HTML }} // 실제 앱에서는 PG사 URL 사용
+            source={{ html: MOCK_VERIFICATION_HTML }}
             style={{ flex: 1 }}
             onMessage={handleWebViewMessage}
             javaScriptEnabled={true}
@@ -385,7 +399,7 @@ const Step2_PhoneVerify = ({ onNext }: { onNext: () => void }) => {
 };
 
 // -------------------------------------------------------------------------
-// 3단계: 계정 정보 (기존 유지)
+// 3단계: 계정 정보 (지역 선택 수정됨: 모달 기반 선택)
 // -------------------------------------------------------------------------
 const Step3_AccountInfo = ({ onNext }: { onNext: (data: any) => void }) => {
   const [email, setEmail] = useState('');
@@ -393,38 +407,157 @@ const Step3_AccountInfo = ({ onNext }: { onNext: (data: any) => void }) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  // 지역 선택 상태
+  const [region, setRegion] = useState(''); // 최종 선택값 (예: 서울 강남구)
+  const [gender, setGender] = useState<'남성' | '여성' | null>(null);
+
+  // 지역 모달 관련 상태
+  const [isRegionModalVisible, setIsRegionModalVisible] = useState(false);
+  const [tempMainRegion, setTempMainRegion] = useState<string | null>(null);
+
   const handleNext = () => {
     if (password !== confirmPassword) {
       Alert.alert('오류', '비밀번호가 일치하지 않습니다.');
       return;
     }
-    if (!email || !nickname || !password) {
+    if (!email || !nickname || !password || !region || !gender) {
       Alert.alert('오류', '모든 정보를 입력해주세요.');
       return;
     }
-    onNext({ email, nickname });
+    onNext({ email, nickname, region, gender });
+  };
+
+  const handleRegionItemPress = (itemValue: string) => {
+    if (!tempMainRegion) {
+      // 1단계: 시/도 선택
+      setTempMainRegion(itemValue);
+    } else {
+      // 2단계: 시/군/구 선택
+      const finalRegion = itemValue === '전체' ? tempMainRegion : `${tempMainRegion} ${itemValue}`;
+      setRegion(finalRegion);
+      setIsRegionModalVisible(false);
+      setTempMainRegion(null);
+    }
+  };
+
+  const renderRegionList = () => {
+    if (!tempMainRegion) {
+      // 메인 지역 리스트 렌더링
+      return (
+        <FlatList
+          data={MAIN_REGIONS}
+          keyExtractor={(item) => item.value}
+          renderItem={({ item }) => (
+            <TouchableOpacity style={styles.regionItem} onPress={() => handleRegionItemPress(item.value)}>
+              <Text style={styles.regionItemText}>{item.label}</Text>
+              <ChevronRight size={16} color="#D1D5DB" />
+            </TouchableOpacity>
+          )}
+        />
+      );
+    }
+
+    // 상세 지역 리스트 렌더링
+    const subRegions = SUB_REGIONS[tempMainRegion] || ['전체'];
+    return (
+      <View style={{flex: 1, width: '100%'}}>
+        <TouchableOpacity style={styles.regionHeaderBack} onPress={() => setTempMainRegion(null)}>
+          <ChevronLeft size={20} color="#374151" />
+          <Text style={styles.regionHeaderBackText}>{tempMainRegion} (다시 선택)</Text>
+        </TouchableOpacity>
+        <FlatList
+          data={subRegions}
+          keyExtractor={(item) => item}
+          renderItem={({ item }) => (
+            <TouchableOpacity style={styles.regionItem} onPress={() => handleRegionItemPress(item)}>
+              <Text style={styles.regionItemText}>
+                {item === '전체' ? `${tempMainRegion} 전체` : item}
+              </Text>
+            </TouchableOpacity>
+          )}
+        />
+      </View>
+    );
   };
 
   return (
     <>
       <Text style={styles.title}>계정 정보</Text>
-      <Text style={styles.subtitle}>로그인에 사용할 계정 정보를 입력하세요.</Text>
+      <Text style={styles.subtitle}>로그인 정보와 프로필을 완성해주세요.</Text>
 
       <View style={styles.inputContainer}>
         <Mail size={20} color="#9CA3AF" style={styles.inputIcon} />
-        <TextInput style={styles.input} placeholder="이메일" placeholderTextColor="#9CA3AF" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+        <TextInput
+          style={styles.input}
+          placeholder="이메일"
+          placeholderTextColor="#9CA3AF"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
       </View>
+
       <View style={styles.inputContainer}>
         <User size={20} color="#9CA3AF" style={styles.inputIcon} />
-        <TextInput style={styles.input} placeholder="닉네임" placeholderTextColor="#9CA3AF" value={nickname} onChangeText={setNickname} />
+        <TextInput
+          style={styles.input}
+          placeholder="닉네임"
+          placeholderTextColor="#9CA3AF"
+          value={nickname}
+          onChangeText={setNickname}
+        />
+      </View>
+
+      {/* [수정] 활동 지역 선택 (TouchableOpacity로 변경) */}
+      <TouchableOpacity
+        style={styles.inputContainer}
+        onPress={() => { setTempMainRegion(null); setIsRegionModalVisible(true); }}
+      >
+        <MapPin size={20} color={region ? "#34D399" : "#9CA3AF"} style={styles.inputIcon} />
+        <Text style={[styles.inputText, !region && styles.placeholderText]}>
+          {region || "주 활동 지역 선택"}
+        </Text>
+        <ChevronRight size={20} color="#6B7280" />
+      </TouchableOpacity>
+
+      {/* 성별 선택 */}
+      <View style={styles.genderContainer}>
+        <TouchableOpacity
+          style={[styles.genderButton, gender === '남성' && styles.genderButtonSelected]}
+          onPress={() => setGender('남성')}
+        >
+          <Text style={[styles.genderText, gender === '남성' && styles.genderTextSelected]}>남성</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.genderButton, gender === '여성' && styles.genderButtonSelected]}
+          onPress={() => setGender('여성')}
+        >
+          <Text style={[styles.genderText, gender === '여성' && styles.genderTextSelected]}>여성</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.inputContainer}>
+        <Lock size={20} color="#9CA3AF" style={styles.inputIcon} />
+        <TextInput
+          style={styles.input}
+          placeholder="비밀번호"
+          placeholderTextColor="#9CA3AF"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+        />
       </View>
       <View style={styles.inputContainer}>
         <Lock size={20} color="#9CA3AF" style={styles.inputIcon} />
-        <TextInput style={styles.input} placeholder="비밀번호" placeholderTextColor="#9CA3AF" value={password} onChangeText={setPassword} secureTextEntry />
-      </View>
-      <View style={styles.inputContainer}>
-        <Lock size={20} color="#9CA3AF" style={styles.inputIcon} />
-        <TextInput style={styles.input} placeholder="비밀번호 확인" placeholderTextColor="#9CA3AF" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry />
+        <TextInput
+          style={styles.input}
+          placeholder="비밀번호 확인"
+          placeholderTextColor="#9CA3AF"
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          secureTextEntry
+        />
       </View>
 
       <TouchableOpacity style={styles.button} onPress={handleNext}>
@@ -433,16 +566,31 @@ const Step3_AccountInfo = ({ onNext }: { onNext: (data: any) => void }) => {
 
       <TouchableOpacity
         style={styles.skipButton}
-        onPress={() => onNext({ email: 'dev@test.com', nickname: '개발용' })}
+        onPress={() => onNext({ email: 'dev@test.com', nickname: '개발용', region: '서울 강남구', gender: '남성' })}
       >
         <Text style={styles.linkText}>[개발용] 계정정보 건너뛰기</Text>
       </TouchableOpacity>
+
+      {/* 지역 선택 모달 */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={isRegionModalVisible}
+        onRequestClose={() => setIsRegionModalVisible(false)}
+      >
+        <Pressable style={styles.regionModalOverlay} onPress={() => setIsRegionModalVisible(false)}>
+          <Pressable style={styles.regionModalContent} onPress={() => {}}>
+            <Text style={styles.regionModalTitle}>지역 선택</Text>
+            {renderRegionList()}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </>
   );
 };
 
 // -------------------------------------------------------------------------
-// 4단계: RMR 초기 평가 (기존 유지)
+// 4단계: RMR 초기 평가
 // -------------------------------------------------------------------------
 const Step4_RMRQuiz = ({ onComplete }: { onComplete: () => void }) => {
   const [answer1, setAnswer1] = useState<string | null>(null);
@@ -491,6 +639,7 @@ export default function SignUpScreen({ onGoToLogin, onSignUp }: SignUpScreenProp
 
   const handleComplete = () => {
     console.log("최종 회원가입 데이터:", signUpData);
+    // 실제 앱에서는 여기서 API 호출하여 회원가입 정보(signUpData) 전송
     onSignUp();
   };
 
@@ -547,6 +696,16 @@ const styles = StyleSheet.create({
   inputVerified: { borderColor: '#34D399', borderWidth: 1 },
   inputIcon: { marginRight: 12 },
   input: { flex: 1, paddingVertical: 14, fontSize: 16, color: 'white' },
+  // [추가] Text-based Input 스타일 (TouchableOpacity 용)
+  inputText: { flex: 1, paddingVertical: 14, fontSize: 16, color: 'white' },
+  placeholderText: { color: '#9CA3AF' },
+
+  // Gender Selection
+  genderContainer: { flexDirection: 'row', width: '100%', gap: 12, marginBottom: 16 },
+  genderButton: { flex: 1, backgroundColor: '#374151', borderRadius: 8, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: '#374151' },
+  genderButtonSelected: { backgroundColor: '#1F2937', borderColor: '#34D399' },
+  genderText: { fontSize: 16, color: '#9CA3AF', fontWeight: '500' },
+  genderTextSelected: { color: '#34D399', fontWeight: 'bold' },
 
   button: { backgroundColor: '#34D399', borderRadius: 8, width: '100%', paddingVertical: 16, alignItems: 'center', marginTop: 16 },
   buttonText: { color: '#111827', fontSize: 16, fontWeight: 'bold' },
@@ -569,7 +728,7 @@ const styles = StyleSheet.create({
   checkLabel: { fontSize: 16, color: 'white' },
   checkLink: { fontSize: 14, color: '#9CA3AF', textDecorationLine: 'underline', padding: 4 },
 
-  // Modal
+  // Modal (Terms & Region Common)
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { width: '85%', height: '70%', backgroundColor: '#1F2937', borderRadius: 12, padding: 20 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#374151' },
@@ -578,6 +737,15 @@ const styles = StyleSheet.create({
   modalText: { color: '#D1D5DB', lineHeight: 22 },
   modalButton: { backgroundColor: '#34D399', borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
   modalButtonText: { color: '#111827', fontWeight: 'bold', fontSize: 16 },
+
+  // [추가] Region Modal Specific
+  regionModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  regionModalContent: { width: '100%', height: '60%', backgroundColor: 'white', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 32 },
+  regionModalTitle: { fontSize: 22, fontWeight: 'bold', color: '#1F2937', marginBottom: 20, textAlign: 'center' },
+  regionItem: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 },
+  regionItemText: { fontSize: 18, color: '#1F2937' },
+  regionHeaderBack: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB', marginBottom: 8 },
+  regionHeaderBackText: { fontSize: 16, fontWeight: 'bold', color: '#374151', marginLeft: 8 },
 
   // Step 2 (Verification)
   verifyButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'white', borderRadius: 8, paddingVertical: 14, width: '100%', marginBottom: 10 },
