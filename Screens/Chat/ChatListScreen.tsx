@@ -9,9 +9,14 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  Modal,
+  TextInput,
+  Pressable,
+  KeyboardAvoidingView,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Users, MessageCircle } from 'lucide-react-native';
+import { Users, MessageCircle, Plus, X, Search, Phone } from 'lucide-react-native';
 import OpponentProfileModal from './OpponentProfileModal';
 
 if (Platform.OS === 'android') {
@@ -86,6 +91,11 @@ export default function ChatListScreen() {
   const [isModalVisible, setModalVisible] = useState(false);
   const [modalType, setModalType] = useState<'friend' | 'opponent'>('opponent');
 
+  // 친구 추가 모달 상태
+  const [isAddFriendVisible, setAddFriendVisible] = useState(false);
+  const [addFriendMode, setAddFriendMode] = useState<'nickname' | 'phone'>('nickname');
+  const [addFriendInput, setAddFriendInput] = useState('');
+
   const toggleViewMode = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setViewMode((prev) => (prev === 'chat' ? 'friends' : 'chat'));
@@ -103,6 +113,22 @@ export default function ChatListScreen() {
       title: room.matchTitle,
       opponentName: room.opponentName,
     });
+  };
+
+  // 친구 추가 로직
+  const handleAddFriend = () => {
+    if (!addFriendInput.trim()) {
+      Alert.alert('알림', '정보를 입력해주세요.');
+      return;
+    }
+    Alert.alert(
+      '친구 추가',
+      `${addFriendMode === 'nickname' ? '닉네임' : '전화번호'} '${addFriendInput}'님에게 친구 요청을 보냈습니다.`,
+      [{ text: '확인', onPress: () => {
+          setAddFriendVisible(false);
+          setAddFriendInput('');
+      }}]
+    );
   };
 
   return (
@@ -126,7 +152,7 @@ export default function ChatListScreen() {
       {/* 컨텐츠 영역 */}
       <ScrollView
         style={styles.listContainer}
-        contentContainerStyle={{ paddingBottom: 20 }}
+        contentContainerStyle={{ paddingBottom: 100 }}
       >
         {viewMode === 'chat' ? (
           CHAT_ROOMS.map((room) => (
@@ -177,6 +203,17 @@ export default function ChatListScreen() {
         )}
       </ScrollView>
 
+      {/* 친구 추가 FAB (친구 목록 화면에서만 표시) */}
+      {viewMode === 'friends' && (
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() => setAddFriendVisible(true)}
+          activeOpacity={0.8}
+        >
+          <Plus size={28} color="white" />
+        </TouchableOpacity>
+      )}
+
       {/* 공용 프로필 모달 */}
       <OpponentProfileModal
         visible={isModalVisible}
@@ -184,6 +221,61 @@ export default function ChatListScreen() {
         userProfile={selectedProfile}
         relationType={modalType}
       />
+
+      {/* 친구 추가 모달 */}
+      <Modal
+         animationType="fade"
+         transparent={true}
+         visible={isAddFriendVisible}
+         onRequestClose={() => setAddFriendVisible(false)}
+       >
+         <Pressable style={styles.modalBackdrop} onPress={() => setAddFriendVisible(false)}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              style={{width: '100%', alignItems: 'center'}}
+            >
+             <Pressable style={styles.addFriendModalContent} onPress={() => {}}>
+               <View style={styles.modalHeader}>
+                 <Text style={styles.modalTitle}>친구 추가</Text>
+                 <TouchableOpacity onPress={() => setAddFriendVisible(false)}>
+                   <X size={24} color="#9CA3AF" />
+                 </TouchableOpacity>
+               </View>
+
+               <View style={styles.tabContainer}>
+                 <TouchableOpacity
+                   style={[styles.tabButton, addFriendMode === 'nickname' && styles.tabButtonActive]}
+                   onPress={() => setAddFriendMode('nickname')}
+                 >
+                   <Text style={[styles.tabText, addFriendMode === 'nickname' && styles.tabTextActive]}>닉네임</Text>
+                 </TouchableOpacity>
+                 <TouchableOpacity
+                   style={[styles.tabButton, addFriendMode === 'phone' && styles.tabButtonActive]}
+                   onPress={() => setAddFriendMode('phone')}
+                 >
+                   <Text style={[styles.tabText, addFriendMode === 'phone' && styles.tabTextActive]}>전화번호</Text>
+                 </TouchableOpacity>
+               </View>
+
+               <View style={styles.inputContainer}>
+                 {addFriendMode === 'nickname' ? <Search size={20} color="#9CA3AF" /> : <Phone size={20} color="#9CA3AF" />}
+                 <TextInput
+                   style={styles.input}
+                   placeholder={addFriendMode === 'nickname' ? "닉네임을 입력하세요" : "전화번호를 입력하세요"}
+                   placeholderTextColor="#6B7280"
+                   value={addFriendInput}
+                   onChangeText={setAddFriendInput}
+                   keyboardType={addFriendMode === 'phone' ? 'phone-pad' : 'default'}
+                 />
+               </View>
+
+               <TouchableOpacity style={styles.addButton} onPress={handleAddFriend}>
+                 <Text style={styles.addButtonText}>추가</Text>
+               </TouchableOpacity>
+             </Pressable>
+            </KeyboardAvoidingView>
+         </Pressable>
+       </Modal>
     </View>
   );
 }
@@ -296,6 +388,98 @@ const styles = StyleSheet.create({
   unreadText: {
     color: 'white',
     fontSize: 10,
+    fontWeight: 'bold',
+  },
+  // --- FAB 스타일 (친구 추가 버튼) ---
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#34D399',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 8,
+  },
+  // --- 친구 추가 모달 스타일 ---
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addFriendModalContent: {
+    width: '85%',
+    backgroundColor: '#1F2937',
+    borderRadius: 16,
+    padding: 24,
+    elevation: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    marginBottom: 20,
+    backgroundColor: '#374151',
+    borderRadius: 8,
+    padding: 4,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 6,
+  },
+  tabButtonActive: {
+    backgroundColor: '#111827',
+  },
+  tabText: {
+    color: '#9CA3AF',
+    fontWeight: '500',
+  },
+  tabTextActive: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#374151',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    marginBottom: 24,
+  },
+  input: {
+    flex: 1,
+    paddingVertical: 14,
+    marginLeft: 12,
+    color: 'white',
+    fontSize: 16,
+  },
+  addButton: {
+    backgroundColor: '#34D399',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  addButtonText: {
+    color: 'white',
+    fontSize: 16,
     fontWeight: 'bold',
   },
 });
