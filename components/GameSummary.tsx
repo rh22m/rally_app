@@ -451,7 +451,7 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
 
           <View style={styles.bottomSection}>
             <TouchableOpacity style={styles.nextButton} onPress={onNext}>
-              <Text style={styles.nextButtonText}>확인</Text>
+              <Text style={styles.nextButtonText}>다음</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>

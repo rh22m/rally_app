@@ -35,6 +35,7 @@ import { Home } from './components/Home';
 import { BottomNav } from './components/BottomNav';
 import { ScoreTracker } from './components/ScoreTracker';
 import { GameSummary } from './components/GameSummary';
+import { OpponentEvaluation } from './components/OpponentEvaluation'; // [신규] 평가 화면 임포트
 // [추가] 워치용 컴포넌트 임포트
 import WatchScoreTracker from './components/WatchScoreTracker';
 
@@ -64,7 +65,8 @@ export type Screen =
   | 'match'
   | 'profile'
   | 'score'
-  | 'summary';
+  | 'summary'
+  | 'evaluation'; // [신규] 평가 화면 타입 추가
 
 // -------------------------------------------------------------------------
 // [TutorialOverlay] 튜토리얼 오버레이 컴포넌트
@@ -224,7 +226,7 @@ const TutorialOverlay = ({ visible, stepIndex, onNext, onSkip }: {
 
         {step.highlightTabId && (
           // [수정] BottomNav와 동일한 패딩 로직 적용 (paddingTop: 8, paddingBottom: 8 + insets.bottom)
-          <View style={[styles.replicaContainer, { paddingBottom: 8 + insets.bottom }]}>
+          <View style={[styles.replicaContainer, { paddingBottom: 2 + insets.bottom }]}>
             {tabs.map((tab) => {
               const isHighlight = tab.id === step.highlightTabId;
               return (
@@ -345,6 +347,11 @@ function MainScreen({ navigation, route }: any) {
     setCurrentScreen('match');
   }, []);
 
+  // [신규] 평가 화면으로 이동
+  const goToEvaluation = useCallback(() => {
+    setCurrentScreen('evaluation');
+  }, []);
+
   const renderScreen = () => {
     switch (currentScreen) {
       case 'home':
@@ -361,9 +368,16 @@ function MainScreen({ navigation, route }: any) {
       case 'summary':
         return (
           <GameSummary
-            onNext={goToMatch}
+            onNext={goToEvaluation} // [수정] 확인 버튼 클릭 시 평가 화면으로 이동
             result={showTutorial && TUTORIAL_STEPS[tutorialStep].id === 'summary' ? tutorialDummyResult : gameResult}
           />
+        );
+      case 'evaluation': // [신규] 평가 화면 렌더링
+        return (
+            <OpponentEvaluation
+                onComplete={goToMatch} // 평가 완료 시 홈(매칭)으로 이동
+                opponentName={gameResult.team1Name || '상대방'}
+            />
         );
       case 'ai':
         return <AIAnalysis />;
@@ -386,7 +400,8 @@ function MainScreen({ navigation, route }: any) {
 
       {currentScreen !== 'home' &&
         currentScreen !== 'score' &&
-        currentScreen !== 'summary' && (
+        currentScreen !== 'summary' &&
+        currentScreen !== 'evaluation' && ( // [수정] 평가 화면에서도 탭바 숨김
           <BottomNav
             currentTab={currentScreen}
             onTabChange={handleTabChange}
@@ -542,7 +557,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 20,
+    zIndex: 22,
     paddingBottom: 100, // 기본: 탭바 위쪽
   },
   // 경기 결과 화면용 하단 배치
