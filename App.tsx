@@ -617,8 +617,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingTop: 8, // [수정] paddingVertical 대신 paddingTop 8 고정
-    // paddingBottom은 inline style로 8 + insets.bottom 동적 처리
+    paddingTop: 8,
     backgroundColor: 'transparent',
     zIndex: 10,
   },
@@ -626,10 +625,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 4,
-    gap: 2,
-    borderRadius: 16,
-    marginHorizontal: 4,
+    paddingVertical: 6, // [수정] BottomNav(6)와 일치
+    marginHorizontal: 4, // [수정] BottomNav와 일치
+    borderRadius: 20, // [수정] BottomNav(20)와 일치
+    height: 60, // [수정] BottomNav(60)와 일치
+    overflow: 'hidden', // [수정] BottomNav와 일치
   },
   tabButtonActive: {
     backgroundColor: '#34D399',
@@ -640,13 +640,14 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   replicaTabLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 2, // [수정] BottomNav와 레이아웃 일치
+    fontSize: 11, // [수정] BottomNav(11)와 일치
+    color: '#9CA3AF', // [수정] BottomNav(#9CA3AF)와 일치
+    marginTop: 4, // [수정] BottomNav(4)와 일치
+    fontWeight: '500', // [수정] BottomNav와 일치
   },
   tabLabelActive: {
     color: '#FFFFFF',
-    fontWeight: '600', // [수정] BottomNav와 폰트 두께 일치
+    fontWeight: '700', // [수정] BottomNav(700)와 일치
   },
   betaBadge: {
     position: 'absolute',
@@ -656,8 +657,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 4,
     paddingVertical: 1,
-    borderColor: '#FFFFFF',
-    borderWidth: 1, // [수정] BottomNav와 스타일 일치
     zIndex: 10,
   },
   betaText: {
