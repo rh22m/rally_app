@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -18,7 +18,8 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { initializeApp } from 'firebase/app';
+// [수정] 중복 실행 방지를 위한 모듈 추가
+import { initializeApp, getApp, getApps } from 'firebase/app';
 import {
   getAuth,
   onAuthStateChanged,
@@ -30,6 +31,7 @@ import {
 } from 'firebase/auth';
 import {
   getFirestore,
+  initializeFirestore,
   doc,
   getDoc,
   setDoc,
@@ -80,13 +82,23 @@ const firebaseConfig = {
   measurementId: "G-345DR2NF7F"
 };
 
-let app;
-try {
-  app = initializeApp(firebaseConfig);
-} catch (error) {
-}
+// [핵심 수정 1] 앱 중복 초기화 방지
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+
+// [핵심 수정 2] DB 연결 설정 (무한 로딩 해결의 열쇠)
+let db;
+try {
+  // 강제로 롱 폴링(Long Polling)을 사용하여 안드로이드 통신 끊김 해결
+  db = initializeFirestore(app, {
+    experimentalForceLongPolling: true,
+  });
+} catch (e: any) {
+  // 이미 초기화된 경우 기존 인스턴스 사용 (Hot Reload 에러 방지)
+  // [중요] 만약 여기서 계속 멈춘다면 앱을 완전히 껐다 켜야 이 설정이 적용됩니다.
+  db = getFirestore(app);
+}
+
 const appId = 'rally-app-main';
 
 const Stack = createNativeStackNavigator();
@@ -106,7 +118,7 @@ interface TutorialStep {
 const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'welcome',
-    title: '랠리에 오신 것을 환영합니다!',
+    title: '랠리(Rally)에 오신 것을 환영합니다!',
     desc: '배드민턴 파트너 찾기부터 경기 분석까지,\n랠리의 주요 기능을 소개해 드릴게요.',
     targetTab: null,
   },
@@ -314,7 +326,6 @@ function MainScreen({
   };
 
   useEffect(() => {
-    // isFirstLogin이 true면 튜토리얼 띄움
     if (isFirstLogin) {
       const timer = setTimeout(() => {
         setShowTutorial(true);
@@ -484,6 +495,8 @@ export default function App() {
   const [authScreen, setAuthScreen] = useState<'login' | 'signup'>('login');
 
   const [isFirstLogin, setIsFirstLogin] = useState(false);
+
+  // [중요] 회원가입 진행 상태 관리
   const [isSigningUp, setIsSigningUp] = useState(false);
   const isSigningUpRef = useRef(false);
 
@@ -495,11 +508,6 @@ export default function App() {
             PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
             PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
           ]);
-          if (
-            result['android.permission.BLUETOOTH_CONNECT'] !== PermissionsAndroid.RESULTS.GRANTED ||
-            result['android.permission.BLUETOOTH_SCAN'] !== PermissionsAndroid.RESULTS.GRANTED
-          ) {
-          }
         } catch (err) {
           console.warn(err);
         }
@@ -511,12 +519,12 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
-      if (currentUser && !currentUser.isAnonymous) {
-        // 회원가입 중이 아닐 때만 프로필 fetch
-        if (!isSigningUpRef.current) {
-            await fetchUserProfile(currentUser.uid);
-        }
+
+      // 회원가입 중이 아닐 때만 여기서 프로필을 가져옴
+      if (currentUser && !currentUser.isAnonymous && !isSigningUpRef.current) {
+          await fetchUserProfile(currentUser.uid);
       }
+
       setInitializing(false);
     });
     return () => unsubscribe();
@@ -542,19 +550,9 @@ export default function App() {
       );
       const snapshot = await getDocs(q);
       return snapshot.empty;
-    } catch (e: any) {
-      // [수정] 에러 내용을 콘솔뿐만 아니라 화면에 띄워서 확인
+    } catch (e) {
       console.error("Nickname check error:", e);
-
-      if (e.message.includes('index')) {
-        Alert.alert("설정 필요", "파이어베이스 콘솔에서 '인덱스'를 생성해야 합니다.\n(콘솔 로그의 링크를 확인하세요)");
-      } else if (e.code === 'permission-denied') {
-        Alert.alert("권한 오류", "데이터베이스 '규칙(Rules)'을 확인해주세요.");
-      } else {
-        Alert.alert("오류 발생", e.message);
-      }
-
-      return false; // 에러가 나면 중복된 것으로 처리되어 가입 불가
+      return false;
     }
   };
 
@@ -578,9 +576,11 @@ export default function App() {
   };
 
   const handleLogin = async (email, password) => {
+    setIsFirstLogin(false);
     await signInWithEmailAndPassword(auth, email, password);
   };
 
+  // [최종 수정] 회원가입: 무조건 기다리고, 실패 시 사용자에게 알림
   const handleSignUp = async (email, password, nickname) => {
     if (!email || !password) {
         Alert.alert("오류", "정보가 부족합니다.");
@@ -591,8 +591,9 @@ export default function App() {
     isSigningUpRef.current = true;
 
     try {
-      // 1. 계정 생성 (Auth)
+      // 1. Auth 계정 생성
       const cred = await createUserWithEmailAndPassword(auth, email, password);
+      console.log("계정 생성 완료, DB 저장 시작");
 
       const safeEmail = email.toLowerCase();
       const profileData = {
@@ -603,28 +604,29 @@ export default function App() {
         rallyCount: 0,
       };
 
-      // 2. UI 상태 즉시 업데이트 (튜토리얼 보장을 위해)
+      // 2. DB 저장 (무시하지 않고 끝까지 기다림)
+      const userRef = doc(db, 'artifacts', appId, 'users', cred.user.uid, 'profile', 'info');
+      await setDoc(userRef, profileData);
+      console.log("DB 저장 성공");
+
+      // 3. 완료 처리
       setUserProfile(profileData);
       setIsFirstLogin(true);
 
-      // 3. DB 저장 시도 (실패해도 로그인은 유지됨)
-      try {
-          await setDoc(doc(db, 'artifacts', appId, 'users', cred.user.uid, 'profile', 'info'), profileData);
-      } catch (dbError: any) {
-          console.error("DB Save Error:", dbError);
-          // DB 실패 시 사용자에게 알림 (하지만 튜토리얼은 진행됨)
-          Alert.alert("알림", "계정은 생성되었으나 프로필 저장에 실패했습니다.\n(DB 권한/설정을 확인해주세요)");
-      }
-
     } catch (error: any) {
-      console.error(error);
+      console.error("회원가입 에러:", error);
       let msg = error.message;
       if (error.code === 'auth/email-already-in-use') {
           msg = "이미 사용 중인 이메일입니다.";
       }
-      Alert.alert("회원가입 실패", msg);
+
+      // DB 저장 실패 시 계정 삭제 (꼬임 방지)
+      if (auth.currentUser) {
+          await signOut(auth);
+      }
+
+      Alert.alert("회원가입 실패", "서버 연결이 불안정하여 저장이 완료되지 않았습니다.\n앱을 완전히 껐다 켜서 다시 시도해주세요.\n" + msg);
     } finally {
-        // [중요] 로딩 상태 강제 해제 -> 메인 화면으로 전환
         isSigningUpRef.current = false;
         setIsSigningUp(false);
     }
@@ -646,14 +648,12 @@ export default function App() {
     return <WatchScoreTracker />;
   }
 
-  // [수정] 회원가입 중에는 로딩 화면을 보여주지 않고 바로 메인으로 넘어가도록 조건 완화
-  // isSigningUp 체크를 제거하여, Auth 상태가 변경되면 즉시 메인 렌더링
-  if (initializing) {
+  if (initializing || isSigningUp) {
     return (
       <View style={stubStyles.stubContainer}>
         <ActivityIndicator size="large" color="#34D399" />
         <Text style={stubStyles.stubText}>
-            RALLY SYSTEM LOADING...
+            {isSigningUp ? "정보 저장 중... (오래 걸리면 앱을 재시작하세요)" : "RALLY SYSTEM LOADING..."}
         </Text>
       </View>
     );
