@@ -342,6 +342,8 @@ const Step3_AccountInfo = ({
   const [isNicknameChecked, setIsNicknameChecked] = useState(false);
 
   const [pwMsg, setPwMsg] = useState('');
+  // [수정됨] 비밀번호 일치 확인 메시지 상태 추가
+  const [pwMatchMsg, setPwMatchMsg] = useState('');
 
   const [isRegionModalVisible, setIsRegionModalVisible] = useState(false);
   const [tempMainRegion, setTempMainRegion] = useState<string | null>(null);
@@ -433,6 +435,19 @@ const Step3_AccountInfo = ({
         setPwMsg('');
     }
   }, [password]);
+
+  // [수정됨] 비밀번호 확인 실시간 비교 로직 추가
+  useEffect(() => {
+    if (!confirmPassword) {
+      setPwMatchMsg('');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setPwMatchMsg('비밀번호가 일치하지 않습니다.');
+    } else {
+      setPwMatchMsg('');
+    }
+  }, [password, confirmPassword]);
 
   const handleNext = () => {
     if (!isEmailChecked || !isEmailValid) {
@@ -690,6 +705,13 @@ const Step3_AccountInfo = ({
           secureTextEntry
         />
       </View>
+
+      {/* [수정됨] 비밀번호 불일치 경고 메시지 표시 */}
+      {pwMatchMsg ? (
+        <Text style={[styles.helperText, styles.errorText, {marginBottom: 8, marginTop: -8, paddingLeft: 4}]}>
+            {pwMatchMsg}
+        </Text>
+      ) : null}
 
       <TouchableOpacity
         style={[styles.button, isButtonDisabled && styles.buttonDisabled]}

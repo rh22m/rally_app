@@ -8,14 +8,13 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from 'react-native';
 import { Mail, Lock } from 'lucide-react-native';
 
-// [수정] App.tsx의 handleLogin 함수와 호환되도록 인터페이스 수정
+// [수정] onLogin이 비동기 결과를 반환할 수 있도록 Promise 타입 추가
 interface LoginScreenProps {
   onGoToSignUp: () => void;
-  onLogin: (email: string, password: string) => void;
+  onLogin: (email: string, password: string) => Promise<void>;
 }
 
 export default function LoginScreen({ onGoToSignUp, onLogin }: LoginScreenProps) {
@@ -23,26 +22,59 @@ export default function LoginScreen({ onGoToSignUp, onLogin }: LoginScreenProps)
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLoginPress = () => {
-    // 1. 유효성 검사
-    if (!email || !password) {
-      Alert.alert('알림', '이메일과 비밀번호를 모두 입력해주세요.');
-      return;
+  // [추가] 에러 메시지 상태 관리
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+
+  const handleLoginPress = async () => {
+    // 1. 초기화
+    setEmailError('');
+    setPasswordError('');
+    let hasError = false;
+
+    // 2. 입력값 유효성 검사 (빈 값 체크)
+    if (!email.trim()) {
+      setEmailError('이메일을 입력해주세요.');
+      hasError = true;
+    }
+    if (!password.trim()) {
+      setPasswordError('비밀번호를 입력해주세요.');
+      hasError = true;
     }
 
-    // 2. 부모 컴포넌트(App.tsx)로 이메일과 비밀번호 전달
+    if (hasError) return;
+
+    // 3. 로그인 시도 및 에러 처리
     setIsLoading(true);
-    // onLogin 함수가 비동기(Promise)일 수 있으므로 처리
     try {
-        onLogin(email, password);
-    } catch (e) {
-        console.error(e);
-        setIsLoading(false);
+      await onLogin(email, password);
+      // 로그인 성공 시 App.tsx에서 화면 전환 처리됨
+    } catch (error: any) {
+      console.log('Login Error:', error.code);
+      // 파이어베이스 에러 코드를 사용자 친화적 메시지로 변환
+      switch (error.code) {
+        case 'auth/user-not-found':
+        case 'auth/invalid-email':
+        case 'auth/invalid-credential': // 최신 파이어베이스 보안 강화로 통합된 경우 있음
+          setEmailError('일치하는 계정이 없습니다.');
+          break;
+        case 'auth/wrong-password':
+          setPasswordError('비밀번호가 일치하지 않습니다.');
+          break;
+        case 'auth/too-many-requests':
+          setPasswordError('접속 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.');
+          break;
+        default:
+          // 그 외 에러는 비밀번호 쪽에 띄우거나, 이메일/비밀번호 둘 다 불확실할 때 표시
+          if (error.message.includes('password')) {
+             setPasswordError('비밀번호를 확인해주세요.');
+          } else {
+             setEmailError('로그인 정보를 다시 확인해주세요.');
+          }
+      }
+    } finally {
+      setIsLoading(false);
     }
-
-    // 로딩 상태 해제는 App.tsx에서 에러가 났을 때 처리하거나,
-    // 화면이 넘어가면 자연스럽게 해결됩니다. 여기서는 안전을 위해 타임아웃 설정
-    setTimeout(() => setIsLoading(false), 3000);
   };
 
   return (
@@ -60,33 +92,48 @@ export default function LoginScreen({ onGoToSignUp, onLogin }: LoginScreenProps)
         <Text style={styles.title}>Rally</Text>
         <Text style={styles.subtitle}>로그인하여 랠리를 시작하세요!</Text>
 
-        {/* 2. 입력 폼 */}
-        <View style={styles.inputContainer}>
-          <Mail color="#9CA3AF" size={20} style={styles.inputIcon} />
+        {/* 2. 이메일 입력 폼 */}
+        <View style={[styles.inputContainer, emailError ? styles.inputErrorBorder : null]}>
+          <Mail color={emailError ? "#EF4444" : "#9CA3AF"} size={20} style={styles.inputIcon} />
           <TextInput
             style={styles.input}
             placeholder="이메일"
             placeholderTextColor="#6B7280"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(text) => {
+              setEmail(text);
+              if (emailError) setEmailError(''); // 타이핑 시작하면 에러 지움
+            }}
             keyboardType="email-address"
             autoCapitalize="none"
           />
         </View>
+        {/* 이메일 에러 메시지 (작은 빨간 글씨) */}
+        <View style={styles.errorContainer}>
+          {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
+        </View>
 
-        <View style={styles.inputContainer}>
-          <Lock color="#9CA3AF" size={20} style={styles.inputIcon} />
+        {/* 3. 비밀번호 입력 폼 */}
+        <View style={[styles.inputContainer, passwordError ? styles.inputErrorBorder : null]}>
+          <Lock color={passwordError ? "#EF4444" : "#9CA3AF"} size={20} style={styles.inputIcon} />
           <TextInput
             style={styles.input}
             placeholder="비밀번호"
             placeholderTextColor="#6B7280"
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(text) => {
+              setPassword(text);
+              if (passwordError) setPasswordError(''); // 타이핑 시작하면 에러 지움
+            }}
             secureTextEntry
           />
         </View>
+        {/* 비밀번호 에러 메시지 (작은 빨간 글씨) */}
+        <View style={styles.errorContainer}>
+          {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
+        </View>
 
-        {/* 3. 로그인 버튼 */}
+        {/* 4. 로그인 버튼 */}
         <TouchableOpacity
             style={[styles.button, isLoading && styles.buttonDisabled]}
             onPress={handleLoginPress}
@@ -97,7 +144,7 @@ export default function LoginScreen({ onGoToSignUp, onLogin }: LoginScreenProps)
           </Text>
         </TouchableOpacity>
 
-        {/* 4. 회원가입 링크 */}
+        {/* 5. 회원가입 링크 */}
         <View style={styles.footerLink}>
           <Text style={styles.linkText}>계정이 없으신가요? </Text>
           <TouchableOpacity onPress={onGoToSignUp}>
@@ -112,7 +159,7 @@ export default function LoginScreen({ onGoToSignUp, onLogin }: LoginScreenProps)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#111827', // 어두운 배경
+    backgroundColor: '#111827',
   },
   content: {
     flex: 1,
@@ -133,18 +180,35 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 16,
-    color: '#9CA3AF', // 회색
+    color: '#9CA3AF',
     marginBottom: 40,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#374151', // Home 검색창과 동일
-    borderRadius: 12, // 조금 더 둥글게 수정
+    backgroundColor: '#374151',
+    borderRadius: 12,
     width: '100%',
-    marginBottom: 16,
+    marginBottom: 0, // 에러 메시지 공간을 위해 마진 제거 (errorContainer가 담당)
     paddingHorizontal: 16,
-    height: 56, // 높이 고정
+    height: 56,
+    borderWidth: 1,
+    borderColor: 'transparent', // 기본 테두리 투명
+  },
+  inputErrorBorder: {
+    borderColor: '#EF4444', // 에러 발생 시 빨간 테두리
+  },
+  errorContainer: {
+    width: '100%',
+    minHeight: 20, // 에러 메시지 높이 확보
+    marginBottom: 12, // 다음 입력창과의 간격
+    justifyContent: 'center',
+    paddingLeft: 4,
+  },
+  errorText: {
+    color: '#EF4444', // 빨간색
+    fontSize: 12,
+    marginTop: 4,
   },
   inputIcon: {
     marginRight: 12,
@@ -156,7 +220,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   button: {
-    backgroundColor: '#34D399', // 랠리 녹색
+    backgroundColor: '#34D399',
     width: '100%',
     paddingVertical: 16,
     borderRadius: 12,
@@ -169,7 +233,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   buttonText: {
-    color: '#111827', // 어두운 글자
+    color: '#111827',
     fontSize: 18,
     fontWeight: 'bold',
   },

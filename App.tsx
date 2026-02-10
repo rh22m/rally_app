@@ -106,7 +106,7 @@ interface TutorialStep {
 const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'welcome',
-    title: '랠리(Rally)에 오신 것을 환영합니다!',
+    title: '랠리에 오신 것을 환영합니다!',
     desc: '배드민턴 파트너 찾기부터 경기 분석까지,\n랠리의 주요 기능을 소개해 드릴게요.',
     targetTab: null,
   },
@@ -542,9 +542,19 @@ export default function App() {
       );
       const snapshot = await getDocs(q);
       return snapshot.empty;
-    } catch (e) {
+    } catch (e: any) {
+      // [수정] 에러 내용을 콘솔뿐만 아니라 화면에 띄워서 확인
       console.error("Nickname check error:", e);
-      return false;
+
+      if (e.message.includes('index')) {
+        Alert.alert("설정 필요", "파이어베이스 콘솔에서 '인덱스'를 생성해야 합니다.\n(콘솔 로그의 링크를 확인하세요)");
+      } else if (e.code === 'permission-denied') {
+        Alert.alert("권한 오류", "데이터베이스 '규칙(Rules)'을 확인해주세요.");
+      } else {
+        Alert.alert("오류 발생", e.message);
+      }
+
+      return false; // 에러가 나면 중복된 것으로 처리되어 가입 불가
     }
   };
 
@@ -568,12 +578,7 @@ export default function App() {
   };
 
   const handleLogin = async (email, password) => {
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      setIsFirstLogin(false);
-    } catch (error: any) {
-      Alert.alert("로그인 실패", error.message);
-    }
+    await signInWithEmailAndPassword(auth, email, password);
   };
 
   const handleSignUp = async (email, password, nickname) => {
