@@ -11,15 +11,13 @@ import {
   Modal,
   PermissionsAndroid,
   Alert,
+  ActivityIndicator
 } from 'react-native';
 
-// 네비게이션 필수 라이브러리
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-// 안드로이드 안전 영역 처리
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// --- Firebase Imports ---
 import { initializeApp } from 'firebase/app';
 import {
   getAuth,
@@ -28,6 +26,7 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   User as FirebaseUser,
+  fetchSignInMethodsForEmail
 } from 'firebase/auth';
 import {
   getFirestore,
@@ -37,10 +36,13 @@ import {
   collection,
   onSnapshot,
   addDoc,
-  serverTimestamp
+  serverTimestamp,
+  query,
+  where,
+  getDocs,
+  collectionGroup
 } from 'firebase/firestore';
 
-// 아이콘
 import {
   MessageCircleMore,
   Search,
@@ -51,7 +53,6 @@ import {
   X
 } from 'lucide-react-native';
 
-// 컴포넌트 임포트
 import { Home } from './components/Home';
 import { BottomNav } from './components/BottomNav';
 import { ScoreTracker } from './components/ScoreTracker';
@@ -69,7 +70,6 @@ import MatchHistoryScreen from './Screens/Profile/MatchHistoryScreen';
 
 import { PointLog } from './utils/rmrCalculator';
 
-// --- Firebase Initialization ---
 const firebaseConfig = {
   apiKey: "AIzaSyCKl2OZU06cWYFDkODLqsd3i4vtlGlzems",
   authDomain: "rally-app-14c24.firebaseapp.com",
@@ -84,7 +84,6 @@ let app;
 try {
   app = initializeApp(firebaseConfig);
 } catch (error) {
-  // 앱 중복 초기화 방지
 }
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -96,9 +95,6 @@ const isWatch = Platform.OS === 'android' && SCREEN_WIDTH < 350;
 
 export type Screen = 'home' | 'chat' | 'ai' | 'match' | 'profile' | 'score' | 'summary' | 'evaluation';
 
-// -------------------------------------------------------------------------
-// [TutorialOverlay] 튜토리얼 오버레이 컴포넌트
-// -------------------------------------------------------------------------
 interface TutorialStep {
   id: string;
   title: string;
@@ -286,9 +282,6 @@ const TutorialOverlay = ({ visible, stepIndex, onNext, onSkip }: {
   );
 };
 
-// ==========================================
-// [MainScreen] 메인 탭 화면
-// ==========================================
 function MainScreen({
   navigation,
   handleLogout,
@@ -302,7 +295,6 @@ function MainScreen({
   const [tutorialStep, setTutorialStep] = useState(0);
   const [rallies, setRallies] = useState<any[]>([]);
 
-  // 튜토리얼용 가짜 경기 데이터
   const tutorialDummyResult = {
     duration: 1540,
     team1Wins: 1,
@@ -321,10 +313,10 @@ function MainScreen({
     ] as PointLog[]
   };
 
-  // [수정] 튜토리얼 표시 로직 개선 (지연 시간 추가)
   useEffect(() => {
+    // isFirstLogin이 true가 되면 튜토리얼을 띄움
     if (isFirstLogin) {
-      // 화면 전환 후 안정적으로 모달을 띄우기 위해 약간의 지연(500ms)을 둡니다.
+      // 화면 전환 및 데이터 로딩 시간을 고려해 약간의 딜레이
       const timer = setTimeout(() => {
         setShowTutorial(true);
       }, 500);
@@ -486,16 +478,16 @@ function MainScreen({
   );
 }
 
-// ==========================================
-// [App] 전체 앱 진입점
-// ==========================================
 export default function App() {
   const [initializing, setInitializing] = useState(true);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [authScreen, setAuthScreen] = useState<'login' | 'signup'>('login');
-  // [상태] 첫 로그인 여부
+
+  // [수정] 튜토리얼 트리거 상태
   const [isFirstLogin, setIsFirstLogin] = useState(false);
+  // [추가] 회원가입 진행 중 로딩 상태 (화면 전환 방지)
+  const [isSigningUp, setIsSigningUp] = useState(false);
 
   useEffect(() => {
     const requestPermissions = async () => {
@@ -509,7 +501,6 @@ export default function App() {
             result['android.permission.BLUETOOTH_CONNECT'] !== PermissionsAndroid.RESULTS.GRANTED ||
             result['android.permission.BLUETOOTH_SCAN'] !== PermissionsAndroid.RESULTS.GRANTED
           ) {
-            // 권한 거부 시 처리 (필요시)
           }
         } catch (err) {
           console.warn(err);
@@ -523,12 +514,17 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser && !currentUser.isAnonymous) {
-        await fetchUserProfile(currentUser.uid);
+        // [중요] 회원가입 중이라면(isSigningUp), 여기서 프로필을 fetch하지 않고
+        // handleSignUp이 완료될 때까지 기다리도록 하거나,
+        // 단순히 여기서 fetch를 하더라도 화면 전환은 isSigningUp 상태에 의해 제어됨.
+        if (!isSigningUp) {
+            await fetchUserProfile(currentUser.uid);
+        }
       }
       setInitializing(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [isSigningUp]); // 의존성 추가
 
   const fetchUserProfile = async (uid: string) => {
     const userDocRef = doc(db, 'artifacts', appId, 'users', uid, 'profile', 'info');
@@ -542,26 +538,71 @@ export default function App() {
     }
   };
 
+  const checkNicknameAvailability = async (nickname: string): Promise<boolean> => {
+    try {
+      const q = query(
+        collectionGroup(db, 'profile'),
+        where('nickname', '==', nickname)
+      );
+      const snapshot = await getDocs(q);
+      return snapshot.empty;
+    } catch (e) {
+      console.error("Nickname check error:", e);
+      // 안전을 위해 에러 시 false(중복 가능성 있음) 처리
+      return false;
+    }
+  };
+
+  // [수정] 이메일 중복 체크 강화
+  const checkEmailAvailability = async (email: string): Promise<boolean> => {
+    try {
+      // 1. Auth 메서드로 확인 (가장 확실한 방법)
+      // fetchSignInMethodsForEmail은 가입된 이메일일 경우 메서드 배열(예: ['password'])을 반환
+      const methods = await fetchSignInMethodsForEmail(auth, email);
+      if (methods && methods.length > 0) {
+        return false; // 이미 가입된 이메일
+      }
+
+      // 2. DB 이중 확인 (Auth 체크가 보안 설정으로 막혔을 경우 대비)
+      const q = query(
+        collectionGroup(db, 'profile'),
+        where('email', '==', email)
+      );
+      const snapshot = await getDocs(q);
+      return snapshot.empty;
+    } catch (e: any) {
+        // Firebase Auth 에러 코드 처리 (이메일이 유효하지 않거나 등등)
+        console.error("Email check error:", e);
+        if (e.code === 'auth/invalid-email') return false;
+
+        // 에러가 났다면 안전하게 false로 처리하여 진행을 막는 것이 나음 (사용자에게 알림 필요)
+        return false;
+    }
+  };
+
   const handleLogin = async (email, password) => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // 로그인 시에는 튜토리얼을 띄우지 않도록 false 설정
       setIsFirstLogin(false);
     } catch (error: any) {
       Alert.alert("로그인 실패", error.message);
     }
   };
 
-  // [수정] 회원가입 핸들러: 성공 시 isFirstLogin을 true로 설정하여 튜토리얼 유도
   const handleSignUp = async (email, password, nickname) => {
     if (!email || !password) {
         Alert.alert("오류", "정보가 부족합니다.");
         return;
     }
-    try {
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      const safeEmail = email.toLowerCase();
 
+    // [중요] 회원가입 시작 시 로딩 상태 true (화면 전환 방지)
+    setIsSigningUp(true);
+
+    try {
+      // 1. 계정 생성 시도
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+
+      const safeEmail = email.toLowerCase();
       const profileData = {
         uid: cred.user.uid,
         email: safeEmail,
@@ -570,16 +611,27 @@ export default function App() {
         rallyCount: 0,
       };
 
+      // 2. DB에 프로필 저장
       await setDoc(doc(db, 'artifacts', appId, 'users', cred.user.uid, 'profile', 'info'), profileData);
 
-      // 순서 중요: 프로필 설정 -> 첫 로그인 플래그 True
+      // 3. 상태 업데이트 (순서 중요)
       setUserProfile(profileData);
-      setIsFirstLogin(true);
+      setIsFirstLogin(true); // 튜토리얼 플래그 ON
 
       Alert.alert("환영합니다!", "회원가입이 완료되었습니다.");
+
     } catch (error: any) {
       console.error(error);
-      Alert.alert("회원가입 실패", error.message);
+      // 에러 메시지 사용자 친화적으로 변환
+      let msg = error.message;
+      if (error.code === 'auth/email-already-in-use') {
+          msg = "이미 사용 중인 이메일입니다.";
+      }
+      Alert.alert("회원가입 실패", msg);
+      // 실패 시 로그아웃 처리 등을 통해 좀비 상태 방지 가능
+    } finally {
+        // [중요] 모든 처리가 끝난 후 로딩 해제 -> 이 시점에 MainScreen으로 전환됨
+        setIsSigningUp(false);
     }
   };
 
@@ -588,7 +640,7 @@ export default function App() {
       await signOut(auth);
       setUser(null);
       setUserProfile(null);
-      setIsFirstLogin(false); // 로그아웃 시 초기화
+      setIsFirstLogin(false);
       setAuthScreen('login');
     } catch (e) {
       console.error(e);
@@ -599,10 +651,14 @@ export default function App() {
     return <WatchScoreTracker />;
   }
 
-  if (initializing) {
+  // [수정] 초기화 중이거나 회원가입 처리 중일 때 로딩 화면 유지
+  if (initializing || isSigningUp) {
     return (
       <View style={stubStyles.stubContainer}>
-        <Text style={stubStyles.stubText}>RALLY SYSTEM LOADING...</Text>
+        <ActivityIndicator size="large" color="#34D399" />
+        <Text style={stubStyles.stubText}>
+            {isSigningUp ? "회원가입 처리 중..." : "RALLY SYSTEM LOADING..."}
+        </Text>
       </View>
     );
   }
@@ -621,6 +677,8 @@ export default function App() {
             <SignUpScreen
               onGoToLogin={() => setAuthScreen('login')}
               onSignUp={handleSignUp}
+              checkEmailAvailability={checkEmailAvailability}
+              checkNicknameAvailability={checkNicknameAvailability}
             />
           )}
         </SafeAreaView>
@@ -639,12 +697,12 @@ export default function App() {
             animation: Platform.OS === 'android' ? 'fade_from_bottom' : 'default',
           }}
         >
-          {/* [중요] Main 화면에 isFirstLogin 상태를 props로 전달 */}
           <Stack.Screen name="Main">
             {(props) => (
               <MainScreen
                 {...props}
                 handleLogout={handleLogout}
+                // [확인] isFirstLogin 상태가 확실하게 전달됨
                 isFirstLogin={isFirstLogin}
                 user={user}
                 userProfile={userProfile}
@@ -664,7 +722,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#111827',
   },
-  // --- Tutorial Overlay Styles ---
   tutorialContainer: {
     flex: 1,
   },
@@ -748,7 +805,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 20,
   },
-  // --- Replica Tab Bar Styles ---
   replicaContainer: {
     position: 'absolute',
     bottom: 0,
@@ -815,8 +871,8 @@ const stubStyles = StyleSheet.create({
     backgroundColor: '#111827',
   },
   stubText: {
-    fontSize: 24,
-    color: 'white',
-    marginBottom: 20,
+    fontSize: 18,
+    color: '#9CA3AF',
+    marginTop: 20,
   },
 });

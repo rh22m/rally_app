@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -26,22 +26,30 @@ import {
   Check,
   X,
   ChevronRight,
-  Smartphone,
   MapPin,
-  ChevronLeft, // [추가] 아이콘
+  ChevronLeft,
+  ChevronDown
 } from 'lucide-react-native';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
-// [수정] App.tsx의 handleSignUp과 호환되도록 인터페이스 수정
 interface SignUpScreenProps {
   onGoToLogin: () => void;
   onSignUp: (email: string, password: string, nickname: string) => void;
+  checkEmailAvailability: (email: string) => Promise<boolean>;
+  checkNicknameAvailability: (nickname: string) => Promise<boolean>;
 }
 
-// -----------------------------------------------------------------------------------------
-// [지역 데이터 상수] (Home.tsx와 동일하게 사용)
-// -----------------------------------------------------------------------------------------
+const EMAIL_DOMAINS = [
+  'naver.com',
+  'gmail.com',
+  'daum.net',
+  'kakao.com',
+  'hanmail.net',
+  'icloud.com',
+  'outlook.com'
+];
+
 const MAIN_REGIONS = [
   { label: '서울', value: '서울' },
   { label: '경기', value: '경기' },
@@ -60,47 +68,12 @@ const SUB_REGIONS: { [key: string]: string[] } = {
   '강원': ['전체'], '충청': ['전체'], '전라': ['전체'], '경상': ['전체'], '제주': ['전체']
 };
 
-// -----------------------------------------------------------------------------------------
-// [실제 효력이 있는 수준의 약관 데이터 예시]
-// -----------------------------------------------------------------------------------------
 const LEGAL_TEXTS = {
-  terms: `제1조 (목적)
-본 약관은 랠리(Rally) (이하 "회사")가 제공하는 배드민턴 매칭 및 커뮤니티 서비스(이하 "서비스")의 이용과 관련하여 회사와 회원 간의 권리, 의무 및 책임사항, 기타 필요한 사항을 규정함을 목적으로 합니다.
-
-제2조 (용어의 정의)
-1. "회원"이란 본 약관에 동의하고 가입 절차를 완료하여 회사가 제공하는 서비스를 이용하는 자를 말합니다.
-2. "서비스"란 회사가 제공하는 경기 매칭, AI 분석, 커뮤니티 등의 제반 서비스를 의미합니다.
-
-제3조 (약관의 효력 및 변경)
-1. 본 약관은 서비스 화면에 게시하거나 기타의 방법으로 공지함으로써 효력이 발생합니다.
-2. 회사는 합리적인 사유가 발생할 경우 관련 법령에 위배되지 않는 범위 안에서 본 약관을 개정할 수 있습니다.`,
-
-  privacy: `1. 개인정보 수집 항목
-회사는 회원가입, 서비스 이용 등을 위해 아래와 같은 개인정보를 수집합니다.
-- 필수항목: 이메일 주소, 비밀번호, 닉네임, 휴대폰 번호, 생년월일, 활동 지역, 성별
-- 선택항목: 프로필 사진, 구력 정보, 선호 시간대
-
-2. 개인정보의 수집 및 이용목적
-- 서비스 제공: 콘텐츠 제공, 맞춤형 서비스 제공
-- 회원 관리: 본인 확인, 개인 식별, 불량 회원의 부정 이용 방지
-- 신규 서비스 개발 및 마케팅 광고에의 활용
-
-3. 개인정보의 보유 및 이용기간
-회사는 원칙적으로 개인정보 수집 및 이용목적이 달성된 후에는 해당 정보를 지체 없이 파기합니다. 단, 관계법령의 규정에 의하여 보존할 필요가 있는 경우 일정 기간 동안 정보를 보관합니다.`,
-
-  location: `1. 위치정보의 이용 목적
-회사는 사용자의 현재 위치를 기반으로 주변 배드민턴 경기장 정보 제공, 가까운 사용자 간의 매칭 추천 서비스를 제공하기 위해 위치정보를 이용합니다.
-
-2. 위치정보의 보유 및 이용기간
-회사는 서비스를 제공하는 기간 동안에 한하여 이용자의 위치정보를 보유 및 이용하며, 이용자가 탈퇴하거나 위치정보 이용 동의를 철회하는 경우 지체 없이 파기합니다.
-
-3. 위치정보 주체의 권리
-이용자는 언제든지 자신의 위치정보 이용 내역을 조회하거나 정정을 요구할 수 있으며, 오류가 있는 경우 정정을 요구할 수 있습니다.`
+  terms: `제1조 (목적)\n본 약관은 랠리(Rally) 서비스 이용과 관련하여 회사와 회원 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.`,
+  privacy: `1. 개인정보 수집 항목\n이메일, 비밀번호, 닉네임, 휴대폰 번호, 활동 지역, 성별 등 서비스 제공에 필요한 최소한의 정보를 수집합니다.`,
+  location: `1. 위치정보 이용 목적\n사용자의 현재 위치를 기반으로 주변 경기장 및 매칭 정보를 제공하기 위해 위치정보를 이용합니다.`
 };
 
-// -----------------------------------------------------------------------------------------
-// [가상 본인인증 모듈 HTML]
-// -----------------------------------------------------------------------------------------
 const MOCK_VERIFICATION_HTML = `
 <!DOCTYPE html>
 <html>
@@ -121,11 +94,9 @@ const MOCK_VERIFICATION_HTML = `
     <span class="logo">PASS / SMS 인증</span>
     <h2>휴대폰 본인 확인</h2>
     <p>안전한 서비스 이용을 위해<br>본인 인증을 진행해주세요.</p>
-
     <button class="btn" onclick="verify()">인증하기 (통신사 선택)</button>
     <button class="btn cancel" onclick="cancel()">취소</button>
   </div>
-
   <script>
     function verify() {
       setTimeout(() => {
@@ -148,7 +119,6 @@ const MOCK_VERIFICATION_HTML = `
 </html>
 `;
 
-// 4단계 인디케이터
 const StepIndicator = ({ currentStep }: { currentStep: number }) => (
   <View style={styles.stepIndicatorContainer}>
     {[1, 2, 3, 4].map((step) => (
@@ -174,15 +144,11 @@ const StepIndicator = ({ currentStep }: { currentStep: number }) => (
   </View>
 );
 
-// -------------------------------------------------------------------------
-// 1단계: 약관 동의
-// -------------------------------------------------------------------------
 const Step1_TOS = ({ onNext }: { onNext: () => void }) => {
   const [agreeAll, setAgreeAll] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [agreePrivacy, setAgreePrivacy] = useState(false);
   const [agreeLocation, setAgreeLocation] = useState(false);
-
   const [modalVisible, setModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
   const [modalContent, setModalContent] = useState('');
@@ -206,24 +172,15 @@ const Step1_TOS = ({ onNext }: { onNext: () => void }) => {
     <>
       <Text style={styles.title}>약관 동의</Text>
       <Text style={styles.subtitle}>랠리(Rally) 여정을 위해 동의가 필요해요.</Text>
-
-      <TouchableOpacity
-        style={[styles.checkContainer, styles.checkAll]}
-        onPress={() => handleAgreeAll(!agreeAll)}
-      >
+      <TouchableOpacity style={[styles.checkContainer, styles.checkAll]} onPress={() => handleAgreeAll(!agreeAll)}>
         <View style={[styles.checkbox, agreeAll && styles.checkboxActive]}>
           {agreeAll && <Check size={16} color="white" />}
         </View>
         <Text style={styles.checkLabelAll}>전체 동의하기</Text>
       </TouchableOpacity>
-
       <View style={styles.divider} />
-
       <View style={styles.termRow}>
-        <TouchableOpacity
-          style={styles.termCheckArea}
-          onPress={() => setAgreeTerms(!agreeTerms)}
-        >
+        <TouchableOpacity style={styles.termCheckArea} onPress={() => setAgreeTerms(!agreeTerms)}>
           <View style={[styles.checkbox, agreeTerms && styles.checkboxActive]}>
             {agreeTerms && <Check size={16} color="white" />}
           </View>
@@ -233,12 +190,8 @@ const Step1_TOS = ({ onNext }: { onNext: () => void }) => {
           <Text style={styles.checkLink}>보기</Text>
         </TouchableOpacity>
       </View>
-
       <View style={styles.termRow}>
-        <TouchableOpacity
-          style={styles.termCheckArea}
-          onPress={() => setAgreePrivacy(!agreePrivacy)}
-        >
+        <TouchableOpacity style={styles.termCheckArea} onPress={() => setAgreePrivacy(!agreePrivacy)}>
           <View style={[styles.checkbox, agreePrivacy && styles.checkboxActive]}>
             {agreePrivacy && <Check size={16} color="white" />}
           </View>
@@ -248,12 +201,8 @@ const Step1_TOS = ({ onNext }: { onNext: () => void }) => {
           <Text style={styles.checkLink}>보기</Text>
         </TouchableOpacity>
       </View>
-
       <View style={styles.termRow}>
-        <TouchableOpacity
-          style={styles.termCheckArea}
-          onPress={() => setAgreeLocation(!agreeLocation)}
-        >
+        <TouchableOpacity style={styles.termCheckArea} onPress={() => setAgreeLocation(!agreeLocation)}>
           <View style={[styles.checkbox, agreeLocation && styles.checkboxActive]}>
             {agreeLocation && <Check size={16} color="white" />}
           </View>
@@ -263,21 +212,11 @@ const Step1_TOS = ({ onNext }: { onNext: () => void }) => {
           <Text style={styles.checkLink}>보기</Text>
         </TouchableOpacity>
       </View>
-
-      <TouchableOpacity
-        style={[styles.button, isNextDisabled && styles.buttonDisabled]}
-        onPress={onNext}
-        disabled={isNextDisabled}
-      >
+      <TouchableOpacity style={[styles.button, isNextDisabled && styles.buttonDisabled]} onPress={onNext} disabled={isNextDisabled}>
         <Text style={styles.buttonText}>다음</Text>
       </TouchableOpacity>
 
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
-      >
+      <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
@@ -289,10 +228,7 @@ const Step1_TOS = ({ onNext }: { onNext: () => void }) => {
             <ScrollView style={styles.modalBody}>
               <Text style={styles.modalText}>{modalContent}</Text>
             </ScrollView>
-            <TouchableOpacity
-              style={styles.modalButton}
-              onPress={() => setModalVisible(false)}
-            >
+            <TouchableOpacity style={styles.modalButton} onPress={() => setModalVisible(false)}>
               <Text style={styles.modalButtonText}>확인</Text>
             </TouchableOpacity>
           </View>
@@ -302,9 +238,6 @@ const Step1_TOS = ({ onNext }: { onNext: () => void }) => {
   );
 };
 
-// -------------------------------------------------------------------------
-// 2단계: 휴대폰 본인인증
-// -------------------------------------------------------------------------
 const Step2_PhoneVerify = ({ onNext }: { onNext: () => void }) => {
   const [isVerified, setIsVerified] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -330,7 +263,6 @@ const Step2_PhoneVerify = ({ onNext }: { onNext: () => void }) => {
     <>
       <Text style={styles.title}>본인 인증</Text>
       <Text style={styles.subtitle}>안전한 매칭을 위해 본인인증을 진행합니다.</Text>
-
       <View style={[styles.inputContainer, isVerified && styles.inputVerified]}>
         <Phone size={20} color={isVerified ? "#34D399" : "#9CA3AF"} style={styles.inputIcon} />
         <TextInput
@@ -342,12 +274,8 @@ const Step2_PhoneVerify = ({ onNext }: { onNext: () => void }) => {
         />
         {isVerified && <Check size={20} color="#34D399" />}
       </View>
-
       {!isVerified ? (
-        <TouchableOpacity
-          style={styles.verifyButton}
-          onPress={() => setShowWebView(true)}
-        >
+        <TouchableOpacity style={styles.verifyButton} onPress={() => setShowWebView(true)}>
           <ShieldCheck size={20} color="#111827" style={{ marginRight: 8 }} />
           <Text style={styles.verifyButtonText}>휴대폰 본인인증 하기</Text>
         </TouchableOpacity>
@@ -355,30 +283,15 @@ const Step2_PhoneVerify = ({ onNext }: { onNext: () => void }) => {
         <Text style={styles.verifiedText}>인증이 완료되었습니다. 다음으로 넘어가세요.</Text>
       )}
 
-      <TouchableOpacity
-        style={[styles.button, !isVerified && styles.buttonDisabled]}
-        onPress={onNext}
-        disabled={!isVerified}
-      >
+      <TouchableOpacity style={[styles.button, !isVerified && styles.buttonDisabled]} onPress={onNext} disabled={!isVerified}>
         <Text style={styles.buttonText}>다음</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity
-        style={styles.skipButton}
-        onPress={() => {
-          setIsVerified(true);
-          setPhoneNumber('010-0000-0000 (Dev)');
-          setTimeout(onNext, 500);
-        }}
-      >
+      <TouchableOpacity style={styles.skipButton} onPress={() => { setIsVerified(true); setPhoneNumber('010-0000-0000 (Dev)'); setTimeout(onNext, 500); }}>
         <Text style={styles.linkText}>[개발용] 본인인증 건너뛰기</Text>
       </TouchableOpacity>
 
-      <Modal
-        visible={showWebView}
-        animationType="slide"
-        onRequestClose={() => setShowWebView(false)}
-      >
+      <Modal visible={showWebView} animationType="slide" onRequestClose={() => setShowWebView(false)}>
         <SafeAreaView style={{ flex: 1, backgroundColor: '#111827' }}>
           <View style={styles.webViewHeader}>
             <Text style={styles.webViewTitle}>본인인증 서비스</Text>
@@ -386,54 +299,125 @@ const Step2_PhoneVerify = ({ onNext }: { onNext: () => void }) => {
               <X size={24} color="white" />
             </TouchableOpacity>
           </View>
-          <WebView
-            source={{ html: MOCK_VERIFICATION_HTML }}
-            style={{ flex: 1 }}
-            onMessage={handleWebViewMessage}
-            javaScriptEnabled={true}
-          />
+          <WebView source={{ html: MOCK_VERIFICATION_HTML }} style={{ flex: 1 }} onMessage={handleWebViewMessage} javaScriptEnabled={true} />
         </SafeAreaView>
       </Modal>
     </>
   );
 };
 
-// -------------------------------------------------------------------------
-// 3단계: 계정 정보 (지역 선택 수정됨: 모달 기반 선택)
-// -------------------------------------------------------------------------
-const Step3_AccountInfo = ({ onNext }: { onNext: (data: any) => void }) => {
-  const [email, setEmail] = useState('');
-  const [nickname, setNickname] = useState('');
-  const [password, setPassword] = useState('');
+const Step3_AccountInfo = ({
+  onNext,
+  initialData,
+  checkEmailAvailability,
+  checkNicknameAvailability
+}: {
+  onNext: (data: any) => void;
+  initialData: any;
+  checkEmailAvailability: (email: string) => Promise<boolean>;
+  checkNicknameAvailability: (nickname: string) => Promise<boolean>;
+}) => {
+  const [emailLocal, setEmailLocal] = useState(initialData.email ? initialData.email.split('@')[0] : '');
+  const [emailDomain, setEmailDomain] = useState(initialData.email ? initialData.email.split('@')[1] : EMAIL_DOMAINS[0]);
+  const [isDomainModalVisible, setIsDomainModalVisible] = useState(false);
+
+  const [nickname, setNickname] = useState(initialData.nickname || '');
+  const [password, setPassword] = useState(initialData.password || '');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [region, setRegion] = useState(initialData.region || '');
+  const [gender, setGender] = useState<'남성' | '여성' | null>(initialData.gender || null);
 
-  // 지역 선택 상태
-  const [region, setRegion] = useState(''); // 최종 선택값 (예: 서울 강남구)
-  const [gender, setGender] = useState<'남성' | '여성' | null>(null);
+  const [emailMsg, setEmailMsg] = useState('');
+  const [isEmailValid, setIsEmailValid] = useState(false);
+  const [nicknameMsg, setNicknameMsg] = useState('');
+  const [isNicknameValid, setIsNicknameValid] = useState(false);
+  const [pwMsg, setPwMsg] = useState('');
 
-  // 지역 모달 관련 상태
   const [isRegionModalVisible, setIsRegionModalVisible] = useState(false);
   const [tempMainRegion, setTempMainRegion] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!emailLocal) { setEmailMsg(''); setIsEmailValid(false); return; }
+    const fullEmail = `${emailLocal}@${emailDomain}`;
+    setEmailMsg('확인 중...');
+    setIsEmailValid(false);
+
+    const timer = setTimeout(async () => {
+        if (emailLocal.length < 2) {
+            setEmailMsg('이메일이 너무 짧습니다.');
+            return;
+        }
+        const isAvail = await checkEmailAvailability(fullEmail);
+        if (isAvail) {
+            setEmailMsg('사용 가능한 이메일입니다.');
+            setIsEmailValid(true);
+        } else {
+            setEmailMsg('이미 사용 중인 이메일입니다.');
+            setIsEmailValid(false);
+        }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [emailLocal, emailDomain]);
+
+  useEffect(() => {
+    if (!nickname) { setNicknameMsg(''); setIsNicknameValid(false); return; }
+    setNicknameMsg('확인 중...');
+    setIsNicknameValid(false);
+
+    const timer = setTimeout(async () => {
+        if (nickname.length < 2) {
+            setNicknameMsg('닉네임은 2자 이상이어야 합니다.');
+            return;
+        }
+        const isAvail = await checkNicknameAvailability(nickname);
+        if (isAvail) {
+            setNicknameMsg('사용 가능한 닉네임입니다.');
+            setIsNicknameValid(true);
+        } else {
+            setNicknameMsg('이미 사용 중인 닉네임입니다.');
+            setIsNicknameValid(false);
+        }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [nickname]);
+
+  useEffect(() => {
+    if (!password) { setPwMsg(''); return; }
+    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
+    if (!passwordRegex.test(password)) {
+        setPwMsg('영문, 숫자 포함 8자 이상이어야 합니다.');
+    } else {
+        setPwMsg('');
+    }
+  }, [password]);
+
   const handleNext = () => {
+    // 중복 체크가 완료되지 않았거나 실패했을 경우 진행 불가
+    if (!isEmailValid || !isNicknameValid) {
+        Alert.alert('확인 필요', '이메일과 닉네임 중복 여부를 확인해주세요.');
+        return;
+    }
+    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
+    if (!passwordRegex.test(password)) {
+        Alert.alert('비밀번호 오류', '비밀번호 규칙을 확인해주세요.');
+        return;
+    }
     if (password !== confirmPassword) {
-      Alert.alert('오류', '비밀번호가 일치하지 않습니다.');
+      Alert.alert('비밀번호 오류', '비밀번호가 일치하지 않습니다.');
       return;
     }
-    if (!email || !nickname || !password || !region || !gender) {
-      Alert.alert('오류', '모든 정보를 입력해주세요.');
+    if (!region || !gender) {
+      Alert.alert('입력 누락', '지역과 성별을 선택해주세요.');
       return;
     }
-    // [수정] 비밀번호(password)를 포함하여 전달
-    onNext({ email, nickname, password, region, gender });
+    const fullEmail = `${emailLocal}@${emailDomain}`;
+    onNext({ email: fullEmail, nickname, password, region, gender });
   };
 
   const handleRegionItemPress = (itemValue: string) => {
     if (!tempMainRegion) {
-      // 1단계: 시/도 선택
       setTempMainRegion(itemValue);
     } else {
-      // 2단계: 시/군/구 선택
       const finalRegion = itemValue === '전체' ? tempMainRegion : `${tempMainRegion} ${itemValue}`;
       setRegion(finalRegion);
       setIsRegionModalVisible(false);
@@ -443,7 +427,6 @@ const Step3_AccountInfo = ({ onNext }: { onNext: (data: any) => void }) => {
 
   const renderRegionList = () => {
     if (!tempMainRegion) {
-      // 메인 지역 리스트 렌더링
       return (
         <FlatList
           data={MAIN_REGIONS}
@@ -457,8 +440,6 @@ const Step3_AccountInfo = ({ onNext }: { onNext: (data: any) => void }) => {
         />
       );
     }
-
-    // 상세 지역 리스트 렌더링
     const subRegions = SUB_REGIONS[tempMainRegion] || ['전체'];
     return (
       <View style={{flex: 1, width: '100%'}}>
@@ -481,36 +462,84 @@ const Step3_AccountInfo = ({ onNext }: { onNext: (data: any) => void }) => {
     );
   };
 
+  // 버튼 비활성화 상태 계산
+  const isButtonDisabled = !isEmailValid || !isNicknameValid || !password || !region || !gender;
+
   return (
     <>
       <Text style={styles.title}>계정 정보</Text>
       <Text style={styles.subtitle}>로그인 정보와 프로필을 완성해주세요.</Text>
 
-      <View style={styles.inputContainer}>
-        <Mail size={20} color="#9CA3AF" style={styles.inputIcon} />
-        <TextInput
-          style={styles.input}
-          placeholder="이메일"
-          placeholderTextColor="#9CA3AF"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
+      {/* 이메일 입력 */}
+      <View style={styles.emailRow}>
+        <View style={[styles.inputContainer, { flex: 1, marginBottom: 0 }]}>
+          <Mail size={20} color="#9CA3AF" style={styles.inputIcon} />
+          <TextInput
+            style={styles.input}
+            placeholder="이메일 ID"
+            placeholderTextColor="#9CA3AF"
+            value={emailLocal}
+            onChangeText={(text) => setEmailLocal(text.replace(/\s/g, ''))}
+            autoCapitalize="none"
+          />
+        </View>
+        <Text style={styles.atSign}>@</Text>
+        <TouchableOpacity
+          style={[styles.inputContainer, { flex: 1, marginBottom: 0, justifyContent: 'space-between' }]}
+          onPress={() => setIsDomainModalVisible(true)}
+        >
+          <Text style={styles.inputText}>{emailDomain}</Text>
+          <ChevronDown size={16} color="#9CA3AF" />
+        </TouchableOpacity>
+      </View>
+      <View style={styles.msgContainer}>
+        {emailMsg ? (
+            <Text style={[styles.helperText, isEmailValid ? styles.successText : styles.errorText]}>
+                {emailMsg}
+            </Text>
+        ) : null}
       </View>
 
-      <View style={styles.inputContainer}>
+      <Modal animationType="slide" transparent={true} visible={isDomainModalVisible} onRequestClose={() => setIsDomainModalVisible(false)}>
+        <Pressable style={styles.regionModalOverlay} onPress={() => setIsDomainModalVisible(false)}>
+          <View style={styles.regionModalContent}>
+            <Text style={styles.regionModalTitle}>도메인 선택</Text>
+            <FlatList
+              data={EMAIL_DOMAINS}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.regionItem}
+                  onPress={() => { setEmailDomain(item); setIsDomainModalVisible(false); }}
+                >
+                  <Text style={[styles.regionItemText, item === emailDomain && { color: '#34D399', fontWeight: 'bold' }]}>
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </Pressable>
+      </Modal>
+
+      <View style={[styles.inputContainer, { marginTop: 0, marginBottom: 0 }]}>
         <User size={20} color="#9CA3AF" style={styles.inputIcon} />
         <TextInput
           style={styles.input}
           placeholder="닉네임"
           placeholderTextColor="#9CA3AF"
           value={nickname}
-          onChangeText={setNickname}
+          onChangeText={(text) => setNickname(text.replace(/\s/g, ''))}
         />
       </View>
+      <View style={styles.msgContainer}>
+        {nicknameMsg ? (
+            <Text style={[styles.helperText, isNicknameValid ? styles.successText : styles.errorText]}>
+                {nicknameMsg}
+            </Text>
+        ) : null}
+      </View>
 
-      {/* [수정] 활동 지역 선택 (TouchableOpacity로 변경) */}
       <TouchableOpacity
         style={styles.inputContainer}
         onPress={() => { setTempMainRegion(null); setIsRegionModalVisible(true); }}
@@ -522,18 +551,11 @@ const Step3_AccountInfo = ({ onNext }: { onNext: (data: any) => void }) => {
         <ChevronRight size={20} color="#6B7280" />
       </TouchableOpacity>
 
-      {/* 성별 선택 */}
       <View style={styles.genderContainer}>
-        <TouchableOpacity
-          style={[styles.genderButton, gender === '남성' && styles.genderButtonSelected]}
-          onPress={() => setGender('남성')}
-        >
+        <TouchableOpacity style={[styles.genderButton, gender === '남성' && styles.genderButtonSelected]} onPress={() => setGender('남성')}>
           <Text style={[styles.genderText, gender === '남성' && styles.genderTextSelected]}>남성</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.genderButton, gender === '여성' && styles.genderButtonSelected]}
-          onPress={() => setGender('여성')}
-        >
+        <TouchableOpacity style={[styles.genderButton, gender === '여성' && styles.genderButtonSelected]} onPress={() => setGender('여성')}>
           <Text style={[styles.genderText, gender === '여성' && styles.genderTextSelected]}>여성</Text>
         </TouchableOpacity>
       </View>
@@ -542,13 +564,19 @@ const Step3_AccountInfo = ({ onNext }: { onNext: (data: any) => void }) => {
         <Lock size={20} color="#9CA3AF" style={styles.inputIcon} />
         <TextInput
           style={styles.input}
-          placeholder="비밀번호"
+          placeholder="비밀번호 (영문, 숫자 포함 8자 이상)"
           placeholderTextColor="#9CA3AF"
           value={password}
           onChangeText={setPassword}
           secureTextEntry
         />
       </View>
+      {pwMsg ? (
+        <Text style={[styles.helperText, styles.errorText, {marginBottom: 8, marginTop: -8, paddingLeft: 4}]}>
+            {pwMsg}
+        </Text>
+      ) : null}
+
       <View style={styles.inputContainer}>
         <Lock size={20} color="#9CA3AF" style={styles.inputIcon} />
         <TextInput
@@ -561,24 +589,16 @@ const Step3_AccountInfo = ({ onNext }: { onNext: (data: any) => void }) => {
         />
       </View>
 
-      <TouchableOpacity style={styles.button} onPress={handleNext}>
+      {/* 중복 체크가 통과되지 않으면 버튼 비활성화 */}
+      <TouchableOpacity
+        style={[styles.button, isButtonDisabled && styles.buttonDisabled]}
+        onPress={handleNext}
+        disabled={isButtonDisabled}
+      >
         <Text style={styles.buttonText}>다음</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity
-        style={styles.skipButton}
-        onPress={() => onNext({ email: 'dev@test.com', nickname: '개발용', password: 'password123', region: '서울 강남구', gender: '남성' })}
-      >
-        <Text style={styles.linkText}>[개발용] 계정정보 건너뛰기</Text>
-      </TouchableOpacity>
-
-      {/* 지역 선택 모달 */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={isRegionModalVisible}
-        onRequestClose={() => setIsRegionModalVisible(false)}
-      >
+      <Modal animationType="slide" transparent={true} visible={isRegionModalVisible} onRequestClose={() => setIsRegionModalVisible(false)}>
         <Pressable style={styles.regionModalOverlay} onPress={() => setIsRegionModalVisible(false)}>
           <Pressable style={styles.regionModalContent} onPress={() => {}}>
             <Text style={styles.regionModalTitle}>지역 선택</Text>
@@ -590,9 +610,6 @@ const Step3_AccountInfo = ({ onNext }: { onNext: (data: any) => void }) => {
   );
 };
 
-// -------------------------------------------------------------------------
-// 4단계: RMR 초기 평가
-// -------------------------------------------------------------------------
 const Step4_RMRQuiz = ({ onComplete }: { onComplete: () => void }) => {
   const [answer1, setAnswer1] = useState<string | null>(null);
 
@@ -600,36 +617,27 @@ const Step4_RMRQuiz = ({ onComplete }: { onComplete: () => void }) => {
     <>
       <Text style={styles.title}>실력 가이드</Text>
       <Text style={styles.subtitle}>기본적인 룰 퀴즈로 RMR 참고 점수를 측정합니다.</Text>
-
       <Text style={styles.quizQuestion}>Q1. 배드민턴 복식 경기에서, 서브 순서는 어떻게 되나요?</Text>
-      <TouchableOpacity
-        style={[styles.quizOption, answer1 === 'A' && styles.quizOptionSelected]}
-        onPress={() => setAnswer1('A')}
-      >
+      <TouchableOpacity style={[styles.quizOption, answer1 === 'A' && styles.quizOptionSelected]} onPress={() => setAnswer1('A')}>
         <Text style={[styles.quizText, answer1 === 'A' && styles.quizTextSelected]}>A. 점수를 낼 때마다 서버가 바뀐다.</Text>
       </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.quizOption, answer1 === 'B' && styles.quizOptionSelected]}
-        onPress={() => setAnswer1('B')}
-      >
+      <TouchableOpacity style={[styles.quizOption, answer1 === 'B' && styles.quizOptionSelected]} onPress={() => setAnswer1('B')}>
         <Text style={[styles.quizText, answer1 === 'B' && styles.quizTextSelected]}>B. 점수를 낸 팀이 계속 서브를 넣는다.</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity
-        style={[styles.button, !answer1 && styles.buttonDisabled]}
-        onPress={onComplete}
-        disabled={!answer1}
-      >
+      <TouchableOpacity style={[styles.button, !answer1 && styles.buttonDisabled]} onPress={onComplete} disabled={!answer1}>
         <Text style={styles.buttonText}>가입 완료</Text>
       </TouchableOpacity>
     </>
   );
 };
 
-// -------------------------------------------------------------------------
-// 메인 컴포넌트
-// -------------------------------------------------------------------------
-export default function SignUpScreen({ onGoToLogin, onSignUp }: SignUpScreenProps) {
+export default function SignUpScreen({
+  onGoToLogin,
+  onSignUp,
+  checkEmailAvailability,
+  checkNicknameAvailability
+}: SignUpScreenProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [signUpData, setSignUpData] = useState({});
 
@@ -638,11 +646,15 @@ export default function SignUpScreen({ onGoToLogin, onSignUp }: SignUpScreenProp
     setCurrentStep(currentStep + 1);
   };
 
+  const handlePrevStep = () => {
+    if (currentStep > 1) {
+        setCurrentStep(currentStep - 1);
+    }
+  };
+
   const handleComplete = () => {
     console.log("최종 회원가입 데이터:", signUpData);
-    // [수정] App.tsx가 기대하는 인자(email, password, nickname)를 전달
     const { email, password, nickname } = signUpData as any;
-
     if (email && password && nickname) {
         onSignUp(email, password, nickname);
     } else {
@@ -654,24 +666,35 @@ export default function SignUpScreen({ onGoToLogin, onSignUp }: SignUpScreenProp
     switch (currentStep) {
       case 1: return <Step1_TOS onNext={handleNextStep} />;
       case 2: return <Step2_PhoneVerify onNext={handleNextStep} />;
-      case 3: return <Step3_AccountInfo onNext={handleNextStep} />;
+      case 3:
+        return (
+          <Step3_AccountInfo
+            onNext={handleNextStep}
+            initialData={signUpData}
+            checkEmailAvailability={checkEmailAvailability}
+            checkNicknameAvailability={checkNicknameAvailability}
+          />
+        );
       case 4: return <Step4_RMRQuiz onComplete={handleComplete} />;
       default: return <Step1_TOS onNext={handleNextStep} />;
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
+      <View style={styles.topSafeArea} />
+      <View style={styles.header}>
+        {currentStep > 1 && (
+          <TouchableOpacity onPress={handlePrevStep} style={styles.backButton}>
+            <ChevronLeft size={28} color="white" />
+          </TouchableOpacity>
+        )}
+      </View>
+
       <ScrollView contentContainerStyle={styles.content}>
         <Image source={require('../../assets/images/rally-logo.png')} style={styles.logo} />
-
         <StepIndicator currentStep={currentStep} />
-
         {renderStep()}
-
         <View style={styles.linksContainer}>
           <TouchableOpacity onPress={onGoToLogin}>
             <Text style={styles.linkText}>이미 계정이 있으신가요? <Text style={styles.linkTextHighlight}>로그인</Text></Text>
@@ -684,12 +707,21 @@ export default function SignUpScreen({ onGoToLogin, onSignUp }: SignUpScreenProp
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111827' },
+  topSafeArea: { height: 40, backgroundColor: '#111827' },
+  header: {
+    height: 50,
+    width: '100%',
+    paddingHorizontal: 20,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    backgroundColor: '#111827',
+  },
+  backButton: { padding: 8, marginLeft: -8 },
   content: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   logo: { width: 60, height: 60, marginBottom: 24 },
   title: { fontSize: 28, fontWeight: 'bold', color: 'white', marginBottom: 8 },
   subtitle: { fontSize: 16, color: '#9CA3AF', marginBottom: 32, textAlign: 'center' },
 
-  // Step Indicator
   stepIndicatorContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 24, width: '80%' },
   stepDot: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#374151', justifyContent: 'center', alignItems: 'center' },
   stepDotActive: { backgroundColor: '#34D399' },
@@ -698,16 +730,21 @@ const styles = StyleSheet.create({
   stepTextActive: { color: 'white' },
   stepLine: { flex: 1, height: 2, backgroundColor: '#374151' },
 
-  // Inputs
   inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#374151', borderRadius: 8, width: '100%', marginBottom: 16, paddingHorizontal: 16 },
   inputVerified: { borderColor: '#34D399', borderWidth: 1 },
   inputIcon: { marginRight: 12 },
   input: { flex: 1, paddingVertical: 14, fontSize: 16, color: 'white' },
-  // [추가] Text-based Input 스타일 (TouchableOpacity 용)
   inputText: { flex: 1, paddingVertical: 14, fontSize: 16, color: 'white' },
   placeholderText: { color: '#9CA3AF' },
 
-  // Gender Selection
+  emailRow: { flexDirection: 'row', alignItems: 'center', width: '100%', marginBottom: 0 },
+  atSign: { color: 'white', fontSize: 18, marginHorizontal: 8, fontWeight: 'bold' },
+
+  msgContainer: { width: '100%', marginBottom: 8, marginTop: 4, paddingLeft: 4, minHeight: 20, justifyContent: 'center' },
+  helperText: { fontSize: 12 },
+  errorText: { color: '#EF4444' },
+  successText: { color: '#34D399' },
+
   genderContainer: { flexDirection: 'row', width: '100%', gap: 12, marginBottom: 16 },
   genderButton: { flex: 1, backgroundColor: '#374151', borderRadius: 8, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: '#374151' },
   genderButtonSelected: { backgroundColor: '#1F2937', borderColor: '#34D399' },
@@ -716,14 +753,13 @@ const styles = StyleSheet.create({
 
   button: { backgroundColor: '#34D399', borderRadius: 8, width: '100%', paddingVertical: 16, alignItems: 'center', marginTop: 16 },
   buttonText: { color: '#111827', fontSize: 16, fontWeight: 'bold' },
-  buttonDisabled: { backgroundColor: '#374151' },
+  buttonDisabled: { backgroundColor: '#374151', opacity: 0.5 },
 
   linksContainer: { width: '100%', alignItems: 'center', marginTop: 24, borderTopWidth: 1, borderTopColor: '#374151', paddingTop: 24 },
   linkText: { fontSize: 14, color: '#9CA3AF' },
   linkTextHighlight: { color: '#34D399', fontWeight: 'bold' },
   skipButton: { marginTop: 16 },
 
-  // Step 1
   checkContainer: { flexDirection: 'row', alignItems: 'center', width: '100%', marginBottom: 16 },
   checkAll: { marginBottom: 20 },
   checkbox: { width: 24, height: 24, borderRadius: 4, borderWidth: 2, borderColor: '#9CA3AF', marginRight: 12, justifyContent: 'center', alignItems: 'center' },
@@ -735,7 +771,6 @@ const styles = StyleSheet.create({
   checkLabel: { fontSize: 16, color: 'white' },
   checkLink: { fontSize: 14, color: '#9CA3AF', textDecorationLine: 'underline', padding: 4 },
 
-  // Modal (Terms & Region Common)
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { width: '85%', height: '70%', backgroundColor: '#1F2937', borderRadius: 12, padding: 20 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#374151' },
@@ -745,7 +780,6 @@ const styles = StyleSheet.create({
   modalButton: { backgroundColor: '#34D399', borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
   modalButtonText: { color: '#111827', fontWeight: 'bold', fontSize: 16 },
 
-  // [추가] Region Modal Specific
   regionModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   regionModalContent: { width: '100%', height: '60%', backgroundColor: 'white', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 32 },
   regionModalTitle: { fontSize: 22, fontWeight: 'bold', color: '#1F2937', marginBottom: 20, textAlign: 'center' },
@@ -754,14 +788,12 @@ const styles = StyleSheet.create({
   regionHeaderBack: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB', marginBottom: 8 },
   regionHeaderBackText: { fontSize: 16, fontWeight: 'bold', color: '#374151', marginLeft: 8 },
 
-  // Step 2 (Verification)
   verifyButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'white', borderRadius: 8, paddingVertical: 14, width: '100%', marginBottom: 10 },
   verifyButtonText: { color: '#111827', fontWeight: 'bold', fontSize: 16 },
   verifiedText: { color: '#34D399', textAlign: 'center', marginBottom: 20 },
   webViewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#1F2937', borderBottomWidth: 1, borderBottomColor: '#374151' },
   webViewTitle: { color: 'white', fontSize: 18, fontWeight: 'bold' },
 
-  // Step 4 (Quiz)
   quizQuestion: { fontSize: 16, color: 'white', width: '100%', marginBottom: 16, fontWeight: '500' },
   quizOption: { backgroundColor: '#374151', borderRadius: 8, padding: 16, width: '100%', marginBottom: 12 },
   quizOptionSelected: { backgroundColor: '#34D399', borderColor: '#34D399' },
