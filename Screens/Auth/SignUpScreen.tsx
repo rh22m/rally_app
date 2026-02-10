@@ -47,7 +47,8 @@ const EMAIL_DOMAINS = [
   'kakao.com',
   'hanmail.net',
   'icloud.com',
-  'outlook.com'
+  'outlook.com',
+  '직접 입력'
 ];
 
 const MAIN_REGIONS = [
@@ -321,6 +322,11 @@ const Step3_AccountInfo = ({
   const [emailDomain, setEmailDomain] = useState(initialData.email ? initialData.email.split('@')[1] : EMAIL_DOMAINS[0]);
   const [isDomainModalVisible, setIsDomainModalVisible] = useState(false);
 
+  const [isCustomDomain, setIsCustomDomain] = useState(() => {
+      const domain = initialData.email ? initialData.email.split('@')[1] : EMAIL_DOMAINS[0];
+      return domain && !EMAIL_DOMAINS.includes(domain);
+  });
+
   const [nickname, setNickname] = useState(initialData.nickname || '');
   const [password, setPassword] = useState(initialData.password || '');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -329,25 +335,44 @@ const Step3_AccountInfo = ({
 
   const [emailMsg, setEmailMsg] = useState('');
   const [isEmailValid, setIsEmailValid] = useState(false);
+  const [isEmailChecked, setIsEmailChecked] = useState(false);
+
   const [nicknameMsg, setNicknameMsg] = useState('');
   const [isNicknameValid, setIsNicknameValid] = useState(false);
+  const [isNicknameChecked, setIsNicknameChecked] = useState(false);
+
   const [pwMsg, setPwMsg] = useState('');
 
   const [isRegionModalVisible, setIsRegionModalVisible] = useState(false);
   const [tempMainRegion, setTempMainRegion] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!emailLocal) { setEmailMsg(''); setIsEmailValid(false); return; }
+  const handleEmailChange = (text: string) => {
+    setEmailLocal(text.replace(/\s/g, ''));
+    setIsEmailValid(false);
+    setIsEmailChecked(false);
+    setEmailMsg('');
+  };
+
+  const handleCheckEmail = async () => {
+    if (!emailLocal) {
+        setEmailMsg('이메일을 입력해주세요.');
+        return;
+    }
+    if (emailLocal.length < 2) {
+        setEmailMsg('이메일이 너무 짧습니다.');
+        return;
+    }
+    if (!emailDomain) {
+        setEmailMsg('도메인을 입력해주세요.');
+        return;
+    }
+
     const fullEmail = `${emailLocal}@${emailDomain}`;
     setEmailMsg('확인 중...');
-    setIsEmailValid(false);
 
-    const timer = setTimeout(async () => {
-        if (emailLocal.length < 2) {
-            setEmailMsg('이메일이 너무 짧습니다.');
-            return;
-        }
+    try {
         const isAvail = await checkEmailAvailability(fullEmail);
+        setIsEmailChecked(true);
         if (isAvail) {
             setEmailMsg('사용 가능한 이메일입니다.');
             setIsEmailValid(true);
@@ -355,21 +380,35 @@ const Step3_AccountInfo = ({
             setEmailMsg('이미 사용 중인 이메일입니다.');
             setIsEmailValid(false);
         }
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [emailLocal, emailDomain]);
+    } catch (e) {
+        setEmailMsg('확인 중 오류가 발생했습니다.');
+        setIsEmailChecked(true);
+        setIsEmailValid(false);
+    }
+  };
 
-  useEffect(() => {
-    if (!nickname) { setNicknameMsg(''); setIsNicknameValid(false); return; }
-    setNicknameMsg('확인 중...');
+  const handleNicknameChange = (text: string) => {
+    setNickname(text.replace(/\s/g, ''));
     setIsNicknameValid(false);
+    setIsNicknameChecked(false);
+    setNicknameMsg('');
+  };
 
-    const timer = setTimeout(async () => {
-        if (nickname.length < 2) {
-            setNicknameMsg('닉네임은 2자 이상이어야 합니다.');
-            return;
-        }
+  const handleCheckNickname = async () => {
+    if (!nickname) {
+        setNicknameMsg('닉네임을 입력해주세요.');
+        return;
+    }
+    if (nickname.length < 2) {
+        setNicknameMsg('닉네임은 2자 이상이어야 합니다.');
+        return;
+    }
+
+    setNicknameMsg('확인 중...');
+
+    try {
         const isAvail = await checkNicknameAvailability(nickname);
+        setIsNicknameChecked(true);
         if (isAvail) {
             setNicknameMsg('사용 가능한 닉네임입니다.');
             setIsNicknameValid(true);
@@ -377,9 +416,13 @@ const Step3_AccountInfo = ({
             setNicknameMsg('이미 사용 중인 닉네임입니다.');
             setIsNicknameValid(false);
         }
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [nickname]);
+    } catch (error) {
+        console.error(error);
+        setNicknameMsg('확인 중 오류가 발생했습니다.');
+        setIsNicknameChecked(true);
+        setIsNicknameValid(false);
+    }
+  };
 
   useEffect(() => {
     if (!password) { setPwMsg(''); return; }
@@ -392,9 +435,12 @@ const Step3_AccountInfo = ({
   }, [password]);
 
   const handleNext = () => {
-    // 중복 체크가 완료되지 않았거나 실패했을 경우 진행 불가
-    if (!isEmailValid || !isNicknameValid) {
-        Alert.alert('확인 필요', '이메일과 닉네임 중복 여부를 확인해주세요.');
+    if (!isEmailChecked || !isEmailValid) {
+        Alert.alert('확인 필요', '이메일 중복 확인 버튼을 눌러주세요.');
+        return;
+    }
+    if (!isNicknameChecked || !isNicknameValid) {
+        Alert.alert('확인 필요', '닉네임 중복 확인 버튼을 눌러주세요.');
         return;
     }
     const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
@@ -462,7 +508,6 @@ const Step3_AccountInfo = ({
     );
   };
 
-  // 버튼 비활성화 상태 계산
   const isButtonDisabled = !isEmailValid || !isNicknameValid || !password || !region || !gender;
 
   return (
@@ -472,26 +517,59 @@ const Step3_AccountInfo = ({
 
       {/* 이메일 입력 */}
       <View style={styles.emailRow}>
-        <View style={[styles.inputContainer, { flex: 1, marginBottom: 0 }]}>
+        <View style={[styles.inputContainer, { flex: 1.7, marginBottom: 0 }]}>
           <Mail size={20} color="#9CA3AF" style={styles.inputIcon} />
           <TextInput
             style={styles.input}
             placeholder="이메일 ID"
             placeholderTextColor="#9CA3AF"
             value={emailLocal}
-            onChangeText={(text) => setEmailLocal(text.replace(/\s/g, ''))}
+            onChangeText={handleEmailChange}
             autoCapitalize="none"
           />
         </View>
         <Text style={styles.atSign}>@</Text>
-        <TouchableOpacity
-          style={[styles.inputContainer, { flex: 1, marginBottom: 0, justifyContent: 'space-between' }]}
-          onPress={() => setIsDomainModalVisible(true)}
-        >
-          <Text style={styles.inputText}>{emailDomain}</Text>
-          <ChevronDown size={16} color="#9CA3AF" />
-        </TouchableOpacity>
+
+        <View style={[styles.inputContainer, { flex: 1, marginBottom: 0, paddingRight: 10 }]}>
+            {isCustomDomain ? (
+                <TextInput
+                    style={[styles.input, { paddingVertical: 14 }]}
+                    placeholder="직접 입력"
+                    placeholderTextColor="#9CA3AF"
+                    value={emailDomain}
+                    onChangeText={(text) => {
+                        setEmailDomain(text);
+                        setIsEmailChecked(false);
+                        setIsEmailValid(false);
+                        setEmailMsg('');
+                    }}
+                    autoCapitalize="none"
+                />
+            ) : (
+                <TouchableOpacity
+                    style={{ flex: 1 }}
+                    onPress={() => setIsDomainModalVisible(true)}
+                >
+                    <Text style={styles.inputText}>{emailDomain}</Text>
+                </TouchableOpacity>
+            )}
+
+            <TouchableOpacity onPress={() => setIsDomainModalVisible(true)}>
+                <ChevronDown size={16} color="#9CA3AF" />
+            </TouchableOpacity>
+        </View>
       </View>
+
+      <TouchableOpacity
+        style={[styles.checkButton, isEmailChecked && isEmailValid ? styles.checkButtonSuccess : {}]}
+        onPress={handleCheckEmail}
+        disabled={isEmailChecked && isEmailValid}
+      >
+        <Text style={styles.checkButtonText}>
+            {isEmailChecked && isEmailValid ? "확인 완료" : "중복 확인"}
+        </Text>
+      </TouchableOpacity>
+
       <View style={styles.msgContainer}>
         {emailMsg ? (
             <Text style={[styles.helperText, isEmailValid ? styles.successText : styles.errorText]}>
@@ -510,9 +588,21 @@ const Step3_AccountInfo = ({
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.regionItem}
-                  onPress={() => { setEmailDomain(item); setIsDomainModalVisible(false); }}
+                  onPress={() => {
+                      if (item === '직접 입력') {
+                          setIsCustomDomain(true);
+                          setEmailDomain('');
+                      } else {
+                          setIsCustomDomain(false);
+                          setEmailDomain(item);
+                      }
+                      setIsDomainModalVisible(false);
+                      setIsEmailChecked(false);
+                      setIsEmailValid(false);
+                      setEmailMsg('');
+                  }}
                 >
-                  <Text style={[styles.regionItemText, item === emailDomain && { color: '#34D399', fontWeight: 'bold' }]}>
+                  <Text style={[styles.regionItemText, item === emailDomain && !isCustomDomain && { color: '#34D399', fontWeight: 'bold' }]}>
                     {item}
                   </Text>
                 </TouchableOpacity>
@@ -522,6 +612,7 @@ const Step3_AccountInfo = ({
         </Pressable>
       </Modal>
 
+      {/* 닉네임 입력 */}
       <View style={[styles.inputContainer, { marginTop: 0, marginBottom: 0 }]}>
         <User size={20} color="#9CA3AF" style={styles.inputIcon} />
         <TextInput
@@ -529,9 +620,20 @@ const Step3_AccountInfo = ({
           placeholder="닉네임"
           placeholderTextColor="#9CA3AF"
           value={nickname}
-          onChangeText={(text) => setNickname(text.replace(/\s/g, ''))}
+          onChangeText={handleNicknameChange}
         />
       </View>
+
+      <TouchableOpacity
+        style={[styles.checkButton, isNicknameChecked && isNicknameValid ? styles.checkButtonSuccess : {}]}
+        onPress={handleCheckNickname}
+        disabled={isNicknameChecked && isNicknameValid}
+      >
+        <Text style={styles.checkButtonText}>
+            {isNicknameChecked && isNicknameValid ? "확인 완료" : "중복 확인"}
+        </Text>
+      </TouchableOpacity>
+
       <View style={styles.msgContainer}>
         {nicknameMsg ? (
             <Text style={[styles.helperText, isNicknameValid ? styles.successText : styles.errorText]}>
@@ -589,7 +691,6 @@ const Step3_AccountInfo = ({
         />
       </View>
 
-      {/* 중복 체크가 통과되지 않으면 버튼 비활성화 */}
       <TouchableOpacity
         style={[styles.button, isButtonDisabled && styles.buttonDisabled]}
         onPress={handleNext}
@@ -739,6 +840,18 @@ const styles = StyleSheet.create({
 
   emailRow: { flexDirection: 'row', alignItems: 'center', width: '100%', marginBottom: 0 },
   atSign: { color: 'white', fontSize: 18, marginHorizontal: 8, fontWeight: 'bold' },
+
+  checkButton: {
+    width: '100%',
+    paddingVertical: 12,
+    backgroundColor: '#374151',
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 0
+  },
+  checkButtonSuccess: { backgroundColor: '#059669' },
+  checkButtonText: { color: 'white', fontWeight: 'bold', fontSize: 14 },
 
   msgContainer: { width: '100%', marginBottom: 8, marginTop: 4, paddingLeft: 4, minHeight: 20, justifyContent: 'center' },
   helperText: { fontSize: 12 },

@@ -314,9 +314,8 @@ function MainScreen({
   };
 
   useEffect(() => {
-    // isFirstLogin이 true가 되면 튜토리얼을 띄움
+    // isFirstLogin이 true면 튜토리얼 띄움
     if (isFirstLogin) {
-      // 화면 전환 및 데이터 로딩 시간을 고려해 약간의 딜레이
       const timer = setTimeout(() => {
         setShowTutorial(true);
       }, 500);
@@ -484,10 +483,9 @@ export default function App() {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [authScreen, setAuthScreen] = useState<'login' | 'signup'>('login');
 
-  // [수정] 튜토리얼 트리거 상태
   const [isFirstLogin, setIsFirstLogin] = useState(false);
-  // [추가] 회원가입 진행 중 로딩 상태 (화면 전환 방지)
   const [isSigningUp, setIsSigningUp] = useState(false);
+  const isSigningUpRef = useRef(false);
 
   useEffect(() => {
     const requestPermissions = async () => {
@@ -514,17 +512,15 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser && !currentUser.isAnonymous) {
-        // [중요] 회원가입 중이라면(isSigningUp), 여기서 프로필을 fetch하지 않고
-        // handleSignUp이 완료될 때까지 기다리도록 하거나,
-        // 단순히 여기서 fetch를 하더라도 화면 전환은 isSigningUp 상태에 의해 제어됨.
-        if (!isSigningUp) {
+        // 회원가입 중이 아닐 때만 프로필 fetch
+        if (!isSigningUpRef.current) {
             await fetchUserProfile(currentUser.uid);
         }
       }
       setInitializing(false);
     });
     return () => unsubscribe();
-  }, [isSigningUp]); // 의존성 추가
+  }, []);
 
   const fetchUserProfile = async (uid: string) => {
     const userDocRef = doc(db, 'artifacts', appId, 'users', uid, 'profile', 'info');
@@ -548,22 +544,16 @@ export default function App() {
       return snapshot.empty;
     } catch (e) {
       console.error("Nickname check error:", e);
-      // 안전을 위해 에러 시 false(중복 가능성 있음) 처리
       return false;
     }
   };
 
-  // [수정] 이메일 중복 체크 강화
   const checkEmailAvailability = async (email: string): Promise<boolean> => {
     try {
-      // 1. Auth 메서드로 확인 (가장 확실한 방법)
-      // fetchSignInMethodsForEmail은 가입된 이메일일 경우 메서드 배열(예: ['password'])을 반환
       const methods = await fetchSignInMethodsForEmail(auth, email);
       if (methods && methods.length > 0) {
-        return false; // 이미 가입된 이메일
+        return false;
       }
-
-      // 2. DB 이중 확인 (Auth 체크가 보안 설정으로 막혔을 경우 대비)
       const q = query(
         collectionGroup(db, 'profile'),
         where('email', '==', email)
@@ -571,11 +561,8 @@ export default function App() {
       const snapshot = await getDocs(q);
       return snapshot.empty;
     } catch (e: any) {
-        // Firebase Auth 에러 코드 처리 (이메일이 유효하지 않거나 등등)
         console.error("Email check error:", e);
         if (e.code === 'auth/invalid-email') return false;
-
-        // 에러가 났다면 안전하게 false로 처리하여 진행을 막는 것이 나음 (사용자에게 알림 필요)
         return false;
     }
   };
@@ -595,11 +582,11 @@ export default function App() {
         return;
     }
 
-    // [중요] 회원가입 시작 시 로딩 상태 true (화면 전환 방지)
     setIsSigningUp(true);
+    isSigningUpRef.current = true;
 
     try {
-      // 1. 계정 생성 시도
+      // 1. 계정 생성 (Auth)
       const cred = await createUserWithEmailAndPassword(auth, email, password);
 
       const safeEmail = email.toLowerCase();
@@ -611,26 +598,29 @@ export default function App() {
         rallyCount: 0,
       };
 
-      // 2. DB에 프로필 저장
-      await setDoc(doc(db, 'artifacts', appId, 'users', cred.user.uid, 'profile', 'info'), profileData);
-
-      // 3. 상태 업데이트 (순서 중요)
+      // 2. UI 상태 즉시 업데이트 (튜토리얼 보장을 위해)
       setUserProfile(profileData);
-      setIsFirstLogin(true); // 튜토리얼 플래그 ON
+      setIsFirstLogin(true);
 
-      Alert.alert("환영합니다!", "회원가입이 완료되었습니다.");
+      // 3. DB 저장 시도 (실패해도 로그인은 유지됨)
+      try {
+          await setDoc(doc(db, 'artifacts', appId, 'users', cred.user.uid, 'profile', 'info'), profileData);
+      } catch (dbError: any) {
+          console.error("DB Save Error:", dbError);
+          // DB 실패 시 사용자에게 알림 (하지만 튜토리얼은 진행됨)
+          Alert.alert("알림", "계정은 생성되었으나 프로필 저장에 실패했습니다.\n(DB 권한/설정을 확인해주세요)");
+      }
 
     } catch (error: any) {
       console.error(error);
-      // 에러 메시지 사용자 친화적으로 변환
       let msg = error.message;
       if (error.code === 'auth/email-already-in-use') {
           msg = "이미 사용 중인 이메일입니다.";
       }
       Alert.alert("회원가입 실패", msg);
-      // 실패 시 로그아웃 처리 등을 통해 좀비 상태 방지 가능
     } finally {
-        // [중요] 모든 처리가 끝난 후 로딩 해제 -> 이 시점에 MainScreen으로 전환됨
+        // [중요] 로딩 상태 강제 해제 -> 메인 화면으로 전환
+        isSigningUpRef.current = false;
         setIsSigningUp(false);
     }
   };
@@ -651,13 +641,14 @@ export default function App() {
     return <WatchScoreTracker />;
   }
 
-  // [수정] 초기화 중이거나 회원가입 처리 중일 때 로딩 화면 유지
-  if (initializing || isSigningUp) {
+  // [수정] 회원가입 중에는 로딩 화면을 보여주지 않고 바로 메인으로 넘어가도록 조건 완화
+  // isSigningUp 체크를 제거하여, Auth 상태가 변경되면 즉시 메인 렌더링
+  if (initializing) {
     return (
       <View style={stubStyles.stubContainer}>
         <ActivityIndicator size="large" color="#34D399" />
         <Text style={stubStyles.stubText}>
-            {isSigningUp ? "회원가입 처리 중..." : "RALLY SYSTEM LOADING..."}
+            RALLY SYSTEM LOADING...
         </Text>
       </View>
     );
@@ -702,7 +693,6 @@ export default function App() {
               <MainScreen
                 {...props}
                 handleLogout={handleLogout}
-                // [확인] isFirstLogin 상태가 확실하게 전달됨
                 isFirstLogin={isFirstLogin}
                 user={user}
                 userProfile={userProfile}
