@@ -33,10 +33,10 @@ import {
 
 const { width, height } = Dimensions.get('window');
 
-// App.tsx로부터 받을 props 타입
+// [수정] App.tsx의 handleSignUp과 호환되도록 인터페이스 수정
 interface SignUpScreenProps {
   onGoToLogin: () => void;
-  onSignUp: () => void;
+  onSignUp: (email: string, password: string, nickname: string) => void;
 }
 
 // -----------------------------------------------------------------------------------------
@@ -424,7 +424,8 @@ const Step3_AccountInfo = ({ onNext }: { onNext: (data: any) => void }) => {
       Alert.alert('오류', '모든 정보를 입력해주세요.');
       return;
     }
-    onNext({ email, nickname, region, gender });
+    // [수정] 비밀번호(password)를 포함하여 전달
+    onNext({ email, nickname, password, region, gender });
   };
 
   const handleRegionItemPress = (itemValue: string) => {
@@ -566,7 +567,7 @@ const Step3_AccountInfo = ({ onNext }: { onNext: (data: any) => void }) => {
 
       <TouchableOpacity
         style={styles.skipButton}
-        onPress={() => onNext({ email: 'dev@test.com', nickname: '개발용', region: '서울 강남구', gender: '남성' })}
+        onPress={() => onNext({ email: 'dev@test.com', nickname: '개발용', password: 'password123', region: '서울 강남구', gender: '남성' })}
       >
         <Text style={styles.linkText}>[개발용] 계정정보 건너뛰기</Text>
       </TouchableOpacity>
@@ -639,8 +640,14 @@ export default function SignUpScreen({ onGoToLogin, onSignUp }: SignUpScreenProp
 
   const handleComplete = () => {
     console.log("최종 회원가입 데이터:", signUpData);
-    // 실제 앱에서는 여기서 API 호출하여 회원가입 정보(signUpData) 전송
-    onSignUp();
+    // [수정] App.tsx가 기대하는 인자(email, password, nickname)를 전달
+    const { email, password, nickname } = signUpData as any;
+
+    if (email && password && nickname) {
+        onSignUp(email, password, nickname);
+    } else {
+        Alert.alert("오류", "회원가입에 필요한 정보가 누락되었습니다.");
+    }
   };
 
   const renderStep = () => {

@@ -12,25 +12,37 @@ import {
 } from 'react-native';
 import { Mail, Lock } from 'lucide-react-native';
 
-// App.tsx로부터 받을 props 타입 정의
+// [수정] App.tsx의 handleLogin 함수와 호환되도록 인터페이스 수정
 interface LoginScreenProps {
   onGoToSignUp: () => void;
-  onLogin: () => void; // (임시) 로그인 성공 처리
+  onLogin: (email: string, password: string) => void;
 }
 
 export default function LoginScreen({ onGoToSignUp, onLogin }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = () => {
-    // (추후) 여기에 Firebase/백엔드 로그인 로직 구현
+  const handleLoginPress = () => {
+    // 1. 유효성 검사
     if (!email || !password) {
-      Alert.alert('오류', '이메일과 비밀번호를 모두 입력해주세요.');
+      Alert.alert('알림', '이메일과 비밀번호를 모두 입력해주세요.');
       return;
     }
-    console.log('로그인 시도:', email);
-    // (임시) 로그인 성공 처리
-    onLogin();
+
+    // 2. 부모 컴포넌트(App.tsx)로 이메일과 비밀번호 전달
+    setIsLoading(true);
+    // onLogin 함수가 비동기(Promise)일 수 있으므로 처리
+    try {
+        onLogin(email, password);
+    } catch (e) {
+        console.error(e);
+        setIsLoading(false);
+    }
+
+    // 로딩 상태 해제는 App.tsx에서 에러가 났을 때 처리하거나,
+    // 화면이 넘어가면 자연스럽게 해결됩니다. 여기서는 안전을 위해 타임아웃 설정
+    setTimeout(() => setIsLoading(false), 3000);
   };
 
   return (
@@ -43,17 +55,18 @@ export default function LoginScreen({ onGoToSignUp, onLogin }: LoginScreenProps)
         <Image
           source={require('../../assets/images/rally-logo.png')}
           style={styles.logo}
+          resizeMode="contain"
         />
         <Text style={styles.title}>Rally</Text>
-        <Text style={styles.subtitle}>로그인하여 랠리를 시작하세요</Text>
+        <Text style={styles.subtitle}>로그인하여 랠리를 시작하세요!</Text>
 
-        {/* 2. 이메일 입력 */}
+        {/* 2. 입력 폼 */}
         <View style={styles.inputContainer}>
-          <Mail size={20} color="#9CA3AF" style={styles.inputIcon} />
+          <Mail color="#9CA3AF" size={20} style={styles.inputIcon} />
           <TextInput
             style={styles.input}
             placeholder="이메일"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor="#6B7280"
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -61,29 +74,32 @@ export default function LoginScreen({ onGoToSignUp, onLogin }: LoginScreenProps)
           />
         </View>
 
-        {/* 3. 비밀번호 입력 */}
         <View style={styles.inputContainer}>
-          <Lock size={20} color="#9CA3AF" style={styles.inputIcon} />
+          <Lock color="#9CA3AF" size={20} style={styles.inputIcon} />
           <TextInput
             style={styles.input}
             placeholder="비밀번호"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor="#6B7280"
             value={password}
             onChangeText={setPassword}
-            secureTextEntry // 비밀번호 숨김
+            secureTextEntry
           />
         </View>
 
-        {/* 4. 로그인 버튼 */}
-        <TouchableOpacity style={styles.button} onPress={handleLogin}>
-          <Text style={styles.buttonText}>로그인</Text>
+        {/* 3. 로그인 버튼 */}
+        <TouchableOpacity
+            style={[styles.button, isLoading && styles.buttonDisabled]}
+            onPress={handleLoginPress}
+            disabled={isLoading}
+        >
+          <Text style={styles.buttonText}>
+            {isLoading ? '로그인 중...' : '로그인'}
+          </Text>
         </TouchableOpacity>
 
-        {/* 5. 하단 링크 */}
-        <View style={styles.linksContainer}>
-          <TouchableOpacity onPress={() => Alert.alert('알림', '비밀번호 찾기 (구현 필요)')}>
-            <Text style={styles.linkText}>비밀번호 찾기</Text>
-          </TouchableOpacity>
+        {/* 4. 회원가입 링크 */}
+        <View style={styles.footerLink}>
+          <Text style={styles.linkText}>계정이 없으신가요? </Text>
           <TouchableOpacity onPress={onGoToSignUp}>
             <Text style={styles.linkTextHighlight}>회원가입</Text>
           </TouchableOpacity>
@@ -124,46 +140,51 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#374151', // Home 검색창과 동일
-    borderRadius: 8,
+    borderRadius: 12, // 조금 더 둥글게 수정
     width: '100%',
     marginBottom: 16,
     paddingHorizontal: 16,
+    height: 56, // 높이 고정
   },
   inputIcon: {
     marginRight: 12,
   },
   input: {
     flex: 1,
-    paddingVertical: 14,
     fontSize: 16,
     color: 'white',
+    height: '100%',
   },
   button: {
     backgroundColor: '#34D399', // 랠리 녹색
-    borderRadius: 8,
     width: '100%',
     paddingVertical: 16,
+    borderRadius: 12,
     alignItems: 'center',
-    marginTop: 16,
+    marginTop: 8,
+    marginBottom: 24,
+  },
+  buttonDisabled: {
+    backgroundColor: '#059669',
+    opacity: 0.7,
   },
   buttonText: {
-    color: '#111827', // 어두운 텍스트
-    fontSize: 16,
+    color: '#111827', // 어두운 글자
+    fontSize: 18,
     fontWeight: 'bold',
   },
-  linksContainer: {
+  footerLink: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginTop: 24,
+    alignItems: 'center',
   },
   linkText: {
-    fontSize: 14,
     color: '#9CA3AF',
+    fontSize: 14,
   },
   linkTextHighlight: {
+    color: '#34D399',
     fontSize: 14,
-    color: '#34D399', // 랠리 녹색
     fontWeight: 'bold',
+    marginLeft: 4,
   },
 });

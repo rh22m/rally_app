@@ -9,8 +9,8 @@ import {
   Dimensions,
   Animated,
   Modal,
-  PermissionsAndroid, // [추가] 권한 요청을 위해 필요
-  Alert,              // [추가] 권한 거부 시 알림을 위해 필요
+  PermissionsAndroid,
+  Alert,
 } from 'react-native';
 
 // 네비게이션 필수 라이브러리
@@ -19,11 +19,32 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 // 안드로이드 안전 영역 처리
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// 아이콘 (BottomNav와 동일한 아이콘 사용)
+// --- Firebase Imports ---
+import { initializeApp } from 'firebase/app';
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  User as FirebaseUser,
+} from 'firebase/auth';
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  collection,
+  onSnapshot,
+  addDoc,
+  serverTimestamp
+} from 'firebase/firestore';
+
+// 아이콘
 import {
   MessageCircleMore,
   Search,
-  User,
+  User as UserIcon,
   Bot,
   Flame,
   ChevronDown,
@@ -35,8 +56,7 @@ import { Home } from './components/Home';
 import { BottomNav } from './components/BottomNav';
 import { ScoreTracker } from './components/ScoreTracker';
 import { GameSummary } from './components/GameSummary';
-import { OpponentEvaluation } from './components/OpponentEvaluation'; // [신규] 평가 화면 임포트
-// [추가] 워치용 컴포넌트 임포트
+import { OpponentEvaluation } from './components/OpponentEvaluation';
 import WatchScoreTracker from './components/WatchScoreTracker';
 
 import AIAnalysis from './Screens/AI/AIAnalysis';
@@ -47,26 +67,34 @@ import ChatRoomScreen from './Screens/Chat/ChatRoomScreen';
 import ProfileScreen from './Screens/Profile/ProfileScreen';
 import MatchHistoryScreen from './Screens/Profile/MatchHistoryScreen';
 
-// [중요] PointLog 타입 임포트 (rmrCalculator 충돌 방지)
 import { PointLog } from './utils/rmrCalculator';
 
-// 네비게이터 정의
+// --- Firebase Initialization ---
+const firebaseConfig = {
+  apiKey: "AIzaSyCKl2OZU06cWYFDkODLqsd3i4vtlGlzems",
+  authDomain: "rally-app-14c24.firebaseapp.com",
+  projectId: "rally-app-14c24",
+  storageBucket: "rally-app-14c24.firebasestorage.app",
+  messagingSenderId: "451873318217",
+  appId: "1:451873318217:web:b99a488672291fa0686698",
+  measurementId: "G-345DR2NF7F"
+};
+
+let app;
+try {
+  app = initializeApp(firebaseConfig);
+} catch (error) {
+  // 앱 중복 초기화 방지
+}
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = 'rally-app-main';
+
 const Stack = createNativeStackNavigator();
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-// [추가] 워치 판별 로직 (안드로이드이면서 화면 너비가 350 미만인 경우)
-// 일반적인 폰은 너비가 360dp 이상, 워치는 보통 200~250dp 수준입니다.
 const isWatch = Platform.OS === 'android' && SCREEN_WIDTH < 350;
 
-export type Screen =
-  | 'home'
-  | 'chat'
-  | 'ai'
-  | 'match'
-  | 'profile'
-  | 'score'
-  | 'summary'
-  | 'evaluation'; // [신규] 평가 화면 타입 추가
+export type Screen = 'home' | 'chat' | 'ai' | 'match' | 'profile' | 'score' | 'summary' | 'evaluation';
 
 // -------------------------------------------------------------------------
 // [TutorialOverlay] 튜토리얼 오버레이 컴포넌트
@@ -148,7 +176,7 @@ const TutorialOverlay = ({ visible, stepIndex, onNext, onSkip }: {
     { id: 'chat', label: '대화', Icon: MessageCircleMore },
     { id: 'ai', label: 'AI 분석', Icon: Bot },
     { id: 'match', label: '매칭', Icon: Search },
-    { id: 'profile', label: '정보', Icon: User },
+    { id: 'profile', label: '정보', Icon: UserIcon },
   ];
 
   useEffect(() => {
@@ -178,7 +206,6 @@ const TutorialOverlay = ({ visible, stepIndex, onNext, onSkip }: {
   const activeTabIndex = tabs.findIndex(t => t.id === step.highlightTabId);
   const tabWidth = SCREEN_WIDTH / tabs.length;
 
-  // [수정] BottomNav 패딩 변경(top 8 + bottom 8 + insets)에 맞춰 화살표 위치 보정
   const arrowBottomPos = (60 + insets.bottom) + 5;
   const arrowLeftPos = (activeTabIndex * tabWidth) + (tabWidth / 2) - 20;
 
@@ -194,7 +221,6 @@ const TutorialOverlay = ({ visible, stepIndex, onNext, onSkip }: {
           </TouchableOpacity>
         </SafeAreaView>
 
-        {/* id가 'summary'일 때만 하단 정렬 스타일 적용 */}
         <View style={[
           styles.contentWrapper,
           step.id === 'summary' && styles.contentWrapperBottom
@@ -225,7 +251,6 @@ const TutorialOverlay = ({ visible, stepIndex, onNext, onSkip }: {
         )}
 
         {step.highlightTabId && (
-          // [수정] BottomNav와 동일한 패딩 로직 적용 (paddingTop: 8, paddingBottom: 8 + insets.bottom)
           <View style={[styles.replicaContainer, { paddingBottom: 2 + insets.bottom }]}>
             {tabs.map((tab) => {
               const isHighlight = tab.id === step.highlightTabId;
@@ -264,12 +289,18 @@ const TutorialOverlay = ({ visible, stepIndex, onNext, onSkip }: {
 // ==========================================
 // [MainScreen] 메인 탭 화면
 // ==========================================
-function MainScreen({ navigation, route }: any) {
-  const { handleLogout, isFirstLogin } = route.params || {};
+function MainScreen({
+  navigation,
+  handleLogout,
+  isFirstLogin,
+  user,
+  userProfile
+}: any) {
 
   const [currentScreen, setCurrentScreen] = useState<Screen>('match');
   const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);
+  const [rallies, setRallies] = useState<any[]>([]);
 
   // 튜토리얼용 가짜 경기 데이터
   const tutorialDummyResult = {
@@ -281,7 +312,7 @@ function MainScreen({ navigation, route }: any) {
     team2Name: '나 & 파트너',
     pointLogs: [
         { scorer: 'B', scoreA: 0, scoreB: 1, setIndex: 1, timestamp: Date.now(), duration: 10 },
-        { scorer: 'B', scoreA: 0, scoreB: 2, setIndex: 1, timestamp: Date.now(), duration: 40 },
+        { scorer: 'B', scoreA: 0, scoreB: 2, setIndex: 1, timestamp: Date.now(), duration: 4 },
         { scorer: 'A', scoreA: 1, scoreB: 2, setIndex: 1, timestamp: Date.now(), duration: 15 },
         { scorer: 'B', scoreA: 1, scoreB: 21, setIndex: 1, timestamp: Date.now(), duration: 20 },
         { scorer: 'A', scoreA: 21, scoreB: 15, setIndex: 2, timestamp: Date.now(), duration: 25 },
@@ -290,23 +321,37 @@ function MainScreen({ navigation, route }: any) {
     ] as PointLog[]
   };
 
+  // [수정] 튜토리얼 표시 로직 개선 (지연 시간 추가)
   useEffect(() => {
     if (isFirstLogin) {
-      setShowTutorial(true);
+      // 화면 전환 후 안정적으로 모달을 띄우기 위해 약간의 지연(500ms)을 둡니다.
+      const timer = setTimeout(() => {
+        setShowTutorial(true);
+      }, 500);
+      return () => clearTimeout(timer);
     }
   }, [isFirstLogin]);
 
+  useEffect(() => {
+    if (!user) return;
+    const ralliesRef = collection(db, 'artifacts', appId, 'public', 'data', 'rallies');
+    const unsubscribe = onSnapshot(ralliesRef, (snapshot) => {
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setRallies(list.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
+    }, (err) => {
+      console.error("Firestore error:", err);
+    });
+    return () => unsubscribe();
+  }, [user]);
+
   const handleTutorialNext = () => {
     const nextStepIndex = tutorialStep + 1;
-
     if (nextStepIndex >= TUTORIAL_STEPS.length) {
       setShowTutorial(false);
       setCurrentScreen('match');
       return;
     }
-
     setTutorialStep(nextStepIndex);
-
     const nextTab = TUTORIAL_STEPS[nextStepIndex].targetTab;
     if (nextTab) {
       setCurrentScreen(nextTab);
@@ -347,10 +392,30 @@ function MainScreen({ navigation, route }: any) {
     setCurrentScreen('match');
   }, []);
 
-  // [신규] 평가 화면으로 이동
   const goToEvaluation = useCallback(() => {
     setCurrentScreen('evaluation');
   }, []);
+
+  const handleCreateRally = async (title: string, location: string) => {
+    if (!user || !title || !location) {
+      Alert.alert('오류', '로그인이 필요하거나 정보가 부족합니다.');
+      return;
+    }
+    try {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'rallies'), {
+        title,
+        location,
+        creatorUid: user.uid,
+        creatorNickname: userProfile?.nickname || '익명',
+        participants: [user.uid],
+        createdAt: serverTimestamp(),
+      });
+      Alert.alert('성공', '새로운 랠리가 개설되었습니다!');
+    } catch (e) {
+      console.error("Create Rally Error:", e);
+      Alert.alert('실패', '랠리 개설에 실패했습니다.');
+    }
+  };
 
   const renderScreen = () => {
     switch (currentScreen) {
@@ -361,6 +426,9 @@ function MainScreen({ navigation, route }: any) {
           <Home
             onStartGame={goToScore}
             onGoToChat={() => handleTabChange('chat')}
+            rallies={rallies}
+            onCreateRally={handleCreateRally}
+            user={user}
           />
         );
       case 'score':
@@ -368,14 +436,14 @@ function MainScreen({ navigation, route }: any) {
       case 'summary':
         return (
           <GameSummary
-            onNext={goToEvaluation} // [수정] 확인 버튼 클릭 시 평가 화면으로 이동
+            onNext={goToEvaluation}
             result={showTutorial && TUTORIAL_STEPS[tutorialStep].id === 'summary' ? tutorialDummyResult : gameResult}
           />
         );
-      case 'evaluation': // [신규] 평가 화면 렌더링
+      case 'evaluation':
         return (
             <OpponentEvaluation
-                onComplete={goToMatch} // 평가 완료 시 홈(매칭)으로 이동
+                onComplete={goToMatch}
                 opponentName={gameResult.team1Name || '상대방'}
             />
         );
@@ -384,7 +452,7 @@ function MainScreen({ navigation, route }: any) {
       case 'chat':
         return <ChatListScreen />;
       case 'profile':
-        return <ProfileScreen onLogout={handleLogout} />;
+        return <ProfileScreen userProfile={userProfile} onLogout={handleLogout} />;
       default:
         return (
           <View style={stubStyles.stubContainer}>
@@ -401,7 +469,7 @@ function MainScreen({ navigation, route }: any) {
       {currentScreen !== 'home' &&
         currentScreen !== 'score' &&
         currentScreen !== 'summary' &&
-        currentScreen !== 'evaluation' && ( // [수정] 평가 화면에서도 탭바 숨김
+        currentScreen !== 'evaluation' && (
           <BottomNav
             currentTab={currentScreen}
             onTabChange={handleTabChange}
@@ -422,12 +490,13 @@ function MainScreen({ navigation, route }: any) {
 // [App] 전체 앱 진입점
 // ==========================================
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
+  const [initializing, setInitializing] = useState(true);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const [authScreen, setAuthScreen] = useState<'login' | 'signup'>('login');
+  // [상태] 첫 로그인 여부
   const [isFirstLogin, setIsFirstLogin] = useState(false);
 
-  // [추가] Android 12 이상에서 Bluetooth 권한 요청
-  // 이 부분이 없으면 워치 연동 시 SecurityException 발생으로 앱이 종료될 수 있습니다.
   useEffect(() => {
     const requestPermissions = async () => {
       if (Platform.OS === 'android' && Platform.Version >= 31) {
@@ -436,37 +505,109 @@ export default function App() {
             PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
             PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
           ]);
-
           if (
             result['android.permission.BLUETOOTH_CONNECT'] !== PermissionsAndroid.RESULTS.GRANTED ||
             result['android.permission.BLUETOOTH_SCAN'] !== PermissionsAndroid.RESULTS.GRANTED
           ) {
-            Alert.alert(
-              "권한 필요",
-              "워치와 연동하려면 '근처 기기' 권한을 허용해야 합니다. 설정에서 권한을 켜주세요."
-            );
+            // 권한 거부 시 처리 (필요시)
           }
         } catch (err) {
           console.warn(err);
         }
       }
     };
-
     requestPermissions();
   }, []);
 
-  // [추가] 워치일 경우 WatchScoreTracker를 렌더링
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      if (currentUser && !currentUser.isAnonymous) {
+        await fetchUserProfile(currentUser.uid);
+      }
+      setInitializing(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const fetchUserProfile = async (uid: string) => {
+    const userDocRef = doc(db, 'artifacts', appId, 'users', uid, 'profile', 'info');
+    try {
+      const snap = await getDoc(userDocRef);
+      if (snap.exists()) {
+        setUserProfile(snap.data());
+      }
+    } catch (e) {
+      console.error("Profile fetch error:", e);
+    }
+  };
+
+  const handleLogin = async (email, password) => {
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      // 로그인 시에는 튜토리얼을 띄우지 않도록 false 설정
+      setIsFirstLogin(false);
+    } catch (error: any) {
+      Alert.alert("로그인 실패", error.message);
+    }
+  };
+
+  // [수정] 회원가입 핸들러: 성공 시 isFirstLogin을 true로 설정하여 튜토리얼 유도
+  const handleSignUp = async (email, password, nickname) => {
+    if (!email || !password) {
+        Alert.alert("오류", "정보가 부족합니다.");
+        return;
+    }
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      const safeEmail = email.toLowerCase();
+
+      const profileData = {
+        uid: cred.user.uid,
+        email: safeEmail,
+        nickname: nickname || '사용자',
+        createdAt: serverTimestamp(),
+        rallyCount: 0,
+      };
+
+      await setDoc(doc(db, 'artifacts', appId, 'users', cred.user.uid, 'profile', 'info'), profileData);
+
+      // 순서 중요: 프로필 설정 -> 첫 로그인 플래그 True
+      setUserProfile(profileData);
+      setIsFirstLogin(true);
+
+      Alert.alert("환영합니다!", "회원가입이 완료되었습니다.");
+    } catch (error: any) {
+      console.error(error);
+      Alert.alert("회원가입 실패", error.message);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setUser(null);
+      setUserProfile(null);
+      setIsFirstLogin(false); // 로그아웃 시 초기화
+      setAuthScreen('login');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   if (isWatch) {
     return <WatchScoreTracker />;
   }
 
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    setAuthScreen('login');
-    setIsFirstLogin(false);
-  };
+  if (initializing) {
+    return (
+      <View style={stubStyles.stubContainer}>
+        <Text style={stubStyles.stubText}>RALLY SYSTEM LOADING...</Text>
+      </View>
+    );
+  }
 
-  if (!isLoggedIn) {
+  if (!user || user.isAnonymous) {
     return (
       <SafeAreaProvider>
         <SafeAreaView style={styles.container}>
@@ -474,18 +615,12 @@ export default function App() {
           {authScreen === 'login' ? (
             <LoginScreen
               onGoToSignUp={() => setAuthScreen('signup')}
-              onLogin={() => {
-                setIsFirstLogin(false);
-                setIsLoggedIn(true);
-              }}
+              onLogin={handleLogin}
             />
           ) : (
             <SignUpScreen
               onGoToLogin={() => setAuthScreen('login')}
-              onSignUp={() => {
-                setIsFirstLogin(true);
-                setIsLoggedIn(true);
-              }}
+              onSignUp={handleSignUp}
             />
           )}
         </SafeAreaView>
@@ -504,11 +639,18 @@ export default function App() {
             animation: Platform.OS === 'android' ? 'fade_from_bottom' : 'default',
           }}
         >
-          <Stack.Screen
-            name="Main"
-            component={MainScreen}
-            initialParams={{ handleLogout, isFirstLogin }}
-          />
+          {/* [중요] Main 화면에 isFirstLogin 상태를 props로 전달 */}
+          <Stack.Screen name="Main">
+            {(props) => (
+              <MainScreen
+                {...props}
+                handleLogout={handleLogout}
+                isFirstLogin={isFirstLogin}
+                user={user}
+                userProfile={userProfile}
+              />
+            )}
+          </Stack.Screen>
           <Stack.Screen name="ChatRoom" component={ChatRoomScreen} />
           <Stack.Screen name="MatchHistory" component={MatchHistoryScreen} />
         </Stack.Navigator>
@@ -558,9 +700,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 22,
-    paddingBottom: 100, // 기본: 탭바 위쪽
+    paddingBottom: 100,
   },
-  // 경기 결과 화면용 하단 배치
   contentWrapperBottom: {
     justifyContent: 'flex-end',
     paddingBottom: 50,
@@ -607,7 +748,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 20,
   },
-
   // --- Replica Tab Bar Styles ---
   replicaContainer: {
     position: 'absolute',
@@ -625,11 +765,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 6, // [수정] BottomNav(6)와 일치
-    marginHorizontal: 4, // [수정] BottomNav와 일치
-    borderRadius: 20, // [수정] BottomNav(20)와 일치
-    height: 60, // [수정] BottomNav(60)와 일치
-    overflow: 'hidden', // [수정] BottomNav와 일치
+    paddingVertical: 6,
+    marginHorizontal: 4,
+    borderRadius: 20,
+    height: 60,
+    overflow: 'hidden',
   },
   tabButtonActive: {
     backgroundColor: '#34D399',
@@ -640,14 +780,14 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   replicaTabLabel: {
-    fontSize: 11, // [수정] BottomNav(11)와 일치
-    color: '#9CA3AF', // [수정] BottomNav(#9CA3AF)와 일치
-    marginTop: 4, // [수정] BottomNav(4)와 일치
-    fontWeight: '500', // [수정] BottomNav와 일치
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 4,
+    fontWeight: '500',
   },
   tabLabelActive: {
     color: '#FFFFFF',
-    fontWeight: '700', // [수정] BottomNav(700)와 일치
+    fontWeight: '700',
   },
   betaBadge: {
     position: 'absolute',
