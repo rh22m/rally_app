@@ -30,12 +30,15 @@ import {
   ChevronLeft,
   ChevronDown
 } from 'lucide-react-native';
+// RMRCalculator에서 퀴즈 계산 관련 함수 임포트
+import { getInitialRMRAndRD } from '../../utils/rmrCalculator';
 
 const { width } = Dimensions.get('window');
 
 interface SignUpScreenProps {
   onGoToLogin: () => void;
-  onSignUp: (email: string, password: string, nickname: string) => void;
+  // onSignUp의 인터페이스에 rmr과 rd를 추가로 받도록 수정
+  onSignUp: (email: string, password: string, nickname: string, rmr: number, rd: number) => void;
   checkEmailAvailability: (email: string) => Promise<boolean>;
   checkNicknameAvailability: (nickname: string) => Promise<boolean>;
 }
@@ -342,7 +345,6 @@ const Step3_AccountInfo = ({
   const [isNicknameChecked, setIsNicknameChecked] = useState(false);
 
   const [pwMsg, setPwMsg] = useState('');
-  // [수정됨] 비밀번호 일치 확인 메시지 상태 추가
   const [pwMatchMsg, setPwMatchMsg] = useState('');
 
   const [isRegionModalVisible, setIsRegionModalVisible] = useState(false);
@@ -436,7 +438,6 @@ const Step3_AccountInfo = ({
     }
   }, [password]);
 
-  // [수정됨] 비밀번호 확인 실시간 비교 로직 추가
   useEffect(() => {
     if (!confirmPassword) {
       setPwMatchMsg('');
@@ -706,7 +707,6 @@ const Step3_AccountInfo = ({
         />
       </View>
 
-      {/* [수정됨] 비밀번호 불일치 경고 메시지 표시 */}
       {pwMatchMsg ? (
         <Text style={[styles.helperText, styles.errorText, {marginBottom: 8, marginTop: -8, paddingLeft: 4}]}>
             {pwMatchMsg}
@@ -733,24 +733,56 @@ const Step3_AccountInfo = ({
   );
 };
 
-const Step4_RMRQuiz = ({ onComplete }: { onComplete: () => void }) => {
+// 퀴즈 3문항으로 확장 및 처리 핸들러 변경
+const Step4_RMRQuiz = ({ onComplete }: { onComplete: (correctCount: number) => void }) => {
   const [answer1, setAnswer1] = useState<string | null>(null);
+  const [answer2, setAnswer2] = useState<string | null>(null);
+  const [answer3, setAnswer3] = useState<string | null>(null);
+
+  const handleComplete = () => {
+    let correctCount = 0;
+    if (answer1 === 'B') correctCount++;
+    if (answer2 === 'A') correctCount++;
+    if (answer3 === 'A') correctCount++;
+    onComplete(correctCount);
+  };
+
+  const isAllAnswered = answer1 && answer2 && answer3;
 
   return (
     <>
       <Text style={styles.title}>실력 가이드</Text>
-      <Text style={styles.subtitle}>기본적인 룰 퀴즈로 RMR 참고 점수를 측정합니다.</Text>
-      <Text style={styles.quizQuestion}>Q1. 배드민턴 복식 경기에서, 서브 순서는 어떻게 되나요?</Text>
-      <TouchableOpacity style={[styles.quizOption, answer1 === 'A' && styles.quizOptionSelected]} onPress={() => setAnswer1('A')}>
-        <Text style={[styles.quizText, answer1 === 'A' && styles.quizTextSelected]}>A. 점수를 낼 때마다 서버가 바뀐다.</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={[styles.quizOption, answer1 === 'B' && styles.quizOptionSelected]} onPress={() => setAnswer1('B')}>
-        <Text style={[styles.quizText, answer1 === 'B' && styles.quizTextSelected]}>B. 점수를 낸 팀이 계속 서브를 넣는다.</Text>
-      </TouchableOpacity>
+      <Text style={styles.subtitle}>기본적인 룰 퀴즈로 초기 RMR 신뢰도를 측정합니다.</Text>
 
-      <TouchableOpacity style={[styles.button, !answer1 && styles.buttonDisabled]} onPress={onComplete} disabled={!answer1}>
-        <Text style={styles.buttonText}>가입 완료</Text>
-      </TouchableOpacity>
+      <ScrollView style={{width: '100%'}} showsVerticalScrollIndicator={false}>
+        <Text style={styles.quizQuestion}>Q1. 배드민턴 복식 경기에서, 서브 순서는 어떻게 되나요?</Text>
+        <TouchableOpacity style={[styles.quizOption, answer1 === 'A' && styles.quizOptionSelected]} onPress={() => setAnswer1('A')}>
+          <Text style={[styles.quizText, answer1 === 'A' && styles.quizTextSelected]}>A. 점수를 낼 때마다 서버가 바뀐다.</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.quizOption, answer1 === 'B' && styles.quizOptionSelected]} onPress={() => setAnswer1('B')}>
+          <Text style={[styles.quizText, answer1 === 'B' && styles.quizTextSelected]}>B. 점수를 낸 팀이 계속 서브를 넣는다.</Text>
+        </TouchableOpacity>
+
+        <Text style={[styles.quizQuestion, { marginTop: 16 }]}>Q2. 배드민턴 경기 중 셔틀콕이 라인에 닿으면 어떻게 판정되나요?</Text>
+        <TouchableOpacity style={[styles.quizOption, answer2 === 'A' && styles.quizOptionSelected]} onPress={() => setAnswer2('A')}>
+          <Text style={[styles.quizText, answer2 === 'A' && styles.quizTextSelected]}>A. 인 (In)</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.quizOption, answer2 === 'B' && styles.quizOptionSelected]} onPress={() => setAnswer2('B')}>
+          <Text style={[styles.quizText, answer2 === 'B' && styles.quizTextSelected]}>B. 아웃 (Out)</Text>
+        </TouchableOpacity>
+
+        <Text style={[styles.quizQuestion, { marginTop: 16 }]}>Q3. 랠리포인트 시스템에서 한 세트는 보통 몇 점을 먼저 내야 승리하나요?</Text>
+        <TouchableOpacity style={[styles.quizOption, answer3 === 'A' && styles.quizOptionSelected]} onPress={() => setAnswer3('A')}>
+          <Text style={[styles.quizText, answer3 === 'A' && styles.quizTextSelected]}>A. 21점</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.quizOption, answer3 === 'B' && styles.quizOptionSelected]} onPress={() => setAnswer3('B')}>
+          <Text style={[styles.quizText, answer3 === 'B' && styles.quizTextSelected]}>B. 25점</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.button, !isAllAnswered && styles.buttonDisabled, {marginBottom: 40}]} onPress={handleComplete} disabled={!isAllAnswered}>
+          <Text style={styles.buttonText}>가입 완료</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </>
   );
 };
@@ -775,11 +807,13 @@ export default function SignUpScreen({
     }
   };
 
-  const handleComplete = () => {
-    console.log("최종 회원가입 데이터:", signUpData);
+  // 퀴즈 결과(정답 수)를 받아 RMR 정보 계산 및 onSignUp에 전달
+  const handleComplete = (correctCount: number) => {
     const { email, password, nickname } = signUpData as any;
     if (email && password && nickname) {
-        onSignUp(email, password, nickname);
+        const { rmr, rd } = getInitialRMRAndRD(correctCount);
+        console.log("최종 회원가입 데이터:", { email, nickname, rmr, rd });
+        onSignUp(email, password, nickname, rmr, rd);
     } else {
         Alert.alert("오류", "회원가입에 필요한 정보가 누락되었습니다.");
     }

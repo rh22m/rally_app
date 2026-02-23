@@ -51,6 +51,19 @@ export const getRmrTier = (rmr: number): string => {
   return 'Gold 1';
 };
 
+// 퀴즈 결과에 따른 초기 RMR 및 신뢰도(RD) 계산 함수 추가
+export const getInitialRMRAndRD = (correctQuizCount: number): { rmr: number; rd: number } => {
+  const baseRMR = 1000; // 기본 RMR 값 1000
+  // 퀴즈 정답 수(0~3)에 따라 초기 신뢰도(RD) 차등 부여
+  // 많이 맞출수록 룰에 대한 이해도가 높다고 보아 RD(불확실성)를 낮게 설정
+  let initialRD = 350; // 0문제 정답
+  if (correctQuizCount === 3) initialRD = 200;
+  else if (correctQuizCount === 2) initialRD = 250;
+  else if (correctQuizCount === 1) initialRD = 300;
+
+  return { rmr: baseRMR, rd: initialRD };
+};
+
 const RMR_CONSTANTS = {
   VOLATILITY_BASE: 12,
   VOLATILITY_MULTIPLIER: 0.08,

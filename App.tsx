@@ -30,7 +30,6 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   User as FirebaseUser,
-  fetchSignInMethodsForEmail
 } from 'firebase/auth';
 import {
   getFirestore,
@@ -419,7 +418,7 @@ function MainScreen({
       Alert.alert('성공', '새로운 랠리가 개설되었습니다!');
     } catch (e) {
       console.error("Create Rally Error:", e);
-      Alert.alert('실패', '랠 개설에 실패했습니다.');
+      Alert.alert('실패', '랠리 개설에 실패했습니다.');
     }
   };
 
@@ -507,7 +506,7 @@ export default function App() {
     const requestPermissions = async () => {
       if (Platform.OS === 'android' && Platform.Version >= 31) {
         try {
-          const result = await PermissionsAndroid.requestMultiple([
+          await PermissionsAndroid.requestMultiple([
             PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
             PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
           ]);
@@ -522,11 +521,9 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
-
       if (currentUser && !currentUser.isAnonymous && !isSigningUpRef.current) {
           await fetchUserProfile(currentUser.uid);
       }
-
       setInitializing(false);
     });
     return () => unsubscribe();
@@ -546,10 +543,7 @@ export default function App() {
 
   const checkNicknameAvailability = async (nickname: string): Promise<boolean> => {
     try {
-      const q = query(
-        collectionGroup(db, 'profile'),
-        where('nickname', '==', nickname)
-      );
+      const q = query(collectionGroup(db, 'profile'), where('nickname', '==', nickname));
       const snapshot = await getDocs(q);
       return snapshot.empty;
     } catch (e) {
@@ -560,22 +554,11 @@ export default function App() {
 
   const checkEmailAvailability = async (email: string): Promise<boolean> => {
     try {
-      // 1. 에러를 유발하는 Auth 확인 로직은 삭제하고, 우리 DB에 닉네임/이메일 정보가 페어링되어 있는지만 깔끔하게 확인
-      const q = query(
-        collectionGroup(db, 'profile'),
-        where('email', '==', email)
-      );
+      const q = query(collectionGroup(db, 'profile'), where('email', '==', email));
       const snapshot = await getDocs(q);
-
-      // DB에 이메일이 없으면 true(사용 가능) 반환
       return snapshot.empty;
-
     } catch (e: any) {
       console.error("Email check error:", e);
-
-      // [핵심 수정] DB 통신 지연이나 인덱스 문제로 여기서 에러가 났다고 false(중복)를 뱉으면 가입이 억울하게 영구 차단됨.
-      // 일단 true(통과)시켜서 다음 단계로 넘김.
-      // 만약 진짜 중복된 이메일이라면, 어차피 최종 단계인 createUserWithEmailAndPassword가 알아서 'auth/email-already-in-use' 에러를 뱉고 안전하게 막아줌.
       return true;
     }
   };
@@ -585,8 +568,8 @@ export default function App() {
     await signInWithEmailAndPassword(auth, email, password);
   };
 
-  // [핵심 변경] 강제 롤백 및 타임아웃 안전장치 도입
-  const handleSignUp = async (email, password, nickname) => {
+  // rmr과 rd를 추가로 받아 데이터베이스에 저장하도록 디벨롭
+  const handleSignUp = async (email, password, nickname, rmr, rd) => {
     if (!email || !password) {
         Alert.alert("오류", "정보가 부족합니다.");
         return;
@@ -595,18 +578,15 @@ export default function App() {
     setIsSigningUp(true);
     isSigningUpRef.current = true;
 
-    // 타임아웃 헬퍼 함수: 지정된 시간(ms)이 지나면 강제로 에러를 발생시킴
     const timeout = (ms: number, msg: string) =>
       new Promise((_, reject) => setTimeout(() => reject(new Error(msg)), ms));
 
     try {
-      // 1. Auth 계정 생성 (최대 10초 대기)
       const cred: any = await Promise.race([
         createUserWithEmailAndPassword(auth, email, password),
         timeout(10000, "계정 생성 응답 지연")
       ]);
 
-      console.log("계정 생성 완료, DB 저장 시작");
       await cred.user.getIdToken(true);
 
       const safeEmail = email.toLowerCase();
@@ -614,46 +594,30 @@ export default function App() {
         uid: cred.user.uid,
         email: safeEmail,
         nickname: nickname || '사용자',
+        rmr: rmr || 1000, // 퀴즈 기반 초기 RMR
+        rd: rd || 350,    // 퀴즈 기반 초기 신뢰도
         createdAt: serverTimestamp(),
         rallyCount: 0,
       };
 
       const userRef = doc(db, 'artifacts', appId, 'users', cred.user.uid, 'profile', 'info');
 
-      // 2. DB 저장 (최대 10초 대기) - 무한 로딩 방지 핵심 로직
       await Promise.race([
         setDoc(userRef, profileData),
         timeout(10000, "DB_TIMEOUT")
       ]);
 
-      console.log("DB 저장 완벽히 성공");
-
-      // 3. 완전히 완료되었을 때만 다음 화면으로 넘어감
       setUserProfile(profileData);
       setIsFirstLogin(true);
 
     } catch (error: any) {
       console.error("회원가입 에러:", error);
-
-      // [핵심 롤백 처리] DB 저장이 실패하거나 지연되어 에러로 넘어왔다면,
-      // 방금 만들어진 Auth 계정을 즉시 폭파시켜 이메일이 점유되는 것을 막음
       if (auth.currentUser) {
-          try {
-            await auth.currentUser.delete();
-            console.log("가입 중단: 이메일 롤백 삭제 완료");
-          } catch(delErr) {
-            console.error("롤백 에러:", delErr);
-            await signOut(auth); // 삭제 실패 시 최소한 로그아웃이라도 강제
-          }
+          try { await auth.currentUser.delete(); } catch(delErr) { await signOut(auth); }
       }
-
       let msg = error.message;
-      if (error.message === "DB_TIMEOUT") {
-          msg = "서버 응답이 지연되어 가입을 안전하게 취소했습니다. 다시 시도해주세요.";
-      } else if (error.code === 'auth/email-already-in-use') {
-          msg = "이미 사용 중인 이메일입니다.";
-      }
-
+      if (error.message === "DB_TIMEOUT") msg = "서버 응답이 지연되어 가입을 안전하게 취소했습니다.";
+      else if (error.code === 'auth/email-already-in-use') msg = "이미 사용 중인 이메일입니다.";
       Alert.alert("회원가입 실패", msg);
     } finally {
         isSigningUpRef.current = false;
@@ -673,17 +637,12 @@ export default function App() {
     }
   };
 
-  if (isWatch) {
-    return <WatchScoreTracker />;
-  }
-
+  if (isWatch) return <WatchScoreTracker />;
   if (initializing || isSigningUp) {
     return (
       <View style={stubStyles.stubContainer}>
         <ActivityIndicator size="large" color="#34D399" />
-        <Text style={stubStyles.stubText}>
-            {isSigningUp ? "안전하게 정보 저장 중..." : "RALLY SYSTEM LOADING..."}
-        </Text>
+        <Text style={stubStyles.stubText}>{isSigningUp ? "안전하게 정보 저장 중..." : "RALLY SYSTEM LOADING..."}</Text>
       </View>
     );
   }
@@ -694,10 +653,7 @@ export default function App() {
         <SafeAreaView style={styles.container}>
           <StatusBar barStyle="light-content" backgroundColor="#111827" />
           {authScreen === 'login' ? (
-            <LoginScreen
-              onGoToSignUp={() => setAuthScreen('signup')}
-              onLogin={handleLogin}
-            />
+            <LoginScreen onGoToSignUp={() => setAuthScreen('signup')} onLogin={handleLogin} />
           ) : (
             <SignUpScreen
               onGoToLogin={() => setAuthScreen('login')}
@@ -724,13 +680,7 @@ export default function App() {
         >
           <Stack.Screen name="Main">
             {(props) => (
-              <MainScreen
-                {...props}
-                handleLogout={handleLogout}
-                isFirstLogin={isFirstLogin}
-                user={user}
-                userProfile={userProfile}
-              />
+              <MainScreen {...props} handleLogout={handleLogout} isFirstLogin={isFirstLogin} user={user} userProfile={userProfile} />
             )}
           </Stack.Screen>
           <Stack.Screen name="ChatRoom" component={ChatRoomScreen} />
@@ -742,161 +692,30 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#111827',
-  },
-  tutorialContainer: {
-    flex: 1,
-  },
-  tutorialBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-  },
-  tutorialHeader: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    padding: 20,
-    width: '100%',
-    alignItems: 'flex-end',
-    zIndex: 20,
-  },
-  skipButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-  },
-  skipText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  contentWrapper: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 22,
-    paddingBottom: 100,
-  },
-  contentWrapperBottom: {
-    justifyContent: 'flex-end',
-    paddingBottom: 50,
-  },
-  tutorialContent: {
-    width: '80%',
-    backgroundColor: '#1F2937',
-    padding: 24,
-    borderRadius: 20,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 10,
-  },
-  tutorialTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#34D399',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  tutorialDesc: {
-    fontSize: 16,
-    color: '#E5E7EB',
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 24,
-  },
-  nextButton: {
-    backgroundColor: '#34D399',
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-    borderRadius: 24,
-  },
-  nextButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  pointerContainer: {
-    position: 'absolute',
-    alignItems: 'center',
-    zIndex: 20,
-  },
-  replicaContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingTop: 8,
-    backgroundColor: 'transparent',
-    zIndex: 10,
-  },
-  replicaTabButton: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 6,
-    marginHorizontal: 4,
-    borderRadius: 20,
-    height: 60,
-    overflow: 'hidden',
-  },
-  tabButtonActive: {
-    backgroundColor: '#34D399',
-    shadowColor: "#34D399",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  replicaTabLabel: {
-    fontSize: 11,
-    color: '#9CA3AF',
-    marginTop: 4,
-    fontWeight: '500',
-  },
-  tabLabelActive: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  betaBadge: {
-    position: 'absolute',
-    top: -6,
-    right: -10,
-    backgroundColor: '#EF4444',
-    borderRadius: 8,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    zIndex: 10,
-  },
-  betaText: {
-    color: '#FFFFFF',
-    fontSize: 8,
-    fontWeight: 'bold',
-    includeFontPadding: false,
-  },
+  container: { flex: 1, backgroundColor: '#111827' },
+  tutorialContainer: { flex: 1 },
+  tutorialBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0, 0, 0, 0.7)' },
+  tutorialHeader: { position: 'absolute', top: 0, right: 0, padding: 20, width: '100%', alignItems: 'flex-end', zIndex: 20 },
+  skipButton: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.2)', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
+  skipText: { color: 'white', fontSize: 14, fontWeight: 'bold' },
+  contentWrapper: { flex: 1, justifyContent: 'center', alignItems: 'center', zIndex: 22, paddingBottom: 100 },
+  contentWrapperBottom: { justifyContent: 'flex-end', paddingBottom: 50 },
+  tutorialContent: { width: '80%', backgroundColor: '#1F2937', padding: 24, borderRadius: 20, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 10 },
+  tutorialTitle: { fontSize: 20, fontWeight: 'bold', color: '#34D399', marginBottom: 12, textAlign: 'center' },
+  tutorialDesc: { fontSize: 16, color: '#E5E7EB', textAlign: 'center', lineHeight: 24, marginBottom: 24 },
+  nextButton: { backgroundColor: '#34D399', paddingVertical: 12, paddingHorizontal: 32, borderRadius: 24 },
+  nextButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
+  pointerContainer: { position: 'absolute', alignItems: 'center', zIndex: 20 },
+  replicaContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingTop: 8, backgroundColor: 'transparent', zIndex: 10 },
+  replicaTabButton: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 6, marginHorizontal: 4, borderRadius: 20, height: 60, overflow: 'hidden' },
+  tabButtonActive: { backgroundColor: '#34D399', shadowColor: "#34D399", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 10, elevation: 5 },
+  replicaTabLabel: { fontSize: 11, color: '#9CA3AF', marginTop: 4, fontWeight: '500' },
+  tabLabelActive: { color: '#FFFFFF', fontWeight: '700' },
+  betaBadge: { position: 'absolute', top: -6, right: -10, backgroundColor: '#EF4444', borderRadius: 8, paddingHorizontal: 4, paddingVertical: 1, zIndex: 10 },
+  betaText: { color: '#FFFFFF', fontSize: 8, fontWeight: 'bold', includeFontPadding: false },
 });
 
 const stubStyles = StyleSheet.create({
-  stubContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#111827',
-  },
-  stubText: {
-    fontSize: 18,
-    color: '#9CA3AF',
-    marginTop: 20,
-  },
+  stubContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111827' },
+  stubText: { fontSize: 18, color: '#9CA3AF', marginTop: 20 },
 });
