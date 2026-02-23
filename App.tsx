@@ -18,9 +18,12 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// [수정] 중복 실행 방지를 위한 모듈 추가
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import {
+  initializeAuth,
+  getReactNativePersistence,
   getAuth,
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -82,20 +85,21 @@ const firebaseConfig = {
   measurementId: "G-345DR2NF7F"
 };
 
-// [핵심 수정 1] 앱 중복 초기화 방지
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-const auth = getAuth(app);
-
-// [핵심 수정 2] DB 연결 설정 (무한 로딩 해결의 열쇠)
+let app;
+let auth;
 let db;
-try {
-  // 강제로 롱 폴링(Long Polling)을 사용하여 안드로이드 통신 끊김 해결
+
+if (getApps().length === 0) {
+  app = initializeApp(firebaseConfig);
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage)
+  });
   db = initializeFirestore(app, {
     experimentalForceLongPolling: true,
   });
-} catch (e: any) {
-  // 이미 초기화된 경우 기존 인스턴스 사용 (Hot Reload 에러 방지)
-  // [중요] 만약 여기서 계속 멈춘다면 앱을 완전히 껐다 켜야 이 설정이 적용됩니다.
+} else {
+  app = getApp();
+  auth = getAuth(app);
   db = getFirestore(app);
 }
 
@@ -415,7 +419,7 @@ function MainScreen({
       Alert.alert('성공', '새로운 랠리가 개설되었습니다!');
     } catch (e) {
       console.error("Create Rally Error:", e);
-      Alert.alert('실패', '랠리 개설에 실패했습니다.');
+      Alert.alert('실패', '랠 개설에 실패했습니다.');
     }
   };
 
@@ -496,7 +500,6 @@ export default function App() {
 
   const [isFirstLogin, setIsFirstLogin] = useState(false);
 
-  // [중요] 회원가입 진행 상태 관리
   const [isSigningUp, setIsSigningUp] = useState(false);
   const isSigningUpRef = useRef(false);
 
@@ -520,7 +523,6 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
 
-      // 회원가입 중이 아닐 때만 여기서 프로필을 가져옴
       if (currentUser && !currentUser.isAnonymous && !isSigningUpRef.current) {
           await fetchUserProfile(currentUser.uid);
       }
@@ -558,20 +560,23 @@ export default function App() {
 
   const checkEmailAvailability = async (email: string): Promise<boolean> => {
     try {
-      const methods = await fetchSignInMethodsForEmail(auth, email);
-      if (methods && methods.length > 0) {
-        return false;
-      }
+      // 1. 에러를 유발하는 Auth 확인 로직은 삭제하고, 우리 DB에 닉네임/이메일 정보가 페어링되어 있는지만 깔끔하게 확인
       const q = query(
         collectionGroup(db, 'profile'),
         where('email', '==', email)
       );
       const snapshot = await getDocs(q);
+
+      // DB에 이메일이 없으면 true(사용 가능) 반환
       return snapshot.empty;
+
     } catch (e: any) {
-        console.error("Email check error:", e);
-        if (e.code === 'auth/invalid-email') return false;
-        return false;
+      console.error("Email check error:", e);
+
+      // [핵심 수정] DB 통신 지연이나 인덱스 문제로 여기서 에러가 났다고 false(중복)를 뱉으면 가입이 억울하게 영구 차단됨.
+      // 일단 true(통과)시켜서 다음 단계로 넘김.
+      // 만약 진짜 중복된 이메일이라면, 어차피 최종 단계인 createUserWithEmailAndPassword가 알아서 'auth/email-already-in-use' 에러를 뱉고 안전하게 막아줌.
+      return true;
     }
   };
 
@@ -580,7 +585,7 @@ export default function App() {
     await signInWithEmailAndPassword(auth, email, password);
   };
 
-  // [최종 수정] 회원가입: 무조건 기다리고, 실패 시 사용자에게 알림
+  // [핵심 변경] 강제 롤백 및 타임아웃 안전장치 도입
   const handleSignUp = async (email, password, nickname) => {
     if (!email || !password) {
         Alert.alert("오류", "정보가 부족합니다.");
@@ -590,10 +595,19 @@ export default function App() {
     setIsSigningUp(true);
     isSigningUpRef.current = true;
 
+    // 타임아웃 헬퍼 함수: 지정된 시간(ms)이 지나면 강제로 에러를 발생시킴
+    const timeout = (ms: number, msg: string) =>
+      new Promise((_, reject) => setTimeout(() => reject(new Error(msg)), ms));
+
     try {
-      // 1. Auth 계정 생성
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      // 1. Auth 계정 생성 (최대 10초 대기)
+      const cred: any = await Promise.race([
+        createUserWithEmailAndPassword(auth, email, password),
+        timeout(10000, "계정 생성 응답 지연")
+      ]);
+
       console.log("계정 생성 완료, DB 저장 시작");
+      await cred.user.getIdToken(true);
 
       const safeEmail = email.toLowerCase();
       const profileData = {
@@ -604,28 +618,43 @@ export default function App() {
         rallyCount: 0,
       };
 
-      // 2. DB 저장 (무시하지 않고 끝까지 기다림)
       const userRef = doc(db, 'artifacts', appId, 'users', cred.user.uid, 'profile', 'info');
-      await setDoc(userRef, profileData);
-      console.log("DB 저장 성공");
 
-      // 3. 완료 처리
+      // 2. DB 저장 (최대 10초 대기) - 무한 로딩 방지 핵심 로직
+      await Promise.race([
+        setDoc(userRef, profileData),
+        timeout(10000, "DB_TIMEOUT")
+      ]);
+
+      console.log("DB 저장 완벽히 성공");
+
+      // 3. 완전히 완료되었을 때만 다음 화면으로 넘어감
       setUserProfile(profileData);
       setIsFirstLogin(true);
 
     } catch (error: any) {
       console.error("회원가입 에러:", error);
+
+      // [핵심 롤백 처리] DB 저장이 실패하거나 지연되어 에러로 넘어왔다면,
+      // 방금 만들어진 Auth 계정을 즉시 폭파시켜 이메일이 점유되는 것을 막음
+      if (auth.currentUser) {
+          try {
+            await auth.currentUser.delete();
+            console.log("가입 중단: 이메일 롤백 삭제 완료");
+          } catch(delErr) {
+            console.error("롤백 에러:", delErr);
+            await signOut(auth); // 삭제 실패 시 최소한 로그아웃이라도 강제
+          }
+      }
+
       let msg = error.message;
-      if (error.code === 'auth/email-already-in-use') {
+      if (error.message === "DB_TIMEOUT") {
+          msg = "서버 응답이 지연되어 가입을 안전하게 취소했습니다. 다시 시도해주세요.";
+      } else if (error.code === 'auth/email-already-in-use') {
           msg = "이미 사용 중인 이메일입니다.";
       }
 
-      // DB 저장 실패 시 계정 삭제 (꼬임 방지)
-      if (auth.currentUser) {
-          await signOut(auth);
-      }
-
-      Alert.alert("회원가입 실패", "서버 연결이 불안정하여 저장이 완료되지 않았습니다.\n앱을 완전히 껐다 켜서 다시 시도해주세요.\n" + msg);
+      Alert.alert("회원가입 실패", msg);
     } finally {
         isSigningUpRef.current = false;
         setIsSigningUp(false);
@@ -653,7 +682,7 @@ export default function App() {
       <View style={stubStyles.stubContainer}>
         <ActivityIndicator size="large" color="#34D399" />
         <Text style={stubStyles.stubText}>
-            {isSigningUp ? "정보 저장 중... (오래 걸리면 앱을 재시작하세요)" : "RALLY SYSTEM LOADING..."}
+            {isSigningUp ? "안전하게 정보 저장 중..." : "RALLY SYSTEM LOADING..."}
         </Text>
       </View>
     );
