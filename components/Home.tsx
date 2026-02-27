@@ -36,6 +36,11 @@ import {
 } from 'lucide-react-native';
 import { Calendar as RNCalendar, LocaleConfig } from 'react-native-calendars';
 import LinearGradient from 'react-native-linear-gradient';
+
+// Firebase 웹 SDK 연동 추가
+import { getFirestore, collection, onSnapshot, addDoc, serverTimestamp, getDoc, doc, query, where, deleteDoc } from 'firebase/firestore';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+
 import { MatchCard } from './MatchCard';
 import { RMRGuideModal } from './RMRGuideModal';
 
@@ -49,7 +54,7 @@ LocaleConfig.locales['kr'] = {
 };
 LocaleConfig.defaultLocale = 'kr';
 
-// --- 경기 정보 ---
+// --- 경기 정보 인터페이스 ---
 interface HostProfile {
   name: string;
   location: string;
@@ -58,6 +63,21 @@ interface HostProfile {
   loss: number;
   mannerScore: number;
   avatar: ImageSourcePropType;
+  avatarUrl?: string | null;
+  uid?: string;
+}
+
+interface Match {
+  id: string;
+  status: string;
+  playerCount: string;
+  title: string;
+  date: string;
+  location: string;
+  region: string;
+  gender: string;
+  maxCount: number;
+  host: HostProfile;
 }
 
 const NOTICE_ITEMS = [
@@ -151,7 +171,6 @@ const SUB_REGIONS: { [key: string]: string[] } = {
 const getHolidays = () => ['2025-01-01', '2025-03-01', '2025-05-05', '2025-08-15', '2025-10-03', '2025-12-25'];
 
 // --- 2. 공지 컴포넌트 ---
-
 const NoticeSection = ({ onNoticePress }: { onNoticePress: () => void }) => {
   const scrollRef = useRef<ScrollView>(null);
   const screenWidth = Dimensions.get('window').width;
@@ -261,14 +280,38 @@ const FilterOptionButton = ({ label, icon, isSelected, onPress, type = 'text' }:
   );
 };
 
-const MatchHostModal = ({ visible, onClose, host, matchTitle }: { visible: boolean, onClose: () => void, host: HostProfile | null, matchTitle: string }) => {
-  if (!host) return null;
-  const handleRequestJoin = () => {
-    Alert.alert("참가 신청", `'${matchTitle}' 모임에 참가 신청을 보내시겠습니까?`, [
+// 방장 프로필 모달 (본인이 생성한 매칭인 경우 수정/삭제 표시)
+const MatchHostModal = ({ visible, onClose, match, currentUser, onDelete }: { visible: boolean, onClose: () => void, match: Match | null, currentUser: any, onDelete: (id: string) => void }) => {
+  if (!match || !match.host) return null;
+
+  const isHost = currentUser && match.host.uid === currentUser.uid;
+
+  const handleRequestJoin = async () => {
+    Alert.alert("참가 신청", `'${match.title}' 모임에 참가 신청을 보내시겠습니까?`, [
       { text: "취소", style: "cancel" },
-      { text: "보내기", onPress: () => { Alert.alert("신청 완료", "방장에게 참가 신청을 보냈습니다."); onClose(); } }
+      { text: "보내기", onPress: async () => {
+          try {
+              const db = getFirestore();
+              await addDoc(collection(db, 'notifications'), {
+                  receiverId: match.host.uid,
+                  senderId: currentUser?.uid || 'unknown',
+                  senderName: currentUser?.displayName || '유저',
+                  type: 'request',
+                  title: '참가 신청',
+                  message: `'${match.title}'에 ${currentUser?.displayName || '유저'}님이 참가를 희망합니다.`,
+                  createdAt: serverTimestamp(),
+                  matchId: match.id
+              });
+              Alert.alert("신청 완료", "방장에게 참가 신청을 보냈습니다.");
+              onClose();
+          } catch(e) {
+              console.error("신청 오류", e);
+              Alert.alert("오류", "신청을 보내는 중 문제가 발생했습니다.");
+          }
+      } }
     ]);
   };
+
   return (
     <Modal animationType="fade" transparent={true} visible={visible} onRequestClose={onClose}>
       <TouchableWithoutFeedback onPress={onClose}>
@@ -276,22 +319,37 @@ const MatchHostModal = ({ visible, onClose, host, matchTitle }: { visible: boole
           <TouchableWithoutFeedback>
             <View style={styles.profileModalContent}>
               <View style={styles.profileSection}>
-                <Image source={host.avatar} style={styles.profileAvatar} />
-                <Text style={styles.profileNameText}>{host.name}</Text>
+                <Image source={match.host.avatar} style={styles.profileAvatar} />
+                <Text style={styles.profileNameText}>{match.host.name}</Text>
                 <View style={{flexDirection:'row', alignItems:'center', gap:4}}>
                     <MapPin size={12} color="#A0A0A0"/>
-                    <Text style={styles.profileLocationText}>{host.location}</Text>
+                    <Text style={styles.profileLocationText}>{match.host.location}</Text>
                 </View>
                 <Text style={styles.hostBadgeText}>방장(Host)</Text>
               </View>
               <View style={styles.statsContainer}>
-                <View style={styles.statItem}><Text style={styles.statLabel}>티어</Text><Text style={[styles.statValue, { color: '#00E0C6' }]}>{host.tier}</Text></View>
+                <View style={styles.statItem}><Text style={styles.statLabel}>티어</Text><Text style={[styles.statValue, { color: '#00E0C6' }]}>{match.host.tier}</Text></View>
                 <View style={styles.statDivider} />
-                <View style={styles.statItem}><Text style={styles.statLabel}>승/패</Text><Text style={styles.statValue}>{host.win}승 {host.loss}패</Text></View>
+                <View style={styles.statItem}><Text style={styles.statLabel}>승/패</Text><Text style={styles.statValue}>{match.host.win}승 {match.host.loss}패</Text></View>
                 <View style={styles.statDivider} />
-                <View style={styles.statItem}><Text style={styles.statLabel}>매너 점수</Text><Text style={styles.statValue}>{host.mannerScore}</Text></View>
+                <View style={styles.statItem}><Text style={styles.statLabel}>매너 점수</Text><Text style={styles.statValue}>{match.host.mannerScore}</Text></View>
               </View>
-              <TouchableOpacity style={styles.joinRequestButton} onPress={handleRequestJoin}><Text style={styles.joinRequestButtonText}>참가 신청 보내기</Text></TouchableOpacity>
+
+              {isHost ? (
+                  <View style={{flexDirection: 'row', gap: 10, width: '100%', marginBottom: 12}}>
+                      <TouchableOpacity style={styles.editButton} onPress={() => { Alert.alert('안내', '수정 기능은 준비 중입니다.'); }}>
+                          <Text style={styles.joinRequestButtonText}>수정</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.deleteButton} onPress={() => onDelete(match.id)}>
+                          <Text style={styles.joinRequestButtonText}>삭제</Text>
+                      </TouchableOpacity>
+                  </View>
+              ) : (
+                  <TouchableOpacity style={styles.joinRequestButton} onPress={handleRequestJoin}>
+                      <Text style={styles.joinRequestButtonText}>참가 신청 보내기</Text>
+                  </TouchableOpacity>
+              )}
+
               <TouchableOpacity style={styles.profileCloseButton} onPress={onClose}><Text style={styles.profileCloseButtonText}>닫기</Text></TouchableOpacity>
             </View>
           </TouchableWithoutFeedback>
@@ -302,41 +360,17 @@ const MatchHostModal = ({ visible, onClose, host, matchTitle }: { visible: boole
 };
 
 // --- 3. Home 컴포넌트 ---
-const initialMatches = [
-  { id: 101, status: '모집 중', playerCount: '4명', title: '배드민턴', date: '2026년 3월 20일 18시 00분', location: '안양 호계체육관', region: '경기', gender: '무관', maxCount: 4, host: { name: '김민수', location: '안양시', tier: 'Silver 2', win: 15, loss: 8, mannerScore: 4.5, avatar: require('../assets/images/notice/notice_1.png') } },
-  { id: 102, status: '모집 중', playerCount: '2명', title: '2026 신년맞이 단식', date: '2026년 1월 20일 14시 00분', location: '수원 만석공원', region: '경기', gender: '남성', maxCount: 2, host: { name: '이영희', location: '수원시', tier: 'Gold 1', win: 42, loss: 12, mannerScore: 4.9, avatar: require('../assets/images/notice/notice_2.png') } },
-  { id: 103, status: '모집 중', playerCount: '4명', title: '서울 주말 아침 운동', date: '2026년 4월 21일 07시 00분', location: '서울 마곡 배드민턴장', region: '서울', gender: '무관', maxCount: 4, host: { name: '박철수', location: '서울 강서구', tier: 'Bronze 3', win: 5, loss: 5, mannerScore: 4.0, avatar: require('../assets/images/notice/notice_3.png') } },
-  { id: 104, status: '모집 중', playerCount: '4명', title: '강남 저녁 내기 게임', date: '2026년 5월 22일 19시 30분', location: '서울 강남구민회관', region: '서울', gender: '무관', maxCount: 4, host: { name: '최강남', location: '서울 강남구', tier: 'Gold 3', win: 60, loss: 40, mannerScore: 4.8, avatar: require('../assets/images/notice/notice_1.png') } },
-  { id: 105, status: '모집 중', playerCount: '2명', title: '성남 탄천 아침 단식', date: '2026년 6월 23일 06시 00분', location: '성남 탄천종합운동장', region: '경기', gender: '여성', maxCount: 2, host: { name: '정성남', location: '성남시 분당구', tier: 'Silver 1', win: 22, loss: 10, mannerScore: 5.0, avatar: require('../assets/images/notice/notice_2.png') } },
-  { id: 106, status: '모집 중', playerCount: '4명', title: '용인 수지 주말 번개', date: '2026년 4월 24일 14시 00분', location: '용인 수지체육공원', region: '경기', gender: '무관', maxCount: 4, host: { name: '한용인', location: '용인시 수지구', tier: 'Bronze 1', win: 2, loss: 8, mannerScore: 3.5, avatar: require('../assets/images/notice/notice_3.png') } },
-  { id: 107, status: '모집 중', playerCount: '4명', title: '인천 부평 퇴근 후 한판', date: '2026년 4월 26일 20시 00분', location: '인천 부평남부체육센터', region: '인천', gender: '남성', maxCount: 4, host: { name: '유인천', location: '인천 부평구', tier: 'Silver 3', win: 30, loss: 30, mannerScore: 4.2, avatar: require('../assets/images/notice/notice_4.png') } },
-  { id: 108, status: '모집 중', playerCount: '2명', title: '마포 고수분 모십니다', date: '2026년 5월 27일 10시 00분', location: '서울 마포구민체육센터', region: '서울', gender: '무관', maxCount: 2, host: { name: '임마포', location: '서울 마포구', tier: 'Platinum 4', win: 120, loss: 15, mannerScore: 4.9, avatar: require('../assets/images/notice/notice_5.png') } },
-  { id: 109, status: '모집 중', playerCount: '4명', title: '일산 호수공원 야외 게임', date: '2026년 5월 28일 16시 00분', location: '고양 호수공원', region: '경기', gender: '무관', maxCount: 4, host: { name: '고양이', location: '고양시 일산동구', tier: 'Bronze 2', win: 8, loss: 12, mannerScore: 4.1, avatar: require('../assets/images/notice/notice_6.png') } },
-  { id: 110, status: '모집 중', playerCount: '4명', title: '구로구 직장인 모임', date: '2026년 5월 29일 19시 00분', location: '서울 구로구민체육센터', region: '서울', gender: '무관', maxCount: 4, host: { name: '김구로', location: '서울 구로구', tier: 'Silver 4', win: 18, loss: 20, mannerScore: 4.3, avatar: require('../assets/images/notice/notice_1.png') } },
-  { id: 111, status: '모집 중', playerCount: '2명', title: '부천 주말 단식 매치', date: '2026년 6월 01일 13시 00분', location: '부천 실내체육관', region: '경기', gender: '남성', maxCount: 2, host: { name: '박부천', location: '부천시 원미구', tier: 'Gold 2', win: 55, loss: 25, mannerScore: 4.7, avatar: require('../assets/images/notice/notice_2.png') } },
-  { id: 112, status: '모집 중', playerCount: '4명', title: '송파구 아침 민턴', date: '2026년 6월 02일 06시 30분', location: '서울 송파구 배드민턴장', region: '서울', gender: '여성', maxCount: 4, host: { name: '이송파', location: '서울 송파구', tier: 'Silver 1', win: 28, loss: 14, mannerScore: 4.6, avatar: require('../assets/images/notice/notice_3.png') } },
-  { id: 113, status: '모집 중', playerCount: '4명', title: '의정부 친목 게임', date: '2026년 6월 03일 15시 00분', location: '의정부 종합운동장', region: '경기', gender: '무관', maxCount: 4, host: { name: '최의정', location: '의정부시', tier: 'Bronze 1', win: 12, loss: 10, mannerScore: 4.4, avatar: require('../assets/images/notice/notice_4.png') } },
-  { id: 114, status: '모집 중', playerCount: '4명', title: '광명시 퇴근 후 한겜', date: '2026년 6월 04일 20시 00분', location: '광명 시민체육관', region: '경기', gender: '무관', maxCount: 4, host: { name: '정광명', location: '광명시', tier: 'Gold 4', win: 35, loss: 35, mannerScore: 4.5, avatar: require('../assets/images/notice/notice_5.png') } },
-  { id: 115, status: '모집 중', playerCount: '2명', title: '안산 고수 1:1 대결', date: '2026년 6월 05일 11시 00분', location: '안산 와동체육관', region: '경기', gender: '남성', maxCount: 2, host: { name: '강안산', location: '안산시 단원구', tier: 'Diamond 3', win: 80, loss: 5, mannerScore: 4.8, avatar: require('../assets/images/notice/notice_6.png') } },
-  { id: 116, status: '모집 중', playerCount: '4명', title: '노원구 배드민턴 동호회', date: '2026년 6월 06일 10시 00분', location: '서울 불암산 배드민턴장', region: '서울', gender: '무관', maxCount: 4, host: { name: '조노원', location: '서울 노원구', tier: 'Silver 2', win: 20, loss: 15, mannerScore: 4.2, avatar: require('../assets/images/notice/notice_1.png') } },
-  { id: 117, status: '모집 중', playerCount: '4명', title: '김포 한강신도시 번개', date: '2026년 6월 07일 14시 00분', location: '김포 생활체육관', region: '경기', gender: '무관', maxCount: 4, host: { name: '윤김포', location: '김포시', tier: 'Bronze 3', win: 3, loss: 9, mannerScore: 3.8, avatar: require('../assets/images/notice/notice_2.png') } },
-  { id: 118, status: '모집 중', playerCount: '4명', title: '대전 둔산동 혼복', date: '2026년 6월 08일 19시 00분', location: '대전 서구 국민체육센터', region: '대전', gender: '무관', maxCount: 4, host: { name: '장대전', location: '대전 서구', tier: 'Gold 1', win: 48, loss: 22, mannerScore: 4.7, avatar: require('../assets/images/notice/notice_3.png') } },
-  { id: 119, status: '모집 중', playerCount: '2명', title: '부산 해운대 단식', date: '2026년 6월 09일 16시 00분', location: '부산 강서체육공원', region: '부산', gender: '남성', maxCount: 2, host: { name: '송부산', location: '부산 해운대구', tier: 'Platinum 2', win: 95, loss: 20, mannerScore: 4.9, avatar: require('../assets/images/notice/notice_4.png') } },
-  { id: 120, status: '모집 중', playerCount: '4명', title: '대구 수성구 아침 운동', date: '2026년 6월 10일 07시 00분', location: '대구 수성구민운동장', region: '대구', gender: '무관', maxCount: 4, host: { name: '오대구', location: '대구 수성구', tier: 'Silver 3', win: 25, loss: 25, mannerScore: 4.5, avatar: require('../assets/images/notice/notice_5.png') } },
-  { id: 121, status: '모집 중', playerCount: '4명', title: '광주 상무지구 게임', date: '2026년 6월 11일 18시 30분', location: '광주 염주종합체육관', region: '광주', gender: '무관', maxCount: 4, host: { name: '전광주', location: '광주 서구', tier: 'Gold 3', win: 40, loss: 18, mannerScore: 4.6, avatar: require('../assets/images/notice/notice_6.png') } },
-  { id: 122, status: '모집 중', playerCount: '4명', title: '울산 남구 퇴근 배드민턴', date: '2026년 6월 12일 19시 30분', location: '울산 문수체육관', region: '울산', gender: '남성', maxCount: 4, host: { name: '강울산', location: '울산 남구', tier: 'Bronze 1', win: 10, loss: 12, mannerScore: 4.0, avatar: require('../assets/images/notice/notice_1.png') } },
-  { id: 123, status: '모집 중', playerCount: '2명', title: '제주도 원정 경기', date: '2026년 6월 13일 14시 00분', location: '제주 종합경기장', region: '제주', gender: '무관', maxCount: 2, host: { name: '양제주', location: '제주시', tier: 'Silver 2', win: 21, loss: 19, mannerScore: 4.8, avatar: require('../assets/images/notice/notice_2.png') } },
-  { id: 124, status: '모집 중', playerCount: '4명', title: '세종시 호수공원 번개', date: '2026년 6월 14일 17시 00분', location: '세종 시민체육관', region: '세종', gender: '무관', maxCount: 4, host: { name: '홍세종', location: '세종시', tier: 'Gold 4', win: 33, loss: 27, mannerScore: 4.3, avatar: require('../assets/images/notice/notice_3.png') } },
-  { id: 125, status: '모집 중', playerCount: '4명', title: '천안 불당동 저녁 모임', date: '2026년 6월 15일 20시 00분', location: '천안 유관순체육관', region: '충남', gender: '무관', maxCount: 4, host: { name: '신천안', location: '천안시 서북구', tier: 'Silver 4', win: 16, loss: 20, mannerScore: 4.1, avatar: require('../assets/images/notice/notice_4.png') } },
-];
-
 export interface HomeProps {
   onStartGame: () => void;
   onGoToChat?: () => void;
+  rallies?: any[];
+  onCreateRally?: (title: string, location: string) => void;
+  user?: any;
 }
 
 export function Home({ onStartGame, onGoToChat }: HomeProps) {
-  const [matches, setMatches] = useState(() => initialMatches.sort((a, b) => parseMatchDateStr(a.date).getTime() - parseMatchDateStr(b.date).getTime()));
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [matches, setMatches] = useState<Match[]>([]);
 
   const [isSearching, setIsSearching] = useState(false);
   const [searchText, setSearchText] = useState('');
@@ -355,10 +389,11 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
   const [isCalendarModalVisible, setCalendarModalVisible] = useState(false);
   const [isNotifModalVisible, setIsNotifModalVisible] = useState(false);
   const [isRmrGuideVisible, setIsRmrGuideVisible] = useState(false);
-  const [selectedMatch, setSelectedMatch] = useState<typeof initialMatches[0] | null>(null);
+  const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [isHostModalVisible, setIsHostModalVisible] = useState(false);
 
-  const [datePickerMode, setDatePickerMode] = useState<'create' | 'filter'>('create');
+  // 날짜/시간 플로우 구분을 위한 모드 세분화
+  const [datePickerMode, setDatePickerMode] = useState<'createDate' | 'createTime' | 'filter'>('createDate');
   const [regionModalMode, setRegionModalMode] = useState<'create' | 'filter'>('create');
   const [tempMainRegion, setTempMainRegion] = useState<string | null>(null);
 
@@ -369,25 +404,126 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
   const [createCount, setCreateCount] = useState<2 | 4>(4);
   const [createDate, setCreateDate] = useState(new Date());
 
-  const [notifications, setNotifications] = useState([
-    { id: 1, type: 'request', title: '참가 신청', message: "'호계체육관 정모'에 김민수님이 참가를 희망합니다.", time: '방금 전' },
-    { id: 2, type: 'request', title: '참가 신청', message: "'주말 배드민턴'에 이영희님이 참가를 희망합니다.", time: '10분 전' },
-  ]);
+  const [notifications, setNotifications] = useState<any[]>([]);
+
+  useEffect(() => {
+    const auth = getAuth();
+    const unsubscribe = onAuthStateChanged(auth, user => {
+        setCurrentUser(user);
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
 
-  const handleNotificationPress = (id: number, action: 'accept' | 'decline') => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
-      if (action === 'accept') {
-        setIsNotifModalVisible(false);
-        onGoToChat?.();
-      } else {
-        Alert.alert('거절 완료', '참가 신청을 거절했습니다.');
+  useEffect(() => {
+    const db = getFirestore();
+    const unsubscribe = onSnapshot(collection(db, 'matches'), snapshot => {
+      const fetchedMatches = snapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          status: data.status || '모집 중',
+          playerCount: data.playerCount || '1명',
+          title: data.title || '',
+          date: data.date || '',
+          location: data.location || '',
+          region: data.region || '기타',
+          gender: data.gender || '무관',
+          maxCount: data.maxCount || 4,
+          host: {
+            ...data.host,
+            avatar: data.host?.avatarUrl ? { uri: data.host.avatarUrl } : require('../assets/images/profile.png')
+          }
+        } as Match;
+      });
+
+      fetchedMatches.sort((a, b) => parseMatchDateStr(a.date).getTime() - parseMatchDateStr(b.date).getTime());
+      setMatches(fetchedMatches);
+    }, error => {
+      console.error("매칭 데이터를 불러오는 중 오류 발생:", error);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser?.uid) {
+        setNotifications([]);
+        return;
+    }
+    const db = getFirestore();
+    const q = query(
+        collection(db, 'notifications'),
+        where('receiverId', '==', currentUser.uid)
+    );
+
+    const unsubscribe = onSnapshot(q, snapshot => {
+        const fetchedNotifs = snapshot.docs.map(docSnap => ({
+            id: docSnap.id,
+            ...docSnap.data()
+        }));
+
+        fetchedNotifs.sort((a: any, b: any) => {
+            const timeA = a.createdAt?.toMillis?.() || 0;
+            const timeB = b.createdAt?.toMillis?.() || 0;
+            return timeB - timeA;
+        });
+
+        setNotifications(fetchedNotifs);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  const formatTimeAgo = (timestamp: any) => {
+    if (!timestamp) return '방금 전';
+    const date = timestamp.toDate ? timestamp.toDate() : new Date();
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 1) return '방금 전';
+    if (minutes < 60) return `${minutes}분 전`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}시간 전`;
+    return `${Math.floor(hours / 24)}일 전`;
+  };
+
+  const handleNotificationPress = async (notifId: string, action: 'accept' | 'decline') => {
+      try {
+          const db = getFirestore();
+          await deleteDoc(doc(db, 'notifications', notifId));
+
+          if (action === 'accept') {
+            setIsNotifModalVisible(false);
+            onGoToChat?.();
+          } else {
+            Alert.alert('거절 완료', '참가 신청을 거절했습니다.');
+          }
+      } catch (error) {
+          console.error("알림 처리 실패:", error);
       }
-    };
+  };
+
+  const handleDeleteMatch = (matchId: string) => {
+      Alert.alert("모임 삭제", "정말 이 모임을 삭제하시겠습니까?", [
+          { text: "취소", style: "cancel" },
+          { text: "삭제", style: "destructive", onPress: async () => {
+              try {
+                  const db = getFirestore();
+                  await deleteDoc(doc(db, 'matches', matchId));
+                  Alert.alert("삭제 완료", "모임이 삭제되었습니다.");
+                  setIsHostModalVisible(false);
+              } catch (error) {
+                  console.error("삭제 실패", error);
+                  Alert.alert("오류", "삭제 중 문제가 발생했습니다.");
+              }
+          } }
+      ]);
+  };
 
   const displayMatches = useMemo(() => {
     return matches.filter(match => {
@@ -496,28 +632,99 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
   };
 
   const handleCreateRoom = () => {
-    setDatePickerMode('create');
+    setDatePickerMode('createDate');
     setRegionModalMode('create');
     setModalVisible(true);
   };
 
-  const handleConfirmCreation = () => {
-    const finalLocation = `${createRegion || '지역 미선택'} - ${detailedLocation || '상세 장소 미입력'}`;
+  // 실제 DB 저장을 담당하는 함수
+  const saveMatchToDB = async () => {
+    const db = getFirestore();
+    const finalLocation = `${createRegion} - ${detailedLocation.trim()}`;
+
+    let hostProfile = {
+      name: currentUser?.displayName || '나(본인)',
+      location: createRegion || '미정',
+      tier: 'Unranked',
+      win: 0,
+      loss: 0,
+      mannerScore: 5.0,
+      avatarUrl: currentUser?.photoURL || null,
+      uid: currentUser?.uid || ''
+    };
+
+    if (currentUser) {
+      try {
+        const appId = 'rally-app-main';
+        const userDocRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'profile', 'info');
+        const userDoc = await getDoc(userDocRef);
+
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          hostProfile = {
+            ...hostProfile,
+            name: userData?.nickname || hostProfile.name,
+            tier: userData?.tier || hostProfile.tier,
+            win: userData?.wins || hostProfile.win,
+            loss: userData?.losses || hostProfile.loss,
+            mannerScore: userData?.mannerScore || hostProfile.mannerScore,
+            avatarUrl: userData?.avatarUrl || hostProfile.avatarUrl,
+            uid: currentUser.uid
+          };
+        }
+      } catch (e) {
+        console.log('유저 프로필 정보를 불러오는데 실패했습니다.', e);
+      }
+    }
+
     const newMatch = {
-      id: Math.random(),
       status: '모집 중',
-      playerCount: `${createCount}명`,
-      title: roomName || '새 모임',
+      playerCount: '1명',
+      title: roomName.trim(),
       date: formatMatchDate(createDate),
       location: finalLocation,
       region: createRegion || '기타',
       gender: createGender,
       maxCount: createCount,
-      host: { name: '나(본인)', location: createRegion || '미정', tier: 'Unranked', win: 0, loss: 0, mannerScore: 5.0, avatar: require('../assets/images/notice/notice_1.png') }
+      host: hostProfile,
+      createdAt: serverTimestamp(),
     };
-    setMatches(prev => [...prev, newMatch]);
-    setModalVisible(false);
-    setRoomName(''); setCreateRegion(null); setDetailedLocation(''); setCreateGender('무관'); setCreateCount(4); setCreateDate(new Date());
+
+    try {
+      await addDoc(collection(db, 'matches'), newMatch);
+      Alert.alert("생성 완료", "새로운 매칭방이 등록되었습니다.");
+
+      setModalVisible(false);
+      setRoomName(''); setCreateRegion(null); setDetailedLocation(''); setCreateGender('무관'); setCreateCount(4); setCreateDate(new Date());
+    } catch (error) {
+      console.error("매칭방 생성 중 오류:", error);
+      Alert.alert("오류", "매칭방 생성에 실패했습니다. 다시 시도해주세요.");
+    }
+  };
+
+  // 데이터 검증 및 더블 체크 로직 (추가 버튼 클릭 시 실행)
+  const handleConfirmCreation = () => {
+    if (roomName.trim().length < 2) {
+      Alert.alert("입력 오류", "모임 이름을 2글자 이상 입력해주세요.");
+      return;
+    }
+    if (!createRegion) {
+      Alert.alert("입력 오류", "지역을 선택해주세요.");
+      return;
+    }
+    if (detailedLocation.trim().length < 2) {
+      Alert.alert("입력 오류", "상세 장소를 2글자 이상 입력해주세요.");
+      return;
+    }
+
+    Alert.alert(
+      "매칭방 생성",
+      "입력하신 정보로 새로운 매칭방을 생성하시겠습니까?",
+      [
+        { text: "취소", style: "cancel" },
+        { text: "추가", onPress: saveMatchToDB }
+      ]
+    );
   };
 
   const handleRegionItemPress = (itemValue: string) => {
@@ -541,15 +748,14 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
   const renderListHeader = () => {
     if (isSearching) return null;
 
-    // 동적 너비 계산 로직 (7번째 날짜가 반쯤 보이도록)
     const screenWidth = Dimensions.get('window').width;
-    const containerPadding = 24; // styles.dateSelectorContainer paddingHorizontal 12 * 2
+    const containerPadding = 24;
     const arrowButtonWidth = 32;
-    const arrowMargin = 8; // styles.calendarButton marginHorizontal 4 * 2
-    const scrollMarginRight = 10; // ScrollView style marginRight
+    const arrowMargin = 8;
+    const scrollMarginRight = 10;
     const totalDeduction = containerPadding + arrowButtonWidth + arrowMargin + scrollMarginRight;
 
-    const visibleItems = 6.5; // 6.5 items visible
+    const visibleItems = 6.5;
     const gap = 10;
     const availableWidth = screenWidth - totalDeduction;
     const itemWidth = (availableWidth - (Math.floor(visibleItems) * gap)) / visibleItems;
@@ -596,7 +802,6 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
                 );
             })}
             </ScrollView>
-            {/* [수정] style 및 onPress 확인, hitSlop 추가 */}
             <TouchableOpacity
                 style={styles.calendarButton}
                 onPress={() => setCalendarModalVisible(true)}
@@ -739,7 +944,7 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
             keyExtractor={(item) => item.id.toString()}
             renderItem={({ item }) => (
               <View style={{ paddingHorizontal: 16, marginBottom: 0 }}>
-                <MatchCard match={item} onPress={(m) => { setSelectedMatch(m); setIsHostModalVisible(true); }} />
+                <MatchCard match={item} onPress={(m) => { setSelectedMatch(m as any); setIsHostModalVisible(true); }} />
               </View>
             )}
             ListHeaderComponent={renderListHeader}
@@ -758,7 +963,15 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
       </View>
 
       <RMRGuideModal visible={isRmrGuideVisible} onClose={() => setIsRmrGuideVisible(false)} />
-      <MatchHostModal visible={isHostModalVisible} onClose={() => setIsHostModalVisible(false)} host={selectedMatch?.host || null} matchTitle={selectedMatch?.title || ''} />
+
+      {/* 방장 프로필 모달 */}
+      <MatchHostModal
+        visible={isHostModalVisible}
+        onClose={() => setIsHostModalVisible(false)}
+        match={selectedMatch}
+        currentUser={currentUser}
+        onDelete={handleDeleteMatch}
+      />
 
       <Modal animationType="slide" transparent={true} visible={isRegionModalVisible} onRequestClose={() => setIsRegionModalVisible(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setIsRegionModalVisible(false)}>
@@ -769,7 +982,37 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
         </Pressable>
       </Modal>
 
-      <DatePicker modal open={isDatePickerVisible} date={datePickerMode === 'create' ? createDate : (filterDate || new Date())} onConfirm={(d) => { setDatePickerVisible(false); if (datePickerMode === 'create') setCreateDate(d); else setFilterDate(d); }} onCancel={() => setDatePickerVisible(false)} title={datePickerMode === 'create' ? "날짜와 시간 선택" : "날짜로 검색"} confirmText="확인" cancelText="취소" minuteInterval={5} mode={datePickerMode === 'create' ? 'datetime' : 'date'} />
+      {/* Date -> Time 흐름을 지원하는 DatePicker */}
+      <DatePicker
+        modal
+        open={isDatePickerVisible}
+        date={datePickerMode.startsWith('create') ? createDate : (filterDate || new Date())}
+        onConfirm={(d) => {
+            setDatePickerVisible(false);
+            if (datePickerMode === 'createDate') {
+                const newDate = new Date(createDate);
+                newDate.setFullYear(d.getFullYear(), d.getMonth(), d.getDate());
+                setCreateDate(newDate);
+                // 날짜 선택이 완료되면 약간의 딜레이 후 시간 선택기를 자동으로 오픈
+                setTimeout(() => {
+                    setDatePickerMode('createTime');
+                    setDatePickerVisible(true);
+                }, 400);
+            } else if (datePickerMode === 'createTime') {
+                const newDate = new Date(createDate);
+                newDate.setHours(d.getHours(), d.getMinutes());
+                setCreateDate(newDate);
+            } else {
+                setFilterDate(d);
+            }
+        }}
+        onCancel={() => setDatePickerVisible(false)}
+        title={datePickerMode === 'createDate' ? "날짜 선택" : datePickerMode === 'createTime' ? "시간 선택" : "날짜로 검색"}
+        confirmText="확인"
+        cancelText="취소"
+        minuteInterval={5}
+        mode={datePickerMode === 'createDate' ? 'date' : datePickerMode === 'createTime' ? 'time' : 'date'}
+      />
 
       <Modal visible={isNotifModalVisible} transparent={true} animationType="fade" onRequestClose={() => setIsNotifModalVisible(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setIsNotifModalVisible(false)}>
@@ -778,7 +1021,13 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
             {notifications.length === 0 ? <View style={styles.emptyNotifContainer}><Bell size={48} color="#D1D5DB" /><Text style={styles.emptyNotifText}>새로운 알림이 없습니다.</Text></View> : (
               <FlatList data={notifications} keyExtractor={(item) => item.id.toString()} renderItem={({ item }) => (
                 <View style={styles.notifItem}>
-                  <View style={styles.notifTextContainer}><View style={styles.notifTitleRow}><Text style={styles.notifTitle}>{item.title}</Text><Text style={styles.notifTime}>{item.time}</Text></View><Text style={styles.notifMessage}>{item.message}</Text></View>
+                  <View style={styles.notifTextContainer}>
+                      <View style={styles.notifTitleRow}>
+                          <Text style={styles.notifTitle}>{item.title}</Text>
+                          <Text style={styles.notifTime}>{formatTimeAgo(item.createdAt)}</Text>
+                      </View>
+                      <Text style={styles.notifMessage}>{item.message}</Text>
+                  </View>
                   <View style={styles.notifActionContainer}>
                     <TouchableOpacity style={[styles.actionBtn, styles.declineBtn]} onPress={() => handleNotificationPress(item.id, 'decline')}>
                       <X size={18} color="#EF4444" />
@@ -799,12 +1048,12 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
           <Pressable style={styles.modalBackdropPressable} onPress={() => setModalVisible(false)} />
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>새로운 방 생성</Text>
-            <TextInput style={styles.modalInput} placeholder="모임 이름" placeholderTextColor="#9CA3AF" value={roomName} onChangeText={setRoomName} />
-            <TouchableOpacity style={styles.modalInputButton} onPress={() => { setDatePickerMode('create'); setDatePickerVisible(true); }}><CalendarIcon size={18} color="#6B7280" /><Text style={styles.modalInputText}>{formatMatchDate(createDate)}</Text></TouchableOpacity>
+            <TextInput style={styles.modalInput} placeholder="모임 이름 (2글자 이상)" placeholderTextColor="#9CA3AF" value={roomName} onChangeText={setRoomName} />
+            <TouchableOpacity style={styles.modalInputButton} onPress={() => { setDatePickerMode('createDate'); setDatePickerVisible(true); }}><CalendarIcon size={18} color="#6B7280" /><Text style={styles.modalInputText}>{formatMatchDate(createDate)}</Text></TouchableOpacity>
             <Text style={styles.modalLabel}>지역 선택</Text>
             <TouchableOpacity style={styles.modalInputButton} onPress={() => { setRegionModalMode('create'); setTempMainRegion(null); setIsRegionModalVisible(true); }}><MapPin size={18} color={createRegion ? '#1F2937' : '#6B7280'} /><Text style={[styles.modalInputText, !createRegion && styles.placeholderText]}>{createRegion || '시/도를 선택하세요'}</Text></TouchableOpacity>
             <Text style={styles.modalLabel}>상세 장소</Text>
-            <TextInput style={styles.modalInput} placeholder="예: 호계체육관" placeholderTextColor="#9CA3AF" value={detailedLocation} onChangeText={setDetailedLocation} />
+            <TextInput style={styles.modalInput} placeholder="예: 호계체육관 (2글자 이상)" placeholderTextColor="#9CA3AF" value={detailedLocation} onChangeText={setDetailedLocation} />
             <Text style={styles.modalLabel}>성별</Text>
             <View style={styles.optionGroup}><FilterOptionButton label="남성" icon={null} isSelected={createGender === '남성'} onPress={() => setCreateGender('남성')} /><FilterOptionButton label="여성" icon={null} isSelected={createGender === '여성'} onPress={() => setCreateGender('여성')} /><FilterOptionButton label="무관" icon={null} isSelected={createGender === '무관'} onPress={() => setCreateGender('무관')} /></View>
             <Text style={styles.modalLabel}>인원</Text>
@@ -938,6 +1187,8 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 16, fontWeight: 'bold', color: '#FFF' },
   statDivider: { width: 1, height: '60%', backgroundColor: '#444' },
   joinRequestButton: { width: '100%', backgroundColor: '#34D399', paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginBottom: 12 },
+  editButton: { flex: 1, backgroundColor: '#374151', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+  deleteButton: { flex: 1, backgroundColor: '#EF4444', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
   joinRequestButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
   profileCloseButton: { width: '100%', paddingVertical: 12, backgroundColor: '#333', borderRadius: 12, alignItems: 'center' },
   profileCloseButtonText: { color: '#FFF', fontSize: 15, fontWeight: 'bold' },
