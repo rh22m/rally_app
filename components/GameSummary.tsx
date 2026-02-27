@@ -30,6 +30,9 @@ import {
 import LinearGradient from 'react-native-linear-gradient';
 import Svg, { Circle, G, Polygon, Line, Text as SvgText } from 'react-native-svg';
 
+import { getFirestore, doc, addDoc, collection, serverTimestamp, setDoc, increment } from 'firebase/firestore';
+import { getApp } from 'firebase/app';
+
 import { calculateRMR, GameResult } from '../utils/rmrCalculator';
 import { PointLog } from '../utils/rmrCalculator';
 
@@ -56,6 +59,8 @@ interface GameSummaryProps {
     team1Name: string;
     team2Name: string;
   };
+  user?: any;
+  userProfile?: any;
 }
 
 const formatTime = (seconds: number) => {
@@ -179,30 +184,43 @@ const AnimatedActivityRing = ({ startRMR, endRMR }: { startRMR: number, endRMR: 
   );
 };
 
-export function GameSummary({ onNext, result }: GameSummaryProps) {
+export function GameSummary({ onNext, result, user, userProfile }: GameSummaryProps) {
   const [activeTab, setActiveTab] = useState<'rmr' | 'chart'>('rmr');
   const [showDetailReport, setShowDetailReport] = useState(false);
+
+  // 💡 [핵심 수정 1] 화면 진입 시점의 내 RMR과 RD를 영구 고정합니다.
+  // DB가 실시간으로 변해서 props가 새로 내려오더라도, 현재 화면의 계산 결과는 변하지 않습니다.
+  const [initialStats] = useState({
+      rmr: userProfile?.rmr || 1000,
+      rd: userProfile?.rd || 350
+  });
+
+  // 💡 [핵심 수정 2] 비동기 Race Condition 방지용 완전 동기 잠금 장치
+  const saveInitiated = useRef(false);
 
   const today = new Date();
   const formattedDate = `${today.getFullYear()}.${(today.getMonth() + 1).toString().padStart(2, '0')}.${today.getDate().toString().padStart(2, '0')}`;
 
   const analysisResult = useMemo(() => {
+    // userProfile 변수 대신 고정된 initialStats를 사용하여 재계산 무한루프 방지
     const mockGameData: GameResult = {
       playerA: { rmr: 1000, rd: 300, name: result.team1Name }, // 상대
-      playerB: { rmr: 1000, rd: 300, name: result.team2Name }, // 나
+      playerB: { rmr: initialStats.rmr, rd: initialStats.rd, name: result.team2Name }, // 나
       team1Wins: result.team1Wins, team2Wins: result.team2Wins, pointLogs: result.pointLogs, isAbnormal: result.isForced
     };
     return {
         ...calculateRMR(mockGameData),
         initialData: mockGameData
     };
-  }, [result]);
+  }, [result, initialStats]);
 
   const { newRMR_B, analysis, initialData } = analysisResult;
-  const oldRMR = 1000;
+  const oldRMR = initialStats.rmr; // 고정된 초기값 기준
   const rmrChange = newRMR_B - oldRMR;
+
   const isUserWinner = result.team2Wins > result.team1Wins;
   const isDraw = result.team2Wins === result.team1Wins;
+
   const caloriesBurned = (result.duration * 0.13).toFixed(0);
 
   let resultText = "패배";
@@ -225,6 +243,78 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
       com: 1.0 - winnerStats.com,
     };
   }, [analysis, isUserWinner]);
+
+  // Firestore에 결과 자동 저장 연동
+  useEffect(() => {
+    const db = getFirestore(getApp());
+    const appId = 'rally-app-main';
+
+    // 💡 [핵심 수정 3] saveInitiated.current가 true이면 어떤 이유에서든 즉시 실행 중단
+    if (saveInitiated.current || !user || !userProfile || result.isForced || result.team1Name === '상대팀') {
+        return;
+    }
+
+    const saveMatchData = async () => {
+        saveInitiated.current = true; // 비동기(await) 시작 전 동기적으로 즉시 문을 잠급니다.
+
+        try {
+            // NaN, undefined 방어 처리
+            const safeRmrChange = isNaN(rmrChange) ? 0 : Math.round(rmrChange);
+            const safeNewRmr = isNaN(newRMR_B) ? oldRMR : Math.round(newRMR_B);
+            const safeNewRd = isNaN(analysis.newRD_B) ? initialStats.rd : Math.round(analysis.newRD_B);
+
+            const safeMyStats = {
+                clutch: isNaN(myStats.clutch) ? 0.5 : myStats.clutch,
+                tempo: isNaN(myStats.tempo) ? 0.5 : myStats.tempo,
+                endurance: isNaN(myStats.endurance) ? 0.5 : myStats.endurance,
+                focus: isNaN(myStats.focus) ? 0.5 : myStats.focus,
+                cons: isNaN(myStats.cons) ? 0.5 : myStats.cons,
+                com: isNaN(myStats.com) ? 0.5 : myStats.com,
+            };
+
+            // 1. 경기 기록 내역 컬렉션에 추가
+            await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'matchHistory'), {
+                duration: result.duration || 0,
+                team1Wins: result.team1Wins || 0,
+                team2Wins: result.team2Wins || 0,
+                pointLogs: result.pointLogs || [],
+                team1Name: result.team1Name || '상대',
+                team2Name: result.team2Name || '나',
+                myStats: safeMyStats,
+                rmrChange: safeRmrChange,
+                createdAt: serverTimestamp()
+            });
+
+            // 2. 유저 프로필 정보 업데이트 (setDoc과 merge:true로 안전성 확보)
+            const userRef = doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'info');
+
+            const updateData: any = {
+                rmr: safeNewRmr,
+                rd: safeNewRd,
+                rallyCount: increment(1),
+                lastMatchAt: serverTimestamp(), // 시간 경과 RD 감소를 위해 마지막 게임 시간 기록
+                latestFlow: {
+                    tempo: safeMyStats.tempo,
+                    endurance: safeMyStats.endurance
+                }
+            };
+
+            if (isUserWinner) {
+                updateData.wins = increment(1);
+            } else if (!isDraw) {
+                updateData.losses = increment(1);
+            }
+
+            await setDoc(userRef, updateData, { merge: true });
+
+        } catch (e: any) {
+            console.error("Match result save error detail:", e.message || e);
+            saveInitiated.current = false; // 에러 발생 시 잠금 해제하여 재시도 허용
+        }
+    };
+
+    saveMatchData();
+  }, [user, userProfile, result, newRMR_B, myStats, isUserWinner, isDraw, rmrChange, analysis.newRD_B, oldRMR]);
 
   const generateComment = () => {
       const { flowDetails } = analysis;
@@ -254,7 +344,6 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
       }
   };
 
-  // [수정] 전문 용어를 배제하고 일반인 친화적인 상세 리포트 생성
   const generateDetailReportText = () => {
     const stats = myStats;
     const oppName = initialData.playerA.name;
@@ -262,15 +351,15 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
     const totalScoreB = result.pointLogs.filter(l => l.scorer === 'B').length;
     const scoreDiff = Math.abs(totalScoreA - totalScoreB);
 
-    // 1. 경기 개요 (친근한 말투)
     let report = "";
     if (isUserWinner) {
         report += `${oppName}님과의 경기에서 멋진 승리를 거두셨네요! 🎉\n`;
+    } else if (isDraw) {
+        report += `${oppName}님과의 경기, 아쉽게도 승부를 가리지 못했습니다. 🤝\n`;
     } else {
         report += `${oppName}님과의 경기, 정말 아쉬운 한 판이었습니다. 😭\n`;
     }
 
-    // 2. 세트 및 점수 내용 분석 (가중치 용어 제거)
     if (Math.abs(result.team1Wins - result.team2Wins) === 2) {
         report += `단 한 세트도 내주지 않고 압도적인 경기를 펼쳤습니다. `;
     } else {
@@ -283,7 +372,6 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
         report += `전체 득점 차이는 고작 ${scoreDiff}점에 불과할 정도로 막상막하의 승부였습니다.\n\n`;
     }
 
-    // 3. 플레이 스타일 강점 분석 (0.55 이상인 항목 중 상위 2개 추출)
     const sortedStats = Object.entries(stats)
         .sort(([, a], [, b]) => (b as number) - (a as number));
 
@@ -306,10 +394,9 @@ export function GameSummary({ onNext, result }: GameSummaryProps) {
         report += "전반적으로 기복 없는 무난한 플레이를 보여주셨습니다. 다음 경기에서는 나만의 확실한 '필살기'를 하나 만들어보면 어떨까요?\n\n";
     }
 
-    // 4. 결론 (RMR 변동 안내)
     report += `이러한 경기 내용이 종합적으로 반영되어, 회원님의 RMR 점수가 ${Math.abs(rmrChange)}점 ${rmrChange >= 0 ? '상승했습니다 📈' : '하락했습니다 📉'}.`;
 
-    if (!isUserWinner) {
+    if (!isUserWinner && !isDraw) {
         report += " 패배는 쓰지만, 랠리의 분석과 함께라면 금방 더 강해질 수 있습니다. 화이팅!";
     }
 

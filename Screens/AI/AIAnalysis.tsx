@@ -45,6 +45,12 @@ import {
   ArrowDownRight,
   Circle
 } from 'lucide-react-native';
+
+// Firebase 연동을 위한 임포트 추가
+import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+import { getApp } from 'firebase/app';
+
 import { htmlContent } from './poseHtml';
 
 // ---------------- [설정값] ----------------
@@ -73,7 +79,6 @@ interface ResultData {
   unit?: string;
 }
 
-// [수정] 외부 참조를 위해 export 추가
 export interface AnalysisReport {
   id: string;
   date: string;
@@ -299,7 +304,8 @@ export default function AIAnalysis() {
     if (mode === 'FOOTWORK') setTargetDirection('CENTER');
   };
 
-  const finishAnalysis = () => {
+  // 분석 종료 시 Firestore 연동 추가
+  const finishAnalysis = async () => {
     setIsAnalyzing(false);
     setIsTimerRunning(false);
     setCountdown(null);
@@ -307,6 +313,21 @@ export default function AIAnalysis() {
     setHistory((prev) => [newReport, ...prev]);
     setSelectedReport(newReport);
     setShowReport(true);
+
+    try {
+        const auth = getAuth(getApp());
+        const user = auth.currentUser;
+        if (user) {
+            const db = getFirestore(getApp());
+            const appId = 'rally-app-main';
+            await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'videoHistory'), {
+                ...newReport,
+                createdAt: serverTimestamp()
+            });
+        }
+    } catch (error) {
+        console.error("AI Analysis saving error:", error);
+    }
   };
 
   const getGradeColor = (grade?: string) => {

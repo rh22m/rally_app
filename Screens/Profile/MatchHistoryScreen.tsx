@@ -1,77 +1,85 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   FlatList,
+  ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { ArrowLeft, TrendingUp, TrendingDown } from 'lucide-react-native';
+import { ArrowLeft, TrendingUp, TrendingDown, Minus } from 'lucide-react-native';
 
-// (임시) 경기 기록 데이터
-const historyData = [
-  {
-    id: '1',
-    date: '2025.11.25',
-    title: '호계체육관 정모 매치',
-    result: 'WIN',
-    score: '2 - 1',
-    rmrChange: 15,
-    opponent: '김철수 / 이영희',
-  },
-  {
-    id: '2',
-    date: '2025.11.24',
-    title: '안양 클럽 교류전',
-    result: 'LOSS',
-    score: '0 - 2',
-    rmrChange: -8,
-    opponent: '박지성 / 손흥민',
-  },
-  {
-    id: '3',
-    date: '2025.11.20',
-    title: '동호회 자체 랭킹전',
-    result: 'WIN',
-    score: '2 - 0',
-    rmrChange: 12,
-    opponent: '나달 / 페더러',
-  },
-  {
-    id: '4',
-    date: '2025.11.18',
-    title: '퇴근 후 한판',
-    result: 'WIN',
-    score: '2 - 1',
-    rmrChange: 5,
-    opponent: '신유빈 / 안세영',
-  },
-  {
-    id: '5',
-    date: '2025.11.15',
-    title: '주말 새벽 배드민턴',
-    result: 'LOSS',
-    score: '1 - 2',
-    rmrChange: -10,
-    opponent: '이용대 / 유연성',
-  },
-];
+// Firebase 연동을 위한 임포트 추가
+import { getFirestore, collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+import { getApp } from 'firebase/app';
 
 export default function MatchHistoryScreen() {
   const navigation = useNavigation();
+  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const auth = getAuth(getApp());
+    const user = auth.currentUser;
+    if (!user) {
+        setLoading(false);
+        return;
+    }
+
+    const db = getFirestore(getApp());
+    const appId = 'rally-app-main';
+    const historyRef = collection(db, 'artifacts', appId, 'users', user.uid, 'matchHistory');
+    // 최신 경기가 위로 오도록 내림차순 정렬
+    const q = query(historyRef, orderBy('createdAt', 'desc'));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map(doc => {
+        const data = doc.data();
+        const isWin = data.team2Wins > data.team1Wins;
+        const isDraw = data.team2Wins === data.team1Wins;
+
+        let result = 'LOSS';
+        if (isWin) result = 'WIN';
+        else if (isDraw) result = 'DRAW';
+
+        // createdAt 타임스탬프를 YYYY.MM.DD 형식으로 변환
+        const dateObj = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
+        const dateStr = `${dateObj.getFullYear()}.${String(dateObj.getMonth() + 1).padStart(2, '0')}.${String(dateObj.getDate()).padStart(2, '0')}`;
+
+        return {
+          id: doc.id,
+          date: dateStr,
+          title: '랠리 매치', // 기본 타이틀 고정 (추후 매칭 시스템 고도화 시 제목 연동 가능)
+          result: result,
+          score: `${data.team2Wins} - ${data.team1Wins}`,
+          rmrChange: Math.round(data.rmrChange || 0),
+          opponent: data.team1Name || '상대팀',
+        };
+      });
+      setHistoryData(list);
+      setLoading(false);
+    }, (error) => {
+      console.error("Match History fetch error:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const renderItem = ({ item }: { item: any }) => {
     const isWin = item.result === 'WIN';
+    const isDraw = item.result === 'DRAW';
 
     return (
       <View style={styles.card}>
         {/* 날짜 및 구분 */}
         <View style={styles.cardHeader}>
           <Text style={styles.dateText}>{item.date}</Text>
-          <View style={[styles.resultBadge, isWin ? styles.bgWin : styles.bgLoss]}>
-            <Text style={[styles.resultText, isWin ? styles.textWin : styles.textLoss]}>
+          <View style={[styles.resultBadge, isWin ? styles.bgWin : (isDraw ? styles.bgDraw : styles.bgLoss)]}>
+            <Text style={[styles.resultText, isWin ? styles.textWin : (isDraw ? styles.textDraw : styles.textLoss)]}>
               {item.result}
             </Text>
           </View>
@@ -90,11 +98,13 @@ export default function MatchHistoryScreen() {
             <View style={styles.rmrContainer}>
               {isWin ? (
                 <TrendingUp size={16} color="#34D399" />
+              ) : isDraw ? (
+                <Minus size={16} color="#9CA3AF" />
               ) : (
                 <TrendingDown size={16} color="#EF4444" />
               )}
-              <Text style={[styles.rmrText, isWin ? styles.textWin : styles.textLoss]}>
-                {isWin ? '+' : ''}{item.rmrChange}
+              <Text style={[styles.rmrText, isWin ? styles.textWin : (isDraw ? styles.textDraw : styles.textLoss)]}>
+                {item.rmrChange > 0 ? '+' : ''}{item.rmrChange}
               </Text>
             </View>
           </View>
@@ -114,13 +124,23 @@ export default function MatchHistoryScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      {/* 리스트 */}
-      <FlatList
-        data={historyData}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-      />
+      {/* 리스트 로딩 및 빈 화면 처리 */}
+      {loading ? (
+        <View style={styles.centerBox}>
+            <ActivityIndicator size="large" color="#34D399" />
+        </View>
+      ) : historyData.length === 0 ? (
+        <View style={styles.centerBox}>
+            <Text style={{color: '#9CA3AF'}}>저장된 경기 기록이 없습니다.</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={historyData}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -152,6 +172,11 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 20,
   },
+  centerBox: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
   card: {
     backgroundColor: '#1F2937',
     borderRadius: 12,
@@ -178,6 +203,9 @@ const styles = StyleSheet.create({
   bgWin: {
     backgroundColor: 'rgba(52, 211, 153, 0.2)', // Green background
   },
+  bgDraw: {
+    backgroundColor: 'rgba(156, 163, 175, 0.2)', // Gray background
+  },
   bgLoss: {
     backgroundColor: 'rgba(239, 68, 68, 0.2)', // Red background
   },
@@ -187,6 +215,9 @@ const styles = StyleSheet.create({
   },
   textWin: {
     color: '#34D399',
+  },
+  textDraw: {
+    color: '#9CA3AF',
   },
   textLoss: {
     color: '#EF4444',

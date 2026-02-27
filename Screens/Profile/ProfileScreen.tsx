@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,12 +12,16 @@ import {
 import { Settings, Shield, LogOut, ChevronRight, PencilRuler, History, Dumbbell, Wallet, Scale, Gem, ShoppingBag, X, CheckCircle2 } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path, Defs, LinearGradient, Stop, G, Text as SvgText, TSpan } from 'react-native-svg';
+import { getFirestore, collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { getApp } from 'firebase/app';
+
 import { getRmrTier } from '../../utils/rmrCalculator';
 import { recommendRacket, RacketDetail } from '../../utils/racketRecommender';
 import { AnalysisReport } from '../AI/AIAnalysis';
 
 interface ProfileScreenProps {
   onLogout: () => void;
+  userProfile?: any;
 }
 
 const TIER_IMAGES = {
@@ -60,10 +64,15 @@ const COLORS = {
   disabled: { front: ['#4B5563', '#374151'], side: '#1F2937' }
 };
 
-export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
+export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenProps) {
   const navigation = useNavigation<any>();
   const [activeTab, setActiveTab] = useState<'tier' | 'info' | 'racket'>('tier');
   const [selectedTierName, setSelectedTierName] = useState<string | null>(null);
+
+  // 데이터베이스 페칭 상태 관리
+  const [videoHistory, setVideoHistory] = useState<AnalysisReport[]>([]);
+  const [latestFlow, setLatestFlow] = useState({ tempo: 0.5, endurance: 0.5 });
+  const [isLoadingDB, setIsLoadingDB] = useState(true);
 
   // 상세보기 모달 상태 구성
   const [detailModalVisible, setDetailModalVisible] = useState(false);
@@ -77,28 +86,57 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
   const DEPTH_X = 6;
   const DEPTH_Y = -12;
 
-  // 데모 데이터 (실제 데이터는 API/DB 연동)
+  useEffect(() => {
+    if (!userProfile?.uid) {
+        setIsLoadingDB(false);
+        return;
+    }
+
+    const fetchData = async () => {
+        try {
+            const db = getFirestore(getApp());
+            const appId = 'rally-app-main';
+
+            // 1. 경기 정보(flow)는 방금 저장한 userProfile을 그대로 활용 (없으면 기본값)
+            if (userProfile.latestFlow) {
+                setLatestFlow(userProfile.latestFlow);
+            }
+
+            // 2. 비디오 분석 기록(AIAnalysis 결과) 가져오기
+            const videoRef = collection(db, 'artifacts', appId, 'users', userProfile.uid, 'videoHistory');
+            const q = query(videoRef, orderBy('createdAt', 'desc'), limit(5));
+            const snapshot = await getDocs(q);
+            const vHist = snapshot.docs.map(doc => doc.data() as AnalysisReport);
+
+            // DB에 영상 분석 결과가 없다면 임시 더미데이터 표시 (추천 알고리즘 에러 방지 목적)
+            if (vHist.length === 0) {
+                setVideoHistory([
+                    { id: '1', mode: 'SWING', maxRecord: 115 } as AnalysisReport,
+                    { id: '2', mode: 'SWING', maxRecord: 95 } as AnalysisReport,
+                    { id: '3', mode: 'SWING', maxRecord: 108 } as AnalysisReport,
+                ]);
+            } else {
+                setVideoHistory(vHist);
+            }
+        } catch (e) {
+            console.error("Firestore DB 펫치 에러:", e);
+        } finally {
+            setIsLoadingDB(false);
+        }
+    };
+    fetchData();
+  }, [userProfile]);
+
+  // Firestore 데이터로 유저 구성 (기존 하드코딩 제거)
   const user = {
-    name: '오이너구리',
-    location: '안산시 단원구',
-    rmr: 1380,
-    wins: 21,
-    losses: 18,
+    name: userProfile?.nickname || '사용자',
+    location: userProfile?.region || '지역 미설정',
+    rmr: userProfile?.rmr || 1000,
+    wins: userProfile?.wins || 0,
+    losses: userProfile?.losses || 0,
     avatar: require('../../assets/images/profile.png'),
-    /**
-     * [임의 데이터 기반 스타일 분석 주석]
-     * 1. 3번의 스윙 중 90km/h 이상이 100% (3/3)이므로 smashRatio 임계값 0.4를 상회함 -> 공격 가산점 부여
-     * 2. 최신 경기 flow 데이터에서 Tempo(0.85)가 Endurance(0.45)보다 높아 빠른 템포 선호 -> 공격 가산점 부여
-     * 3. 위 결과로 최종 밸런스는 "Head Heavy (공격형)" 도출
-     * 4. RMR 1180은 중급자 가산점(1점)을 받으며, 평균 스윙 속도(약 106km/h)가 기준값(100)을 상회하므로
-     * 최종 스피드 점수가 3점이 되어 "Stiff (딱딱함)" 샤프트가 추천됨.
-     */
-    videoHistory: [
-        { id: '1', mode: 'SWING', maxRecord: 115 } as AnalysisReport,
-        { id: '2', mode: 'SWING', maxRecord: 95 } as AnalysisReport,
-        { id: '3', mode: 'SWING', maxRecord: 108 } as AnalysisReport,
-    ],
-    latestFlow: { tempo: 0.85, endurance: 0.45 }
+    videoHistory: videoHistory,
+    latestFlow: latestFlow
   };
 
   const currentTierName = getRmrTier(user.rmr);
@@ -107,8 +145,9 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
   const targetTierName = selectedTierName ?? currentTierName;
 
   const racketResult = useMemo(() => {
+    if (isLoadingDB) return null;
     return recommendRacket(user.videoHistory, user.rmr, user.latestFlow);
-  }, [user.rmr, user.videoHistory, user.latestFlow]);
+  }, [user.rmr, user.videoHistory, user.latestFlow, isLoadingDB]);
 
   const handleTierPress = (tierName: string) => {
     if (selectedTierName === tierName) setSelectedTierName(null);
@@ -239,33 +278,39 @@ export default function ProfileScreen({ onLogout }: ProfileScreenProps) {
           ) : (
             /* 장비 추천 섹션 */
             <View style={styles.racketSection}>
-              <View style={styles.racketHeaderCard}>
-                <Dumbbell size={28} color="#34D399" />
-                <View style={{marginLeft: 12}}>
-                  <Text style={styles.racketMainStyle}>플레이 스타일: {racketResult.balance}</Text>
-                  <Text style={styles.racketSubStyle}>추천 샤프트: {racketResult.shaft}</Text>
-                </View>
-              </View>
+              {racketResult ? (
+                <>
+                  <View style={styles.racketHeaderCard}>
+                    <Dumbbell size={28} color="#34D399" />
+                    <View style={{marginLeft: 12}}>
+                      <Text style={styles.racketMainStyle}>플레이 스타일: {racketResult.balance}</Text>
+                      <Text style={styles.racketSubStyle}>추천 샤프트: {racketResult.shaft}</Text>
+                    </View>
+                  </View>
 
-              <Text style={styles.analysisDesc}>{racketResult.description}</Text>
+                  <Text style={styles.analysisDesc}>{racketResult.description}</Text>
 
-              <View style={styles.racketGrid}>
-                {/* 프리미엄 카드 */}
-                <View style={styles.productCard}>
-                  <View style={styles.productBadge}><Gem size={12} color="#FDB931" /><Text style={styles.productBadgeText}>프리미엄</Text></View>
-                  <Text style={styles.productName}>{racketResult.premium.name}</Text>
-                  <Text style={styles.productTag}>숙련자용 최고 사양</Text>
-                  <TouchableOpacity style={[styles.buyButton, {backgroundColor: '#374151'}]} onPress={() => openRacketDetail(racketResult.premium)}><ShoppingBag size={16} color="white" /><Text style={styles.buyText}>상세보기</Text></TouchableOpacity>
-                </View>
+                  <View style={styles.racketGrid}>
+                    {/* 프리미엄 카드 */}
+                    <View style={styles.productCard}>
+                      <View style={styles.productBadge}><Gem size={12} color="#FDB931" /><Text style={styles.productBadgeText}>프리미엄</Text></View>
+                      <Text style={styles.productName}>{racketResult.premium.name}</Text>
+                      <Text style={styles.productTag}>숙련자용 최고 사양</Text>
+                      <TouchableOpacity style={[styles.buyButton, {backgroundColor: '#374151'}]} onPress={() => openRacketDetail(racketResult.premium)}><ShoppingBag size={16} color="white" /><Text style={styles.buyText}>상세보기</Text></TouchableOpacity>
+                    </View>
 
-                {/* 가성비 카드 */}
-                <View style={styles.productCard}>
-                  <View style={[styles.productBadge, {backgroundColor: 'rgba(96, 165, 250, 0.2)'}]}><Wallet size={12} color="#60A5FA" /><Text style={[styles.productBadgeText, {color: '#60A5FA'}]}>가성비</Text></View>
-                  <Text style={styles.productName}>{racketResult.budget.name}</Text>
-                  <Text style={styles.productTag}>최고의 효율과 퍼포먼스</Text>
-                  <TouchableOpacity style={[styles.buyButton, {backgroundColor: '#374151'}]} onPress={() => openRacketDetail(racketResult.budget)}><ShoppingBag size={16} color="white" /><Text style={styles.buyText}>상세보기</Text></TouchableOpacity>
-                </View>
-              </View>
+                    {/* 가성비 카드 */}
+                    <View style={styles.productCard}>
+                      <View style={[styles.productBadge, {backgroundColor: 'rgba(96, 165, 250, 0.2)'}]}><Wallet size={12} color="#60A5FA" /><Text style={[styles.productBadgeText, {color: '#60A5FA'}]}>가성비</Text></View>
+                      <Text style={styles.productName}>{racketResult.budget.name}</Text>
+                      <Text style={styles.productTag}>최고의 효율과 퍼포먼스</Text>
+                      <TouchableOpacity style={[styles.buyButton, {backgroundColor: '#374151'}]} onPress={() => openRacketDetail(racketResult.budget)}><ShoppingBag size={16} color="white" /><Text style={styles.buyText}>상세보기</Text></TouchableOpacity>
+                    </View>
+                  </View>
+                </>
+              ) : (
+                <Text style={{color: '#9CA3AF', textAlign: 'center', marginTop: 40}}>추천 데이터를 불러오는 중입니다...</Text>
+              )}
             </View>
           )}
         </View>
