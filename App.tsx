@@ -693,7 +693,7 @@ export default function App() {
     return (
       <View style={stubStyles.stubContainer}>
         <ActivityIndicator size="large" color="#34D399" />
-        <Text style={stubStyles.stubText}>{isSigningUp ? "안전하게 정보 저장 중..." : "RALLY SYSTEM LOADING..."}</Text>
+        <Text style={stubStyles.stubText}>{isSigningUp ? "안전하게 정보 저장 중..." : "로딩 중..."}</Text>
       </View>
     );
   }

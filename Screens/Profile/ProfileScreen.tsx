@@ -8,11 +8,26 @@ import {
   Image,
   Dimensions,
   Modal,
+  TextInput,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator
 } from 'react-native';
-import { Settings, Shield, LogOut, ChevronRight, PencilRuler, History, Dumbbell, Wallet, Scale, Gem, ShoppingBag, X, CheckCircle2 } from 'lucide-react-native';
+import {
+  Settings, Shield, LogOut, ChevronRight, PencilRuler, History, Dumbbell,
+  Wallet, Scale, Gem, ShoppingBag, X, CheckCircle2, Camera, Edit2, Trash2, FileText, MapPin
+} from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path, Defs, LinearGradient, Stop, G, Text as SvgText, TSpan } from 'react-native-svg';
-import { getFirestore, collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
+
+// 갤러리 접근용 패키지 (사전 설치 필요: npm install react-native-image-picker)
+import { launchImageLibrary } from 'react-native-image-picker';
+
+// Firebase 연동
+import { getFirestore, collection, query, orderBy, limit, getDocs, doc, updateDoc, collectionGroup, where } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { getApp } from 'firebase/app';
 
 import { getRmrTier } from '../../utils/rmrCalculator';
@@ -64,19 +79,39 @@ const COLORS = {
   disabled: { front: ['#4B5563', '#374151'], side: '#1F2937' }
 };
 
+const LEGAL_TEXTS = {
+  terms: `제1조 (목적)\n본 약관은 랠리(Rally) 서비스 이용과 관련하여 회사와 회원 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.\n\n제2조 (서비스 이용)\n회원은 회사가 제공하는 배드민턴 매칭 및 분석 서비스를 상호 존중과 페어플레이 정신에 입각하여 사용하여야 합니다.`,
+  privacy: `1. 개인정보 수집 항목\n이메일, 비밀번호, 닉네임, 휴대폰 번호, 활동 지역, 성별 등 서비스 제공에 필요한 최소한의 정보를 수집합니다.\n\n2. 이용 목적\n수집된 정보는 유저 간의 원활한 매칭 연결과 RMR 기반의 분석 서비스 제공을 위해 사용됩니다.`,
+  location: `1. 위치정보 이용 목적\n사용자의 현재 위치를 기반으로 주변 경기장 및 실시간 매칭 파트너 정보를 제공하기 위해 위치정보를 이용합니다.\n\n2. 권리 표기\n본 서비스 내 제공되는 AI 분석 알고리즘, Glicko-2 기반의 RMR 레이팅 시스템의 모든 권리는 랠리(Rally)에 있습니다.`
+};
+
 export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenProps) {
   const navigation = useNavigation<any>();
   const [activeTab, setActiveTab] = useState<'tier' | 'info' | 'racket'>('tier');
   const [selectedTierName, setSelectedTierName] = useState<string | null>(null);
 
-  // 데이터베이스 페칭 상태 관리
   const [videoHistory, setVideoHistory] = useState<AnalysisReport[]>([]);
   const [latestFlow, setLatestFlow] = useState({ tempo: 0.5, endurance: 0.5 });
   const [isLoadingDB, setIsLoadingDB] = useState(true);
 
-  // 상세보기 모달 상태 구성
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [selectedRacket, setSelectedRacket] = useState<RacketDetail | null>(null);
+
+  // --- 모달 상태 ---
+  const [accountModalVisible, setAccountModalVisible] = useState(false);
+  const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
+
+  // 닉네임 변경 관련 상태
+  const [newNickname, setNewNickname] = useState(userProfile?.nickname || '');
+  const [isCheckingNickname, setIsCheckingNickname] = useState(false);
+  const [nicknameMessage, setNicknameMessage] = useState('');
+  const [isNicknameValid, setIsNicknameValid] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // 약관 확인 모달 상태
+  const [legalModalVisible, setLegalModalVisible] = useState(false);
+  const [legalTitle, setLegalTitle] = useState('');
+  const [legalContent, setLegalContent] = useState('');
 
   const screenWidth = Dimensions.get('window').width;
   const PYRAMID_HEIGHT = 200;
@@ -91,24 +126,22 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
         setIsLoadingDB(false);
         return;
     }
+    setNewNickname(userProfile.nickname);
 
     const fetchData = async () => {
         try {
             const db = getFirestore(getApp());
             const appId = 'rally-app-main';
 
-            // 1. 경기 정보(flow)는 방금 저장한 userProfile을 그대로 활용 (없으면 기본값)
             if (userProfile.latestFlow) {
                 setLatestFlow(userProfile.latestFlow);
             }
 
-            // 2. 비디오 분석 기록(AIAnalysis 결과) 가져오기
             const videoRef = collection(db, 'artifacts', appId, 'users', userProfile.uid, 'videoHistory');
             const q = query(videoRef, orderBy('createdAt', 'desc'), limit(5));
             const snapshot = await getDocs(q);
             const vHist = snapshot.docs.map(doc => doc.data() as AnalysisReport);
 
-            // DB에 영상 분석 결과가 없다면 임시 더미데이터 표시 (추천 알고리즘 에러 방지 목적)
             if (vHist.length === 0) {
                 setVideoHistory([
                     { id: '1', mode: 'SWING', maxRecord: 115 } as AnalysisReport,
@@ -127,14 +160,14 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
     fetchData();
   }, [userProfile]);
 
-  // Firestore 데이터로 유저 구성 (기존 하드코딩 제거)
+  // userProfile에 등록된 avatarUrl이 있으면 우선 적용, 없으면 기본 이미지
   const user = {
     name: userProfile?.nickname || '사용자',
     location: userProfile?.region || '지역 미설정',
     rmr: userProfile?.rmr || 1000,
     wins: userProfile?.wins || 0,
     losses: userProfile?.losses || 0,
-    avatar: require('../../assets/images/profile.png'),
+    avatar: userProfile?.avatarUrl ? { uri: userProfile.avatarUrl } : require('../../assets/images/profile.png'),
     videoHistory: videoHistory,
     latestFlow: latestFlow
   };
@@ -157,6 +190,142 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
   const openRacketDetail = (racket: RacketDetail) => {
     setSelectedRacket(racket);
     setDetailModalVisible(true);
+  };
+
+  const openLegalModal = (title: string, content: string) => {
+    setLegalTitle(title);
+    setLegalContent(content);
+    setLegalModalVisible(true);
+  };
+
+  // --- 계정 설정 로직 ---
+  const handleCheckNickname = async () => {
+    if (!newNickname.trim()) {
+        setNicknameMessage('닉네임을 입력해주세요.');
+        return;
+    }
+    if (newNickname === userProfile.nickname) {
+        setNicknameMessage('현재 사용 중인 닉네임입니다.');
+        setIsNicknameValid(true);
+        return;
+    }
+
+    setIsCheckingNickname(true);
+    try {
+        const db = getFirestore(getApp());
+        const q = query(collectionGroup(db, 'profile'), where('nickname', '==', newNickname));
+        const snapshot = await getDocs(q);
+
+        if (snapshot.empty) {
+            setNicknameMessage('사용 가능한 닉네임입니다.');
+            setIsNicknameValid(true);
+        } else {
+            setNicknameMessage('이미 사용 중인 닉네임입니다.');
+            setIsNicknameValid(false);
+        }
+    } catch (e) {
+        setNicknameMessage('확인 중 오류가 발생했습니다.');
+        setIsNicknameValid(false);
+    } finally {
+        setIsCheckingNickname(false);
+    }
+  };
+
+  const handleSaveAccountSettings = async () => {
+    if (!isNicknameValid && newNickname !== userProfile.nickname) {
+        Alert.alert('오류', '닉네임 중복 확인을 해주세요.');
+        return;
+    }
+
+    setIsSaving(true);
+    try {
+        const db = getFirestore(getApp());
+        const appId = 'rally-app-main';
+        const userRef = doc(db, 'artifacts', appId, 'users', userProfile.uid, 'profile', 'info');
+
+        await updateDoc(userRef, {
+            nickname: newNickname
+        });
+
+        Alert.alert('성공', '계정 정보가 업데이트 되었습니다.');
+        setAccountModalVisible(false);
+    } catch (e) {
+        Alert.alert('실패', '업데이트에 실패했습니다.');
+    } finally {
+        setIsSaving(false);
+    }
+  };
+
+  const handleProfileImageChange = async () => {
+      launchImageLibrary({ mediaType: 'photo', quality: 0.5 }, async (response) => {
+          if (response.didCancel) return;
+          if (response.errorCode) {
+              Alert.alert('오류', '이미지를 선택할 수 없습니다.');
+              return;
+          }
+
+          if (response.assets && response.assets.length > 0) {
+              const asset = response.assets[0];
+              if (!asset.uri) return;
+
+              setIsSaving(true);
+              try {
+                  // URI에서 파일 데이터를 Blob 형태로 패치
+                  const responseUrl = await fetch(asset.uri);
+                  const blob = await responseUrl.blob();
+
+                  // Firebase Storage에 업로드
+                  const storage = getStorage(getApp());
+                  const imageRef = ref(storage, `artifacts/rally-app-main/users/${userProfile.uid}/profile_image.jpg`);
+
+                  await uploadBytesResumable(imageRef, blob);
+                  const downloadURL = await getDownloadURL(imageRef);
+
+                  // Firestore 사용자 프로필 정보에 다운로드 URL 병합
+                  const db = getFirestore(getApp());
+                  const userRef = doc(db, 'artifacts', 'rally-app-main', 'users', userProfile.uid, 'profile', 'info');
+                  await updateDoc(userRef, { avatarUrl: downloadURL });
+
+                  Alert.alert('성공', '프로필 사진이 성공적으로 변경되었습니다.');
+              } catch (e) {
+                  console.error("Profile Image Upload Error: ", e);
+                  Alert.alert('실패', '사진 업로드 중 오류가 발생했습니다.');
+              } finally {
+                  setIsSaving(false);
+              }
+          }
+      });
+  };
+
+  const handleDeleteAccount = () => {
+      Alert.alert(
+          '회원 탈퇴',
+          '정말로 탈퇴하시겠습니까? 모든 경기 기록과 RMR 점수가 영구적으로 삭제되며 복구할 수 없습니다.',
+          [
+              { text: '취소', style: 'cancel' },
+              {
+                  text: '탈퇴하기',
+                  style: 'destructive',
+                  onPress: async () => {
+                      const auth = getAuth(getApp());
+                      const currentUser = auth.currentUser;
+                      if (currentUser) {
+                          try {
+                              await currentUser.delete();
+                              // Delete는 성공 시 자동으로 Auth 상태가 변하며 로그아웃 처리됩니다.
+                          } catch (e: any) {
+                              if (e.code === 'auth/requires-recent-login') {
+                                  Alert.alert('오류', '보안을 위해 다시 로그인한 후 탈퇴를 진행해주세요.');
+                                  onLogout();
+                              } else {
+                                  Alert.alert('탈퇴 실패', '문제가 발생했습니다. 고객센터에 문의해주세요.');
+                              }
+                          }
+                      }
+                  }
+              }
+          ]
+      );
   };
 
   return (
@@ -199,7 +368,6 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
             <Text style={[styles.tabText, activeTab === 'racket' && styles.activeTabText]}>
               장비 추천
             </Text>
-            {/* Beta 뱃지 추가 */}
             <View style={styles.betaBadge}>
               <Text style={styles.betaText}>BETA</Text>
             </View>
@@ -276,7 +444,6 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
               </View>
             </View>
           ) : (
-            /* 장비 추천 섹션 */
             <View style={styles.racketSection}>
               {racketResult ? (
                 <>
@@ -291,15 +458,12 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
                   <Text style={styles.analysisDesc}>{racketResult.description}</Text>
 
                   <View style={styles.racketGrid}>
-                    {/* 프리미엄 카드 */}
                     <View style={styles.productCard}>
                       <View style={styles.productBadge}><Gem size={12} color="#FDB931" /><Text style={styles.productBadgeText}>프리미엄</Text></View>
                       <Text style={styles.productName}>{racketResult.premium.name}</Text>
                       <Text style={styles.productTag}>숙련자용 최고 사양</Text>
                       <TouchableOpacity style={[styles.buyButton, {backgroundColor: '#374151'}]} onPress={() => openRacketDetail(racketResult.premium)}><ShoppingBag size={16} color="white" /><Text style={styles.buyText}>상세보기</Text></TouchableOpacity>
                     </View>
-
-                    {/* 가성비 카드 */}
                     <View style={styles.productCard}>
                       <View style={[styles.productBadge, {backgroundColor: 'rgba(96, 165, 250, 0.2)'}]}><Wallet size={12} color="#60A5FA" /><Text style={[styles.productBadgeText, {color: '#60A5FA'}]}>가성비</Text></View>
                       <Text style={styles.productName}>{racketResult.budget.name}</Text>
@@ -316,13 +480,24 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
         </View>
 
         <View style={styles.menuSection}>
-          <TouchableOpacity style={styles.menuItem}><Settings size={22} color="#9CA3AF" /><Text style={styles.menuText}>계정 설정</Text><ChevronRight size={20} color="#9CA3AF" /></TouchableOpacity>
-          <TouchableOpacity style={styles.menuItem}><Shield size={22} color="#9CA3AF" /><Text style={styles.menuText}>개인정보 및 보안</Text><ChevronRight size={20} color="#9CA3AF" /></TouchableOpacity>
-          <TouchableOpacity style={styles.menuItem} onPress={onLogout}><LogOut size={22} color="#EF4444" /><Text style={[styles.menuText, {color: '#EF4444'}]}>로그아웃</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.menuItem} onPress={() => setAccountModalVisible(true)}>
+              <Settings size={22} color="#9CA3AF" />
+              <Text style={styles.menuText}>계정 설정</Text>
+              <ChevronRight size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.menuItem} onPress={() => setPrivacyModalVisible(true)}>
+              <Shield size={22} color="#9CA3AF" />
+              <Text style={styles.menuText}>개인정보 및 보안</Text>
+              <ChevronRight size={20} color="#9CA3AF" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.menuItem} onPress={onLogout}>
+              <LogOut size={22} color="#EF4444" />
+              <Text style={[styles.menuText, {color: '#EF4444'}]}>로그아웃</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
 
-      {/* 라켓 상세 정보 팝업 모달 */}
+      {/* 장비 상세 모달 */}
       <Modal animationType="slide" transparent={true} visible={detailModalVisible} onRequestClose={() => setDetailModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -330,7 +505,6 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
               <Text style={styles.modalTitle}>라켓 상세 정보</Text>
               <TouchableOpacity onPress={() => setDetailModalVisible(false)}><X size={24} color="white" /></TouchableOpacity>
             </View>
-
             <View style={styles.modalScroll}>
               <View style={styles.racketImagePlaceholder}>
                 {selectedRacket && RACKET_IMAGES[selectedRacket.id] ? (
@@ -339,26 +513,146 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
                   <Text style={{ color: '#4B5563' }}>이미지 불러오기 실패</Text>
                 )}
               </View>
-
               <Text style={styles.detailRacketName}>{selectedRacket?.name}</Text>
-
               <View style={styles.specContainer}>
                 <View style={styles.specRow}><Scale size={17} color="#34D399" /><Text style={styles.specLabel}>무게:</Text><Text style={styles.specValue}>{selectedRacket?.weight}</Text></View>
                 <View style={styles.specRow}><PencilRuler size={17} color="#FDB931" /><Text style={styles.specLabel}>권장 장력:</Text><Text style={styles.specValue}>{selectedRacket?.tension}</Text></View>
               </View>
-
               <Text style={styles.featureTitle}>주요 특징</Text>
               {selectedRacket?.features.map((f, i) => (
                 <View key={i} style={styles.featureRow}><CheckCircle2 size={16} color="#34D399" /><Text style={styles.featureText}>{f}</Text></View>
               ))}
             </View>
-
             <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setDetailModalVisible(false)}>
               <Text style={styles.modalCloseBtnText}>확인</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
+
+      {/* 계정 설정 모달 */}
+      <Modal animationType="slide" transparent={true} visible={accountModalVisible} onRequestClose={() => setAccountModalVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '90%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>계정 설정</Text>
+              <TouchableOpacity onPress={() => setAccountModalVisible(false)}><X size={24} color="white" /></TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+                {/* 프로필 사진 변경 영역 */}
+                <View style={styles.editProfileImageContainer}>
+                    <TouchableOpacity onPress={handleProfileImageChange} style={styles.avatarWrapper}>
+                        <Image source={user.avatar} style={styles.editAvatar} />
+                        <View style={styles.cameraIconBadge}>
+                            <Camera size={16} color="white" />
+                        </View>
+                    </TouchableOpacity>
+                    <Text style={styles.editProfileImageText}>사진 변경</Text>
+                </View>
+
+                {/* 닉네임 변경 영역 */}
+                <Text style={styles.inputLabel}>닉네임</Text>
+                <View style={styles.inputRow}>
+                    <View style={styles.inputContainer}>
+                        <Edit2 size={20} color="#9CA3AF" style={styles.inputIcon} />
+                        <TextInput
+                            style={styles.input}
+                            value={newNickname}
+                            onChangeText={(text) => {
+                                setNewNickname(text);
+                                setIsNicknameValid(false);
+                                setNicknameMessage('');
+                            }}
+                            placeholder="새 닉네임 입력"
+                            placeholderTextColor="#6B7280"
+                        />
+                    </View>
+                    <TouchableOpacity style={styles.checkBtn} onPress={handleCheckNickname} disabled={isCheckingNickname}>
+                        {isCheckingNickname ? <ActivityIndicator size="small" color="white" /> : <Text style={styles.checkBtnText}>중복확인</Text>}
+                    </TouchableOpacity>
+                </View>
+                {nicknameMessage ? (
+                    <Text style={[styles.messageText, isNicknameValid ? {color: '#34D399'} : {color: '#EF4444'}]}>
+                        {nicknameMessage}
+                    </Text>
+                ) : null}
+
+                <TouchableOpacity
+                    style={[styles.modalCloseBtn, {marginTop: 40}, (!isNicknameValid && newNickname !== userProfile?.nickname) && {opacity: 0.5}]}
+                    onPress={handleSaveAccountSettings}
+                    disabled={(!isNicknameValid && newNickname !== userProfile?.nickname) || isSaving}
+                >
+                    {isSaving ? <ActivityIndicator size="small" color="#111827" /> : <Text style={styles.modalCloseBtnText}>저장하기</Text>}
+                </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* 개인정보 및 보안 모달 */}
+      <Modal animationType="slide" transparent={true} visible={privacyModalVisible} onRequestClose={() => setPrivacyModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>개인정보 및 보안</Text>
+              <TouchableOpacity onPress={() => setPrivacyModalVisible(false)}><X size={24} color="white" /></TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.securitySection}>
+                <Text style={styles.inputLabel}>약관 및 정책</Text>
+
+                <TouchableOpacity style={styles.menuItemRow} onPress={() => openLegalModal('이용약관', LEGAL_TEXTS.terms)}>
+                    <FileText size={20} color="#9CA3AF" />
+                    <Text style={styles.menuText}>이용약관</Text>
+                    <ChevronRight size={20} color="#9CA3AF" />
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.menuItemRow} onPress={() => openLegalModal('개인정보 처리방침', LEGAL_TEXTS.privacy)}>
+                    <Shield size={20} color="#9CA3AF" />
+                    <Text style={styles.menuText}>개인정보 처리방침</Text>
+                    <ChevronRight size={20} color="#9CA3AF" />
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.menuItemRow} onPress={() => openLegalModal('권리 표기 및 위치정보', LEGAL_TEXTS.location)}>
+                    <MapPin size={20} color="#9CA3AF" />
+                    <Text style={styles.menuText}>권리 표기 및 위치정보</Text>
+                    <ChevronRight size={20} color="#9CA3AF" />
+                </TouchableOpacity>
+
+                <View style={styles.dangerZone}>
+                    <Text style={styles.dangerTitle}>위험 구역 (Danger Zone)</Text>
+                    <Text style={styles.dangerDesc}>계정을 삭제하면 모든 RMR 기록과 전적이 영구적으로 사라집니다.</Text>
+                    <TouchableOpacity style={styles.deleteAccountButton} onPress={handleDeleteAccount}>
+                        <Trash2 size={20} color="#EF4444" style={styles.inputIcon} />
+                        <Text style={styles.deleteAccountText}>회원 탈퇴</Text>
+                    </TouchableOpacity>
+                </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 법적 고지(약관) 내용 모달 */}
+      <Modal animationType="fade" transparent={true} visible={legalModalVisible} onRequestClose={() => setLegalModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{legalTitle}</Text>
+              <TouchableOpacity onPress={() => setLegalModalVisible(false)}>
+                <X size={24} color="white" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ marginVertical: 16, maxHeight: 400 }}>
+              <Text style={{ color: '#D1D5DB', lineHeight: 22 }}>{legalContent}</Text>
+            </ScrollView>
+            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setLegalModalVisible(false)}>
+              <Text style={styles.modalCloseBtnText}>확인</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
     </View>
   );
 }
@@ -410,12 +704,12 @@ const styles = StyleSheet.create({
   menuSection: { backgroundColor: '#1F2937', marginTop: 20 },
   menuItem: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#374151' },
   menuText: { flex: 1, color: 'white', marginLeft: 12, fontSize: 15 },
+  menuItemRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#374151', paddingVertical: 16, paddingHorizontal: 16, borderRadius: 12, marginBottom: 10 },
 
-  // 모달 스타일
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { width: '85%', backgroundColor: '#1F2937', borderRadius: 24, padding: 20, borderWidth: 1, borderColor: '#374151' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { color: '#9CA3AF', fontSize: 14, fontWeight: 'bold' },
+  modalTitle: { color: 'white', fontSize: 18, fontWeight: 'bold' },
   modalScroll: { alignItems: 'center' },
   racketImagePlaceholder: { width: 200, height: 200, backgroundColor: '#111827', borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginBottom: 20, borderStyle: 'dashed', borderWidth: 1, borderColor: '#374151' },
   detailRacketName: { color: 'white', fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
@@ -429,21 +723,29 @@ const styles = StyleSheet.create({
   modalCloseBtn: { backgroundColor: '#34D399', width: '100%', paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 14 },
   modalCloseBtnText: { color: '#111827', fontWeight: 'bold', fontSize: 16 },
 
-  // Beta 배지 스타일 추가
-  betaBadge: {
-    position: 'absolute',
-    top: +4,
-    right: 4,
-    backgroundColor: '#EF4444',
-    borderRadius: 8,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    zIndex: 10,
-  },
-  betaText: {
-    color: '#FFFFFF',
-    fontSize: 8,
-    fontWeight: 'bold',
-    includeFontPadding: false,
-  },
+  betaBadge: { position: 'absolute', top: +4, right: 4, backgroundColor: '#EF4444', borderRadius: 8, paddingHorizontal: 4, paddingVertical: 1, zIndex: 10 },
+  betaText: { color: '#FFFFFF', fontSize: 8, fontWeight: 'bold', includeFontPadding: false },
+
+  // 계정 설정 및 프로필 변경 모달 스타일
+  editProfileImageContainer: { alignItems: 'center', marginBottom: 30, marginTop: 10 },
+  avatarWrapper: { position: 'relative' },
+  editAvatar: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#374151' },
+  cameraIconBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#34D399', width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: '#1F2937' },
+  editProfileImageText: { color: '#9CA3AF', fontSize: 13, marginTop: 12 },
+
+  inputLabel: { color: '#D1D5DB', fontSize: 14, marginBottom: 8, fontWeight: 'bold' },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  inputContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#374151', borderRadius: 12, paddingHorizontal: 14 },
+  inputIcon: { marginRight: 10 },
+  input: { flex: 1, color: 'white', fontSize: 16, paddingVertical: 14 },
+  checkBtn: { backgroundColor: '#374151', paddingHorizontal: 16, borderRadius: 12, justifyContent: 'center', alignItems: 'center', height: 52 },
+  checkBtnText: { color: 'white', fontWeight: 'bold', fontSize: 14 },
+  messageText: { fontSize: 12, marginTop: 6, marginLeft: 4 },
+
+  securitySection: { marginTop: 10 },
+  dangerZone: { marginTop: 30, paddingTop: 20, borderTopWidth: 1, borderTopColor: '#374151' },
+  dangerTitle: { color: '#EF4444', fontSize: 16, fontWeight: 'bold', marginBottom: 8 },
+  dangerDesc: { color: '#9CA3AF', fontSize: 13, marginBottom: 16, lineHeight: 20 },
+  deleteAccountButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(239, 68, 68, 0.1)', paddingVertical: 14, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.3)' },
+  deleteAccountText: { color: '#EF4444', fontSize: 15, fontWeight: 'bold' },
 });
