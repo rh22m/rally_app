@@ -72,7 +72,8 @@ import ChatRoomScreen from './Screens/Chat/ChatRoomScreen';
 import ProfileScreen from './Screens/Profile/ProfileScreen';
 import MatchHistoryScreen from './Screens/Profile/MatchHistoryScreen';
 
-import { PointLog } from './utils/rmrCalculator';
+// Glicko-2 기반 Time Decay 계산 함수 임포트
+import { PointLog, applyTimeDecayRD } from './utils/rmrCalculator';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCKl2OZU06cWYFDkODLqsd3i4vtlGlzems",
@@ -121,7 +122,7 @@ interface TutorialStep {
 const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'welcome',
-    title: '랠리(Rally)에 오신 것을 환영합니다!',
+    title: '랠리에 오신 것을 환영합니다!',
     desc: '배드민턴 파트너 찾기부터 경기 분석까지,\n랠리의 주요 기능을 소개해 드릴게요.',
     targetTab: null,
   },
@@ -443,6 +444,8 @@ function MainScreen({
           <GameSummary
             onNext={goToEvaluation}
             result={showTutorial && TUTORIAL_STEPS[tutorialStep].id === 'summary' ? tutorialDummyResult : gameResult}
+            user={user}
+            userProfile={userProfile}
           />
         );
       case 'evaluation':
@@ -518,28 +521,73 @@ export default function App() {
     requestPermissions();
   }, []);
 
+  // 사용자 로그인 감지 및 프로필 실시간 구독, RD Decay(부패) 로직 적용
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    let unsubscribeProfile: (() => void) | undefined;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
-      if (currentUser && !currentUser.isAnonymous && !isSigningUpRef.current) {
-          await fetchUserProfile(currentUser.uid);
+
+      // 기존 리스너가 있다면 정리
+      if (unsubscribeProfile) {
+          unsubscribeProfile();
       }
+
+      if (currentUser && !currentUser.isAnonymous) {
+          const userDocRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'profile', 'info');
+
+          try {
+              // 1. RD 부패(Decay) 로직 적용을 위한 단발성 조회
+              const snap = await getDoc(userDocRef);
+              if (snap.exists()) {
+                  const data = snap.data();
+
+                  // Firestore Timestamp 객체일 경우 toMillis() 변환 지원, 일반 숫자일 경우 그대로 사용
+                  let lastMatchTime = 0;
+                  if (data.lastMatchAt) {
+                      lastMatchTime = typeof data.lastMatchAt.toMillis === 'function'
+                          ? data.lastMatchAt.toMillis()
+                          : data.lastMatchAt;
+                  }
+
+                  // 기록된 마지막 경기 시간이 존재할 때만 부패 계산 수행
+                  if (lastMatchTime > 0) {
+                      const currentRD = data.rd || 350;
+                      const decayedRD = applyTimeDecayRD(currentRD, lastMatchTime);
+
+                      // 부패가 발생하여 RD가 올랐다면 DB에 병합 업데이트 (이후 onSnapshot이 새로운 데이터를 잡음)
+                      if (decayedRD > currentRD) {
+                          await setDoc(userDocRef, { rd: decayedRD }, { merge: true });
+                      }
+                  }
+              }
+          } catch (e) {
+              console.error("RD Decay check error:", e);
+          }
+
+          // 2. 실시간 데이터 구독 설정
+          unsubscribeProfile = onSnapshot(userDocRef, (snap) => {
+              if (snap.exists()) {
+                  setUserProfile(snap.data());
+              }
+          }, (error) => {
+              console.error("Profile snapshot error:", error);
+          });
+
+      } else {
+          setUserProfile(null);
+      }
+
       setInitializing(false);
     });
-    return () => unsubscribe();
-  }, []);
 
-  const fetchUserProfile = async (uid: string) => {
-    const userDocRef = doc(db, 'artifacts', appId, 'users', uid, 'profile', 'info');
-    try {
-      const snap = await getDoc(userDocRef);
-      if (snap.exists()) {
-        setUserProfile(snap.data());
-      }
-    } catch (e) {
-      console.error("Profile fetch error:", e);
-    }
-  };
+    return () => {
+        unsubscribeAuth();
+        if (unsubscribeProfile) {
+            unsubscribeProfile();
+        }
+    };
+  }, []);
 
   const checkNicknameAvailability = async (nickname: string): Promise<boolean> => {
     try {
@@ -568,8 +616,7 @@ export default function App() {
     await signInWithEmailAndPassword(auth, email, password);
   };
 
-  // rmr과 rd를 추가로 받아 데이터베이스에 저장하도록 디벨롭
-  const handleSignUp = async (email, password, nickname, rmr, rd) => {
+  const handleSignUp = async (email, password, nickname, rmr, rd, region, gender) => {
     if (!email || !password) {
         Alert.alert("오류", "정보가 부족합니다.");
         return;
@@ -594,8 +641,12 @@ export default function App() {
         uid: cred.user.uid,
         email: safeEmail,
         nickname: nickname || '사용자',
-        rmr: rmr || 1000, // 퀴즈 기반 초기 RMR
-        rd: rd || 350,    // 퀴즈 기반 초기 신뢰도
+        rmr: rmr || 1000,
+        rd: rd || 350,
+        region: region || '',
+        gender: gender || '',
+        wins: 0,
+        losses: 0,
         createdAt: serverTimestamp(),
         rallyCount: 0,
       };

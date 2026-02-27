@@ -51,12 +51,12 @@ export const getRmrTier = (rmr: number): string => {
   return 'Gold 1';
 };
 
-// 퀴즈 결과에 따른 초기 RMR 및 신뢰도(RD) 계산 함수 추가
+// 퀴즈 결과에 따른 초기 RMR 및 신뢰도(RD) 계산 함수
+// 기획상 신규 선수는 최대 불확실성인 RD = 300에서 시작해야 하나,
+// 룰 퀴즈 정답 수(이해도)에 따라 초기 불확실성을 동적으로 줄여주기 위해 변형 유지.
 export const getInitialRMRAndRD = (correctQuizCount: number): { rmr: number; rd: number } => {
   const baseRMR = 1000; // 기본 RMR 값 1000
-  // 퀴즈 정답 수(0~3)에 따라 초기 신뢰도(RD) 차등 부여
-  // 많이 맞출수록 룰에 대한 이해도가 높다고 보아 RD(불확실성)를 낮게 설정
-  let initialRD = 350; // 0문제 정답
+  let initialRD = 350; // 0문제 정답 (최대 불확실성)
   if (correctQuizCount === 3) initialRD = 200;
   else if (correctQuizCount === 2) initialRD = 250;
   else if (correctQuizCount === 1) initialRD = 300;
@@ -80,8 +80,55 @@ const RMR_CONSTANTS = {
 
 const tanh = (x: number) => (Math.exp(2 * x) - 1) / (Math.exp(2 * x) + 1);
 const calculateExpectedScore = (rmrA: number, rmrB: number): number => 1 / (1 + Math.pow(10, (rmrB - rmrA) / 400));
+
+/**
+ * Volatility (변동성 계수) 공식
+ * 공식: (0.08 * RD) + 12
+ * 의미: 플레이어의 RD 값에 따라 1경기 결과가 RMR 점수에 미치는 민감도가 결정됨
+ */
 const calculateVolatility = (rd: number): number => RMR_CONSTANTS.VOLATILITY_MULTIPLIER * rd + RMR_CONSTANTS.VOLATILITY_BASE;
-const calculateNewRD = (currentRD: number): number => Math.max(currentRD - (currentRD * 0.05), 30);
+
+/**
+ * 경기 후 RD 동적 감소 공식 (Glicko-2 철학 반영)
+ * 의미: 상대방의 RD(불확실성)가 낮을수록(즉, 신뢰도가 높은 상대일수록)
+ * 나의 RD가 더 많이 차감되어, 내 점수의 신뢰도가 빠르게 상승함.
+ */
+const calculateDynamicNewRD = (myRD: number, opponentRD: number): number => {
+  // 상대방의 RD를 최대 불확실성(350) 기준으로 비율(Ratio) 계산
+  const opponentUncertaintyRatio = Math.min(Math.max(opponentRD / 350, 0), 1);
+
+  // 상대가 고인물(RD 30 근처)이면 감소율 최대 10%, 상대도 뉴비(RD 350)면 최소 2%
+  const reductionRate = 0.10 - (0.08 * opponentUncertaintyRatio);
+
+  // 계산된 차감률만큼 RD를 깎되, 최하한선인 30 이하로는 내려가지 않도록 방어
+  return Math.max(Math.round(myRD - (myRD * reductionRate)), 30);
+};
+
+/**
+ * 시간 경과에 따른 RD 부패(Decay) 공식
+ * 의미: 오랫동안 경기를 하지 않으면 점수에 대한 불확실성이 다시 커짐 (신뢰도 하락)
+ * 공식: RD_new = min(sqrt(RD_old^2 + c^2 * t), 350)
+ * (t: 경과 개월 수, c: 시간 경과 상수 30)
+ */
+export const applyTimeDecayRD = (currentRD: number, lastMatchTimestamp: number): number => {
+  if (!lastMatchTimestamp || lastMatchTimestamp <= 0) return currentRD;
+
+  const now = Date.now();
+  const diffMs = now - lastMatchTimestamp;
+
+  // 밀리초를 월(Month) 단위로 변환 (1개월 = 약 30.44일로 단순화)
+  const monthsElapsed = diffMs / (1000 * 60 * 60 * 24 * 30.44);
+
+  // 아직 1개월도 지나지 않은 경우 등, 시간이 과거이거나 의미없으면 원본 유지
+  if (monthsElapsed <= 0) return currentRD;
+
+  const c = 30; // 시간 경과 상수
+  // 제곱의 합에 루트를 씌워 완만하게 증가하는 부패 곡선 형성
+  const decayedRD = Math.sqrt(Math.pow(currentRD, 2) + Math.pow(c, 2) * monthsElapsed);
+
+  // 상한선인 350을 넘지 않도록 제한 후 반올림
+  return Math.round(Math.min(decayedRD, 350));
+};
 
 export const printRMRLog = (data: GameResult, result: RMRAnalysis) => {
   const { playerA, playerB, team1Wins, team2Wins, pointLogs, isAbnormal } = data;
@@ -192,8 +239,9 @@ export const calculateRMR = (data: GameResult): RMRAnalysis => {
   return {
     newRMR_A: Math.round(playerA.rmr + rmrChangeA),
     newRMR_B: Math.round(playerB.rmr + rmrChangeB),
-    newRD_A: Math.round(calculateNewRD(playerA.rd)),
-    newRD_B: Math.round(calculateNewRD(playerB.rd)),
+    // 기존의 단순 5% 차감 로직을 버리고, 상대방의 RD를 가중치로 사용하는 동적 차감 로직 적용
+    newRD_A: calculateDynamicNewRD(playerA.rd, playerB.rd),
+    newRD_B: calculateDynamicNewRD(playerB.rd, playerA.rd),
     analysis: {
       m_total, m_set, m_pd, m_flow,
       flowDetails: { clutch: clutchVal, com: comVal, cons: consVal, endurance: enduranceVal, focus: focusVal, tempo: tempoVal }
