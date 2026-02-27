@@ -37,8 +37,8 @@ const { width } = Dimensions.get('window');
 
 interface SignUpScreenProps {
   onGoToLogin: () => void;
-  // onSignUp의 인터페이스에 rmr과 rd를 추가로 받도록 수정
-  onSignUp: (email: string, password: string, nickname: string, rmr: number, rd: number) => void;
+  // onSignUp의 인터페이스에 rmr, rd 외에 region, gender 추가
+  onSignUp: (email: string, password: string, nickname: string, rmr: number, rd: number, region: string, gender: string) => void;
   checkEmailAvailability: (email: string) => Promise<boolean>;
   checkNicknameAvailability: (nickname: string) => Promise<boolean>;
 }
@@ -809,11 +809,11 @@ export default function SignUpScreen({
 
   // 퀴즈 결과(정답 수)를 받아 RMR 정보 계산 및 onSignUp에 전달
   const handleComplete = (correctCount: number) => {
-    const { email, password, nickname } = signUpData as any;
+    const { email, password, nickname, region, gender } = signUpData as any;
     if (email && password && nickname) {
         const { rmr, rd } = getInitialRMRAndRD(correctCount);
-        console.log("최종 회원가입 데이터:", { email, nickname, rmr, rd });
-        onSignUp(email, password, nickname, rmr, rd);
+        console.log("최종 회원가입 데이터:", { email, nickname, rmr, rd, region, gender });
+        onSignUp(email, password, nickname, rmr, rd, region, gender);
     } else {
         Alert.alert("오류", "회원가입에 필요한 정보가 누락되었습니다.");
     }
