@@ -18,7 +18,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { Users, MessageCircle, Plus, X, Search, Phone } from 'lucide-react-native';
 
-import { getFirestore, collection, onSnapshot, query, where, orderBy, getDocs, doc, setDoc, getDoc, serverTimestamp, collectionGroup, updateDoc, arrayRemove, deleteDoc } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, query, where, orderBy, getDocs, doc, getDoc, collectionGroup } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
 import OpponentProfileModal from './OpponentProfileModal';
@@ -52,7 +52,6 @@ export default function ChatListScreen() {
     return () => unsubscribe();
   }, []);
 
-  // 채팅방 목록 불러오기
   useEffect(() => {
     if (!currentUser) return;
     const db = getFirestore();
@@ -104,7 +103,6 @@ export default function ChatListScreen() {
           opponentName: finalOpponentName || (opponentId === 'bot' ? '랠리 AI 챗봇' : '이름 없음'),
           lastMessage: data.lastMessage || '',
           time: formattedTime,
-          // 안 읽은 메시지 갯수 (내 UID 기준)
           unreadCount: data.unreadCount?.[currentUser.uid] || 0,
           avatar: avatarSource,
           type: data.type || 'match',
@@ -133,7 +131,6 @@ export default function ChatListScreen() {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // 친구 목록 불러오기 (티어 정보 일치)
   useEffect(() => {
     if (!currentUser) return;
     const db = getFirestore();
@@ -149,6 +146,8 @@ export default function ChatListScreen() {
             }
         } catch (e) {}
 
+        const mScore = pData.mannerScore !== undefined ? pData.mannerScore : 5.0;
+
         return {
           id: friendDoc.id,
           name: pData.nickname || friendDoc.data().name || '이름 없음',
@@ -156,7 +155,7 @@ export default function ChatListScreen() {
           tier: pData.tier || 'Unranked',
           win: pData.wins || 0,
           loss: pData.losses || 0,
-          mannerScore: pData.mannerScore || 5.0,
+          mannerScore: Number(mScore).toFixed(1),
           avatar: pData.avatarUrl ? { uri: pData.avatarUrl } : require('../../assets/images/profile.png'),
           location: pData.region || '지역 미설정',
         };
@@ -185,37 +184,18 @@ export default function ChatListScreen() {
     });
   };
 
-  // 채팅방 나가기 (Long Press)
   const handleRoomLongPress = (room: any) => {
-    if (room.id === 'new_bot_chat') return; // 기본 봇 방은 삭제 불가
+    if (room.id === 'new_bot_chat') return;
 
     Alert.alert('채팅방 나가기', `'${room.matchTitle}' 방을 나가시겠습니까? 나간 방의 대화 내용은 복구할 수 없습니다.`, [
       { text: '취소', style: 'cancel' },
-      { text: '나가기', style: 'destructive', onPress: () => leaveChatRoom(room) }
+      { text: '나가기', style: 'destructive', onPress: () => navigation.navigate('ChatRoom', {
+        roomId: room.id, title: room.matchTitle, opponentName: room.opponentName, opponentId: room.opponentId, autoLeave: true
+      }) }
     ]);
   };
 
-  const leaveChatRoom = async (room: any) => {
-    try {
-      const db = getFirestore();
-      const roomRef = doc(db, 'chats', room.id);
-
-      if (room.participants.length <= 1) {
-        // 혼자 남은 방이면 문서 자체를 삭제
-        await deleteDoc(roomRef);
-      } else {
-        // 나만 빠져나가기
-        await updateDoc(roomRef, {
-          participants: arrayRemove(currentUser.uid)
-        });
-      }
-    } catch (e) {
-      console.error('방 나가기 오류:', e);
-      Alert.alert('오류', '방을 나가는 중 문제가 발생했습니다.');
-    }
-  };
-
-  const handleAddFriend = async () => {
+  const handleSearchFriend = async () => {
     if (!addFriendInput.trim() || !currentUser) {
       Alert.alert('알림', '정보를 정확히 입력해주세요.');
       return;
@@ -224,7 +204,7 @@ export default function ChatListScreen() {
     try {
       const db = getFirestore();
       let targetUserId = null;
-      let targetUserName = '';
+      let pData: any = {};
 
       const searchField = addFriendMode === 'nickname' ? 'nickname' : 'phone';
       const searchValue = addFriendInput.trim();
@@ -241,7 +221,7 @@ export default function ChatListScreen() {
           } else {
                targetUserId = docSnap.id;
           }
-          targetUserName = docSnap.data().nickname || searchValue;
+          pData = docSnap.data();
       }
       else {
           const profilesRef = collection(db, 'profiles');
@@ -250,7 +230,7 @@ export default function ChatListScreen() {
 
           if (!querySnapshot.empty) {
              targetUserId = querySnapshot.docs[0].id;
-             targetUserName = querySnapshot.docs[0].data().nickname || searchValue;
+             pData = querySnapshot.docs[0].data();
           }
       }
 
@@ -260,20 +240,31 @@ export default function ChatListScreen() {
       }
 
       if (targetUserId === currentUser.uid) {
-        Alert.alert('알림', '본인은 친구로 추가할 수 없습니다.');
+        Alert.alert('알림', '본인은 검색할 수 없습니다.');
         return;
       }
 
-      await setDoc(doc(db, 'users', currentUser.uid, 'friends', targetUserId), {
-        addedAt: serverTimestamp(),
-        name: targetUserName
-      });
+      const mScore = pData.mannerScore !== undefined ? pData.mannerScore : 5.0;
 
-      Alert.alert('추가 완료', `'${targetUserName}'님을 친구 목록에 추가했습니다.`);
+      const searchedProfile = {
+          id: targetUserId,
+          name: pData.nickname || searchValue,
+          location: pData.region || '지역 미설정',
+          tier: pData.tier || 'Unranked',
+          win: pData.wins || 0,
+          loss: pData.losses || 0,
+          mannerScore: Number(mScore).toFixed(1),
+          avatar: pData.avatarUrl ? { uri: pData.avatarUrl } : require('../../assets/images/profile.png'),
+      };
+
       setAddFriendVisible(false);
       setAddFriendInput('');
+
+      setSelectedProfile(searchedProfile);
+      setModalVisible(true);
+
     } catch (error) {
-      console.error("친구 추가 중 오류:", error);
+      console.error("친구 검색 중 오류:", error);
       Alert.alert('오류', '데이터베이스 검색에 실패했습니다.');
     }
   };
@@ -319,7 +310,6 @@ export default function ChatListScreen() {
                       <Text style={styles.senderName}>{room.opponentName}: </Text>
                       {room.lastMessage}
                     </Text>
-                    {/* 안 읽은 메시지 배지 노출 */}
                     {room.unreadCount > 0 && (
                       <View style={styles.unreadBadge}>
                         <Text style={styles.unreadText}>{room.unreadCount}</Text>
@@ -355,7 +345,6 @@ export default function ChatListScreen() {
         </TouchableOpacity>
       )}
 
-      {/* 모달에 현재 유저 정보 함께 전달 */}
       <OpponentProfileModal
         visible={isModalVisible}
         onClose={() => setModalVisible(false)}
@@ -368,7 +357,7 @@ export default function ChatListScreen() {
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{width: '100%', alignItems: 'center'}}>
              <Pressable style={styles.addFriendModalContent} onPress={() => {}}>
                <View style={styles.modalHeader}>
-                 <Text style={styles.modalTitle}>친구 추가</Text>
+                 <Text style={styles.modalTitle}>친구 검색</Text>
                  <TouchableOpacity onPress={() => setAddFriendVisible(false)}>
                    <X size={24} color="#9CA3AF" />
                  </TouchableOpacity>
@@ -395,8 +384,8 @@ export default function ChatListScreen() {
                  />
                </View>
 
-               <TouchableOpacity style={styles.addButton} onPress={handleAddFriend}>
-                 <Text style={styles.addButtonText}>검색 및 추가</Text>
+               <TouchableOpacity style={styles.addButton} onPress={handleSearchFriend}>
+                 <Text style={styles.addButtonText}>검색</Text>
                </TouchableOpacity>
              </Pressable>
             </KeyboardAvoidingView>

@@ -13,7 +13,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { MessageCircleMore, UserPlus, UserMinus, Siren, Ban } from 'lucide-react-native';
 
-import { getFirestore, doc, setDoc, deleteDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, deleteDoc, serverTimestamp, getDoc, collection, addDoc, query, where, getDocs } from 'firebase/firestore';
 
 interface UserProfile {
   id: string;
@@ -22,7 +22,7 @@ interface UserProfile {
   tier: string;
   win: number;
   loss: number;
-  mannerScore: number;
+  mannerScore: number | string;
   avatar: ImageSourcePropType | { uri: string };
 }
 
@@ -30,26 +30,39 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   userProfile: UserProfile | null;
-  currentUser?: any; // 부모로부터 전달받음
+  currentUser?: any;
 }
 
 const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile, currentUser }) => {
   const navigation = useNavigation<any>();
   const [isAlreadyFriend, setIsAlreadyFriend] = useState(false);
+  const [isRequestSent, setIsRequestSent] = useState(false);
 
-  // 모달이 열릴 때마다 DB에서 이미 친구인지 확인
   useEffect(() => {
     if (visible && currentUser && userProfile && userProfile.id !== 'bot') {
       const checkFriendStatus = async () => {
         const db = getFirestore();
         const friendDoc = await getDoc(doc(db, 'users', currentUser.uid, 'friends', userProfile.id));
         setIsAlreadyFriend(friendDoc.exists());
+
+        if (!friendDoc.exists()) {
+            const q = query(
+                collection(db, 'notifications'),
+                where('type', '==', 'friend_request'),
+                where('senderId', '==', currentUser.uid),
+                where('receiverId', '==', userProfile.id)
+            );
+            const snapshot = await getDocs(q);
+            setIsRequestSent(!snapshot.empty);
+        }
       };
       checkFriendStatus();
     }
   }, [visible, currentUser, userProfile]);
 
   if (!userProfile) return null;
+
+  const formattedMannerScore = Number(userProfile.mannerScore || 5.0).toFixed(1);
 
   const handleChat = () => {
     onClose();
@@ -65,15 +78,28 @@ const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile, 
     if (!currentUser) return;
     try {
       const db = getFirestore();
-      await setDoc(doc(db, 'users', currentUser.uid, 'friends', userProfile.id), {
-        addedAt: serverTimestamp(),
-        name: userProfile.name
+
+      let myName = currentUser.displayName || '유저';
+      try {
+          const myProfile = await getDoc(doc(db, 'artifacts', 'rally-app-main', 'users', currentUser.uid, 'profile', 'info'));
+          if (myProfile.exists()) myName = myProfile.data().nickname;
+      } catch(e) {}
+
+      await addDoc(collection(db, 'notifications'), {
+          type: 'friend_request',
+          receiverId: userProfile.id,
+          senderId: currentUser.uid,
+          senderName: myName,
+          title: '친구 요청',
+          message: `${myName}님이 친구를 맺고 싶어 합니다.`,
+          createdAt: serverTimestamp(),
       });
-      setIsAlreadyFriend(true);
-      Alert.alert("친구 추가", `${userProfile.name}님을 친구로 추가했습니다.`);
+
+      setIsRequestSent(true);
+      Alert.alert("요청 완료", `${userProfile.name}님에게 친구 요청을 보냈습니다.`);
     } catch (error) {
-      console.error("친구 추가 실패:", error);
-      Alert.alert("오류", "친구 추가 중 문제가 발생했습니다.");
+      console.error("친구 요청 실패:", error);
+      Alert.alert("오류", "친구 요청 중 문제가 발생했습니다.");
     }
   };
 
@@ -88,9 +114,10 @@ const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile, 
           try {
             const db = getFirestore();
             await deleteDoc(doc(db, 'users', currentUser.uid, 'friends', userProfile.id));
+            await deleteDoc(doc(db, 'users', userProfile.id, 'friends', currentUser.uid));
             setIsAlreadyFriend(false);
             Alert.alert("삭제 완료", "친구 목록에서 삭제되었습니다.");
-            onClose(); // 삭제 후 닫기
+            onClose();
           } catch (error) {
             console.error("친구 삭제 실패:", error);
             Alert.alert("오류", "삭제 중 문제가 발생했습니다.");
@@ -139,7 +166,7 @@ const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile, 
                 <View style={styles.divider} />
                 <View style={styles.statItem}>
                   <Text style={styles.statLabel}>매너 점수</Text>
-                  <Text style={styles.statValue}>{userProfile.mannerScore} / 5.0</Text>
+                  <Text style={styles.statValue}>{formattedMannerScore} / 5.0</Text>
                 </View>
               </View>
 
@@ -152,7 +179,6 @@ const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile, 
                     </View>
                   </TouchableOpacity>
                 ) : isAlreadyFriend ? (
-                  // 이미 친구인 경우: 1:1 대화 및 친구 삭제 노출
                   <>
                     <TouchableOpacity style={styles.mainActionButton} onPress={handleChat}>
                       <View style={styles.iconRow}>
@@ -169,12 +195,17 @@ const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile, 
                     </TouchableOpacity>
                   </>
                 ) : (
-                  // 친구가 아닌 경우: 친구 추가 노출
                   <>
-                    <TouchableOpacity style={styles.mainActionButton} onPress={handleAddFriend}>
+                    <TouchableOpacity
+                        style={[styles.mainActionButton, isRequestSent && { backgroundColor: '#4B5563' }]}
+                        onPress={isRequestSent ? undefined : handleAddFriend}
+                        disabled={isRequestSent}
+                    >
                       <View style={styles.iconRow}>
-                        <UserPlus size={20} color="#064E3B" />
-                        <Text style={styles.mainActionText}>친구 추가</Text>
+                        <UserPlus size={20} color={isRequestSent ? "#9CA3AF" : "#064E3B"} />
+                        <Text style={[styles.mainActionText, isRequestSent && { color: '#9CA3AF' }]}>
+                            {isRequestSent ? "친구 요청 보냄" : "친구 추가 (요청)"}
+                        </Text>
                       </View>
                     </TouchableOpacity>
 

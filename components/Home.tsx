@@ -37,14 +37,11 @@ import {
 import { Calendar as RNCalendar, LocaleConfig } from 'react-native-calendars';
 import LinearGradient from 'react-native-linear-gradient';
 
-import { getFirestore, collection, onSnapshot, addDoc, serverTimestamp, getDoc, doc, query, where, deleteDoc } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, addDoc, serverTimestamp, getDoc, doc, query, where, deleteDoc, setDoc } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
 import { MatchCard } from './MatchCard';
 import { RMRGuideModal } from './RMRGuideModal';
-
-// 상대방 프로필 확인용 모달 재사용
-import OpponentProfileModal from '../Screens/Chat/OpponentProfileModal';
 
 LocaleConfig.locales['kr'] = {
   monthNames: ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'],
@@ -186,6 +183,7 @@ const FilterOptionButton = ({ label, icon, isSelected, onPress, type = 'text' }:
 const MatchHostModal = ({ visible, onClose, match, currentUser, onDelete }: { visible: boolean, onClose: () => void, match: Match | null, currentUser: any, onDelete: (id: string) => void }) => {
   if (!match || !match.host) return null;
   const isHost = currentUser && match.host.uid === currentUser.uid;
+  const formattedMannerScore = Number(match.host.mannerScore || 5.0).toFixed(1);
 
   const handleRequestJoin = async () => {
     Alert.alert("참가 신청", `'${match.title}' 모임에 참가 신청을 보내시겠습니까?`, [
@@ -237,7 +235,7 @@ const MatchHostModal = ({ visible, onClose, match, currentUser, onDelete }: { vi
                 <View style={styles.statDivider} />
                 <View style={styles.statItem}><Text style={styles.statLabel}>승/패</Text><Text style={styles.statValue}>{match.host.win}승 {match.host.loss}패</Text></View>
                 <View style={styles.statDivider} />
-                <View style={styles.statItem}><Text style={styles.statLabel}>매너 점수</Text><Text style={styles.statValue}>{match.host.mannerScore}</Text></View>
+                <View style={styles.statItem}><Text style={styles.statLabel}>매너 점수</Text><Text style={styles.statValue}>{formattedMannerScore} / 5.0</Text></View>
               </View>
               {isHost ? (
                   <View style={{flexDirection: 'row', gap: 10, width: '100%', marginBottom: 12}}>
@@ -288,7 +286,6 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [isHostModalVisible, setIsHostModalVisible] = useState(false);
 
-  // 참가 신청자 프로필 확인용 상태 추가
   const [applicantProfile, setApplicantProfile] = useState<any>(null);
   const [isApplicantProfileVisible, setIsApplicantProfileVisible] = useState(false);
   const [currentNotification, setCurrentNotification] = useState<any>(null);
@@ -372,7 +369,6 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
     return `${Math.floor(hours / 24)}일 전`;
   };
 
-  // 알림 클릭 시 참가자의 프로필을 불러오고 띄우는 함수 추가
   const handleOpenApplicantProfile = async (notif: any) => {
       const db = getFirestore();
       let pData: any = {};
@@ -387,12 +383,12 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
 
       setApplicantProfile({
           id: notif.senderId,
-          name: pData.nickname || notif.senderName || '참가자',
+          name: pData.nickname || notif.senderName || '사용자',
           location: pData.region || '지역 미설정',
           tier: pData.tier || 'Unranked',
           win: pData.wins || 0,
           loss: pData.losses || 0,
-          mannerScore: pData.mannerScore || 5.0,
+          mannerScore: pData.mannerScore !== undefined ? Number(pData.mannerScore).toFixed(1) : '5.0',
           avatar: pData.avatarUrl ? { uri: pData.avatarUrl } : require('../assets/images/profile.png'),
       });
       setCurrentNotification(notif);
@@ -405,40 +401,64 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
           await deleteDoc(doc(db, 'notifications', notif.id));
 
           if (action === 'accept') {
-            const roomTitle = notif.matchTitle || '새로운 매칭방';
-            const initialMessage = `'${roomTitle}' 매칭 참가가 수락되었습니다! 즐거운 경기 되세요.`;
+            if (notif.type === 'friend_request') {
+                let myName = currentUser.displayName || '유저';
+                try {
+                    const myProfile = await getDoc(doc(db, 'artifacts', 'rally-app-main', 'users', currentUser.uid, 'profile', 'info'));
+                    if(myProfile.exists()) myName = myProfile.data().nickname;
+                } catch(e){}
 
-            let myName = currentUser.displayName || '방장';
-            try {
-                const myProfile = await getDoc(doc(db, 'artifacts', 'rally-app-main', 'users', currentUser.uid, 'profile', 'info'));
-                if(myProfile.exists()) myName = myProfile.data().nickname;
-            } catch(e){}
+                await setDoc(doc(db, 'users', currentUser.uid, 'friends', notif.senderId), {
+                    addedAt: serverTimestamp(),
+                    name: notif.senderName || '친구'
+                });
+                await setDoc(doc(db, 'users', notif.senderId, 'friends', currentUser.uid), {
+                    addedAt: serverTimestamp(),
+                    name: myName
+                });
+                setIsApplicantProfileVisible(false);
+                Alert.alert('친구 추가 완료', `${notif.senderName}님과 친구가 되었습니다.`);
+            } else {
+                const roomTitle = notif.matchTitle || '새로운 매칭방';
+                const initialMessage = `'${roomTitle}' 매칭 참가가 수락되었습니다! 즐거운 경기 되세요.`;
 
-            const newRoomRef = await addDoc(collection(db, 'chats'), {
-                matchTitle: roomTitle,
-                participants: [currentUser.uid, notif.senderId],
-                participantDetails: {
-                  [currentUser.uid]: { name: myName },
-                  [notif.senderId]: { name: applicantProfile?.name || notif.senderName || '참가자' }
-                },
-                updatedAt: serverTimestamp(),
-                lastMessage: initialMessage,
-                type: 'match'
-            });
+                let myName = currentUser.displayName || '방장';
+                let myAvatar = currentUser.photoURL || null;
+                try {
+                    const myProfile = await getDoc(doc(db, 'artifacts', 'rally-app-main', 'users', currentUser.uid, 'profile', 'info'));
+                    if(myProfile.exists()) {
+                        myName = myProfile.data().nickname || myName;
+                        myAvatar = myProfile.data().avatarUrl || myAvatar;
+                    }
+                } catch(e){}
 
-            await addDoc(collection(db, 'chats', newRoomRef.id, 'messages'), {
-                text: initialMessage,
-                senderId: 'system',
-                createdAt: serverTimestamp()
-            });
+                const newRoomRef = await addDoc(collection(db, 'chats'), {
+                    matchTitle: roomTitle,
+                    participants: [currentUser.uid, notif.senderId],
+                    participantDetails: {
+                      [currentUser.uid]: { name: myName, avatarUrl: myAvatar },
+                      [notif.senderId]: { name: applicantProfile?.name || notif.senderName || '참가자', avatarUrl: applicantProfile?.avatar?.uri || null }
+                    },
+                    unreadCount: { [notif.senderId]: 1, [currentUser.uid]: 0 },
+                    updatedAt: serverTimestamp(),
+                    lastMessage: initialMessage,
+                    type: 'match'
+                });
 
-            setIsApplicantProfileVisible(false);
-            setIsNotifModalVisible(false);
-            Alert.alert('수락 완료', '참가 신청을 수락하여 채팅방이 생성되었습니다.');
-            onGoToChat?.();
+                await addDoc(collection(db, 'chats', newRoomRef.id, 'messages'), {
+                    text: initialMessage,
+                    senderId: 'system',
+                    createdAt: serverTimestamp()
+                });
+
+                setIsApplicantProfileVisible(false);
+                setIsNotifModalVisible(false);
+                Alert.alert('수락 완료', '참가 신청을 수락하여 채팅방이 생성되었습니다.');
+                onGoToChat?.();
+            }
           } else {
             setIsApplicantProfileVisible(false);
-            Alert.alert('거절 완료', '참가 신청을 거절했습니다.');
+            Alert.alert('거절 완료', '요청을 거절했습니다.');
           }
       } catch (error) {
           console.error("알림 처리 실패:", error);
@@ -752,7 +772,6 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
                   </View>
                   <View style={styles.notifActionContainer}>
                     <TouchableOpacity style={[styles.actionBtn, styles.declineBtn]} onPress={() => handleNotificationPress(item, 'decline')}><X size={18} color="#EF4444" /></TouchableOpacity>
-                    {/* 수락 버튼은 모달 안으로 이동되었으나, 빠른 수락을 위해 여기 남겨둘 수도 있습니다. 여기서는 터치 시 모달이 뜨도록 변경했으므로 위 TouchableOpacity로 묶음 */}
                   </View>
                 </TouchableOpacity>
               )} />
@@ -761,7 +780,6 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
         </Pressable>
       </Modal>
 
-      {/* 매칭 신청자 프로필 확인 및 수락 모달 */}
       <Modal animationType="fade" transparent={true} visible={isApplicantProfileVisible} onRequestClose={() => setIsApplicantProfileVisible(false)}>
         <TouchableWithoutFeedback onPress={() => setIsApplicantProfileVisible(false)}>
           <View style={styles.profileModalOverlay}>
@@ -773,18 +791,20 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
                       <Image source={applicantProfile.avatar} style={styles.profileAvatar} />
                       <Text style={styles.profileNameText}>{applicantProfile.name}</Text>
                       <View style={{flexDirection:'row', alignItems:'center', gap:4}}><MapPin size={12} color="#A0A0A0"/><Text style={styles.profileLocationText}>{applicantProfile.location}</Text></View>
-                      <Text style={[styles.hostBadgeText, { backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38BDF8' }]}>참가 신청자</Text>
+                      <Text style={[styles.hostBadgeText, { backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38BDF8' }]}>
+                          {currentNotification?.type === 'friend_request' ? '친구 요청' : '참가 신청자'}
+                      </Text>
                     </View>
                     <View style={styles.statsContainer}>
                       <View style={styles.statItem}><Text style={styles.statLabel}>티어</Text><Text style={[styles.statValue, { color: '#00E0C6' }]}>{applicantProfile.tier}</Text></View>
                       <View style={styles.statDivider} />
                       <View style={styles.statItem}><Text style={styles.statLabel}>승/패</Text><Text style={styles.statValue}>{applicantProfile.win}승 {applicantProfile.loss}패</Text></View>
                       <View style={styles.statDivider} />
-                      <View style={styles.statItem}><Text style={styles.statLabel}>매너 점수</Text><Text style={styles.statValue}>{applicantProfile.mannerScore}</Text></View>
+                      <View style={styles.statItem}><Text style={styles.statLabel}>매너 점수</Text><Text style={styles.statValue}>{applicantProfile.mannerScore} / 5.0</Text></View>
                     </View>
                     <View style={{flexDirection: 'row', gap: 10, width: '100%'}}>
                         <TouchableOpacity style={[styles.joinRequestButton, {flex: 1, backgroundColor: '#374151'}]} onPress={() => handleNotificationPress(currentNotification, 'decline')}><Text style={styles.joinRequestButtonText}>거절</Text></TouchableOpacity>
-                        <TouchableOpacity style={[styles.joinRequestButton, {flex: 1}]} onPress={() => handleNotificationPress(currentNotification, 'accept')}><Text style={styles.joinRequestButtonText}>수락 (채팅 생성)</Text></TouchableOpacity>
+                        <TouchableOpacity style={[styles.joinRequestButton, {flex: 1}]} onPress={() => handleNotificationPress(currentNotification, 'accept')}><Text style={styles.joinRequestButtonText}>수락</Text></TouchableOpacity>
                     </View>
                   </>
                 )}
@@ -918,12 +938,6 @@ const styles = StyleSheet.create({
   actionBtn: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
   acceptBtn: { backgroundColor: '#34D399' },
   declineBtn: { backgroundColor: '#F3F4F6' },
-
-  calendarDayContainer: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
-  calendarDayTextContainer: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  calendarDayText: { fontSize: 14 },
-  todayBackground: { backgroundColor: '#34D399' },
-  matchDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#34D399', marginTop: 2 },
 
   profileModalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.6)', justifyContent: 'center', alignItems: 'center' },
   profileModalContent: { width: '85%', backgroundColor: '#1C1D2B', borderRadius: 20, padding: 25, alignItems: 'center', elevation: 5 },
