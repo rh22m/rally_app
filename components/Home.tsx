@@ -37,14 +37,15 @@ import {
 import { Calendar as RNCalendar, LocaleConfig } from 'react-native-calendars';
 import LinearGradient from 'react-native-linear-gradient';
 
-// Firebase 웹 SDK 연동 추가
 import { getFirestore, collection, onSnapshot, addDoc, serverTimestamp, getDoc, doc, query, where, deleteDoc } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
 import { MatchCard } from './MatchCard';
 import { RMRGuideModal } from './RMRGuideModal';
 
-// --- 1. 달력 한국어 설정 ---
+// 상대방 프로필 확인용 모달 재사용
+import OpponentProfileModal from '../Screens/Chat/OpponentProfileModal';
+
 LocaleConfig.locales['kr'] = {
   monthNames: ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'],
   monthNamesShort: ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'],
@@ -54,7 +55,6 @@ LocaleConfig.locales['kr'] = {
 };
 LocaleConfig.defaultLocale = 'kr';
 
-// --- 경기 정보 인터페이스 ---
 interface HostProfile {
   name: string;
   location: string;
@@ -81,48 +81,12 @@ interface Match {
 }
 
 const NOTICE_ITEMS = [
-  {
-      id: 1,
-      badge: 'RMR 가이드',
-      title: '단순 승패 그 이상',
-      subtitle: '경기 내용까지 분석하는 RMR 시스템을 소개합니다.',
-      image: require('../assets/images/notice/notice_1.png')
-  },
-  {
-      id: 2,
-      badge: '플레이 스타일',
-      title: '나만의 강점을 찾으세요',
-      subtitle: '지구력, 속도, 위기관리 등 다양한 지표를 분석해 드려요.',
-      image: require('../assets/images/notice/notice_2.png')
-  },
-  {
-      id: 3,
-      badge: '매너 플레이',
-      title: '끝까지 최선을 다해주세요',
-      subtitle: '강제 종료는 패배보다 더 큰 페널티를 받게 됩니다.',
-      image: require('../assets/images/notice/notice_3.png')
-  },
-  {
-      id: 4,
-      badge: 'AI 분석',
-      title: '나만의 AI 코치',
-      subtitle: '스윙, 준비자세, 풋워크까지 스마트하게 훈련하세요.',
-      image: require('../assets/images/notice/notice_4.png')
-  },
-  {
-      id: 5,
-      badge: '장비 추천',
-      title: '나에게 딱 맞는 장비',
-      subtitle: '나의 데이터를 분석해 최적의 라켓을 제안해 드려요.',
-      image: require('../assets/images/notice/notice_5.png')
-  },
-  {
-      id: 6,
-      badge: '경기 모드',
-      title: '손목 위의 점수판',
-      subtitle: '흐름 끊김 없이, 워치로 점수를 편하게 기록하세요.',
-      image: require('../assets/images/notice/notice_6.png')
-  }
+  { id: 1, badge: 'RMR 가이드', title: '단순 승패 그 이상', subtitle: '경기 내용까지 분석하는 RMR 시스템을 소개합니다.', image: require('../assets/images/notice/notice_1.png') },
+  { id: 2, badge: '플레이 스타일', title: '나만의 강점을 찾으세요', subtitle: '지구력, 속도, 위기관리 등 다양한 지표를 분석해 드려요.', image: require('../assets/images/notice/notice_2.png') },
+  { id: 3, badge: '매너 플레이', title: '끝까지 최선을 다해주세요', subtitle: '강제 종료는 패배보다 더 큰 페널티를 받게 됩니다.', image: require('../assets/images/notice/notice_3.png') },
+  { id: 4, badge: 'AI 분석', title: '나만의 AI 코치', subtitle: '스윙, 준비자세, 풋워크까지 스마트하게 훈련하세요.', image: require('../assets/images/notice/notice_4.png') },
+  { id: 5, badge: '장비 추천', title: '나에게 딱 맞는 장비', subtitle: '나의 데이터를 분석해 최적의 라켓을 제안해 드려요.', image: require('../assets/images/notice/notice_5.png') },
+  { id: 6, badge: '경기 모드', title: '손목 위의 점수판', subtitle: '흐름 끊김 없이, 워치로 점수를 편하게 기록하세요.', image: require('../assets/images/notice/notice_6.png') }
 ];
 
 const parseMatchDateStr = (dateStr: string): Date => {
@@ -130,35 +94,14 @@ const parseMatchDateStr = (dateStr: string): Date => {
   if (!parts) return new Date(0);
   return new Date(parseInt(parts[1]), parseInt(parts[2]) - 1, parseInt(parts[3]), parseInt(parts[4]), parseInt(parts[5]));
 };
-
-const formatMatchDate = (d: Date) => {
-  const year = d.getFullYear();
-  const month = d.getMonth() + 1;
-  const day = d.getDate();
-  const hours = d.getHours();
-  const minutes = d.getMinutes().toString().padStart(2, '0');
-  return `${year}년 ${month}월 ${day}일 ${hours}시 ${minutes}분`;
-};
-
+const formatMatchDate = (d: Date) => `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 ${d.getHours()}시 ${d.getMinutes().toString().padStart(2, '0')}분`;
 const formatDateSimple = (d: Date) => `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
-
-const getLocalDateString = (date: Date) => {
-  const year = date.getFullYear();
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const day = date.getDate().toString().padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
+const getLocalDateString = (date: Date) => `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
 
 const MAIN_REGIONS = [
-  { label: '전체', value: '전체' },
-  { label: '서울', value: '서울' },
-  { label: '경기', value: '경기' },
-  { label: '인천', value: '인천' },
-  { label: '강원', value: '강원' },
-  { label: '충청', value: '충청' },
-  { label: '전라', value: '전라' },
-  { label: '경상', value: '경상' },
-  { label: '제주', value: '제주' },
+  { label: '전체', value: '전체' }, { label: '서울', value: '서울' }, { label: '경기', value: '경기' },
+  { label: '인천', value: '인천' }, { label: '강원', value: '강원' }, { label: '충청', value: '충청' },
+  { label: '전라', value: '전라' }, { label: '경상', value: '경상' }, { label: '제주', value: '제주' }
 ];
 
 const SUB_REGIONS: { [key: string]: string[] } = {
@@ -170,31 +113,21 @@ const SUB_REGIONS: { [key: string]: string[] } = {
 
 const getHolidays = () => ['2025-01-01', '2025-03-01', '2025-05-05', '2025-08-15', '2025-10-03', '2025-12-25'];
 
-// --- 2. 공지 컴포넌트 ---
 const NoticeSection = ({ onNoticePress }: { onNoticePress: () => void }) => {
   const scrollRef = useRef<ScrollView>(null);
   const screenWidth = Dimensions.get('window').width;
-
   const [displayIndex, setDisplayIndex] = useState(0);
   const scrollIndexRef = useRef(0);
 
-  const extendedNotices = useMemo(() => {
-    return [...NOTICE_ITEMS, { ...NOTICE_ITEMS[0], id: 'clone' }];
-  }, []);
+  const extendedNotices = useMemo(() => [...NOTICE_ITEMS, { ...NOTICE_ITEMS[0], id: 'clone' }], []);
 
   useEffect(() => {
     const interval = setInterval(() => {
       let nextIndex = scrollIndexRef.current + 1;
-
-      if (nextIndex >= extendedNotices.length) {
-        nextIndex = 0;
-      }
-
+      if (nextIndex >= extendedNotices.length) nextIndex = 0;
       scrollRef.current?.scrollTo({ x: nextIndex * screenWidth, animated: true });
       scrollIndexRef.current = nextIndex;
-
       setDisplayIndex(nextIndex === extendedNotices.length - 1 ? 0 : nextIndex);
-
       if (nextIndex === extendedNotices.length - 1) {
         setTimeout(() => {
           scrollRef.current?.scrollTo({ x: 0, animated: false });
@@ -203,13 +136,11 @@ const NoticeSection = ({ onNoticePress }: { onNoticePress: () => void }) => {
         }, 500);
       }
     }, 4000);
-
     return () => clearInterval(interval);
   }, [screenWidth, extendedNotices.length]);
 
   const onMomentumScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const index = Math.round(event.nativeEvent.contentOffset.x / screenWidth);
-
     if (index === extendedNotices.length - 1) {
       scrollRef.current?.scrollTo({ x: 0, animated: false });
       scrollIndexRef.current = 0;
@@ -222,41 +153,20 @@ const NoticeSection = ({ onNoticePress }: { onNoticePress: () => void }) => {
 
   return (
     <View style={styles.noticeContainer}>
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={onMomentumScrollEnd}
-        scrollEventThrottle={16}
-      >
+      <ScrollView ref={scrollRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false} onMomentumScrollEnd={onMomentumScrollEnd} scrollEventThrottle={16}>
         {extendedNotices.map((item, index) => (
-          <TouchableOpacity
-            key={`${item.id}-${index}`}
-            onPress={onNoticePress}
-            activeOpacity={0.95}
-            style={{ width: screenWidth, height: 200 }}
-          >
+          <TouchableOpacity key={`${item.id}-${index}`} onPress={onNoticePress} activeOpacity={0.95} style={{ width: screenWidth, height: 200 }}>
             <Image source={item.image} style={styles.noticeImage} resizeMode="cover" />
             <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={styles.noticeGradientOverlay}>
-              <View style={styles.noticeBadge}>
-                <Megaphone size={12} color="white" />
-                <Text style={styles.noticeBadgeText}>{item.badge}</Text>
-              </View>
-              <View>
-                <Text style={styles.noticeTitle}>{item.title}</Text>
-                <Text style={styles.noticeSubtitle}>{item.subtitle}</Text>
-              </View>
+              <View style={styles.noticeBadge}><Megaphone size={12} color="white" /><Text style={styles.noticeBadgeText}>{item.badge}</Text></View>
+              <View><Text style={styles.noticeTitle}>{item.title}</Text><Text style={styles.noticeSubtitle}>{item.subtitle}</Text></View>
             </LinearGradient>
           </TouchableOpacity>
         ))}
       </ScrollView>
       <View style={styles.paginationContainer}>
         {NOTICE_ITEMS.map((_, index) => (
-          <View
-            key={index}
-            style={[styles.paginationDot, displayIndex === index && styles.paginationDotActive]}
-          />
+          <View key={index} style={[styles.paginationDot, displayIndex === index && styles.paginationDotActive]} />
         ))}
       </View>
     </View>
@@ -266,24 +176,15 @@ const NoticeSection = ({ onNoticePress }: { onNoticePress: () => void }) => {
 const FilterOptionButton = ({ label, icon, isSelected, onPress, type = 'text' }: any) => {
   const IconComponent = icon;
   return (
-    <TouchableOpacity
-      style={[
-        styles.optionButton,
-        type === 'icon' && styles.optionButtonIcon,
-        isSelected && styles.optionButtonSelected,
-      ]}
-      onPress={onPress}
-    >
+    <TouchableOpacity style={[styles.optionButton, type === 'icon' && styles.optionButtonIcon, isSelected && styles.optionButtonSelected]} onPress={onPress}>
       {IconComponent && <IconComponent size={16} color={isSelected ? 'white' : '#6B7280'} />}
       <Text style={[styles.optionButtonText, isSelected && styles.optionButtonTextSelected]}>{label}</Text>
     </TouchableOpacity>
   );
 };
 
-// 방장 프로필 모달 (본인이 생성한 매칭인 경우 수정/삭제 표시)
 const MatchHostModal = ({ visible, onClose, match, currentUser, onDelete }: { visible: boolean, onClose: () => void, match: Match | null, currentUser: any, onDelete: (id: string) => void }) => {
   if (!match || !match.host) return null;
-
   const isHost = currentUser && match.host.uid === currentUser.uid;
 
   const handleRequestJoin = async () => {
@@ -292,15 +193,22 @@ const MatchHostModal = ({ visible, onClose, match, currentUser, onDelete }: { vi
       { text: "보내기", onPress: async () => {
           try {
               const db = getFirestore();
+              let myName = currentUser?.displayName || '유저';
+              try {
+                  const myDoc = await getDoc(doc(db, 'artifacts', 'rally-app-main', 'users', currentUser.uid, 'profile', 'info'));
+                  if (myDoc.exists()) myName = myDoc.data().nickname;
+              } catch (e) {}
+
               await addDoc(collection(db, 'notifications'), {
                   receiverId: match.host.uid,
                   senderId: currentUser?.uid || 'unknown',
-                  senderName: currentUser?.displayName || '유저',
+                  senderName: myName,
                   type: 'request',
                   title: '참가 신청',
-                  message: `'${match.title}'에 ${currentUser?.displayName || '유저'}님이 참가를 희망합니다.`,
+                  message: `'${match.title}'에 ${myName}님이 참가를 희망합니다.`,
                   createdAt: serverTimestamp(),
-                  matchId: match.id
+                  matchId: match.id,
+                  matchTitle: match.title
               });
               Alert.alert("신청 완료", "방장에게 참가 신청을 보냈습니다.");
               onClose();
@@ -321,10 +229,7 @@ const MatchHostModal = ({ visible, onClose, match, currentUser, onDelete }: { vi
               <View style={styles.profileSection}>
                 <Image source={match.host.avatar} style={styles.profileAvatar} />
                 <Text style={styles.profileNameText}>{match.host.name}</Text>
-                <View style={{flexDirection:'row', alignItems:'center', gap:4}}>
-                    <MapPin size={12} color="#A0A0A0"/>
-                    <Text style={styles.profileLocationText}>{match.host.location}</Text>
-                </View>
+                <View style={{flexDirection:'row', alignItems:'center', gap:4}}><MapPin size={12} color="#A0A0A0"/><Text style={styles.profileLocationText}>{match.host.location}</Text></View>
                 <Text style={styles.hostBadgeText}>방장(Host)</Text>
               </View>
               <View style={styles.statsContainer}>
@@ -334,22 +239,14 @@ const MatchHostModal = ({ visible, onClose, match, currentUser, onDelete }: { vi
                 <View style={styles.statDivider} />
                 <View style={styles.statItem}><Text style={styles.statLabel}>매너 점수</Text><Text style={styles.statValue}>{match.host.mannerScore}</Text></View>
               </View>
-
               {isHost ? (
                   <View style={{flexDirection: 'row', gap: 10, width: '100%', marginBottom: 12}}>
-                      <TouchableOpacity style={styles.editButton} onPress={() => { Alert.alert('안내', '수정 기능은 준비 중입니다.'); }}>
-                          <Text style={styles.joinRequestButtonText}>수정</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.deleteButton} onPress={() => onDelete(match.id)}>
-                          <Text style={styles.joinRequestButtonText}>삭제</Text>
-                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.editButton} onPress={() => { Alert.alert('안내', '수정 기능은 준비 중입니다.'); }}><Text style={styles.joinRequestButtonText}>수정</Text></TouchableOpacity>
+                      <TouchableOpacity style={styles.deleteButton} onPress={() => onDelete(match.id)}><Text style={styles.joinRequestButtonText}>삭제</Text></TouchableOpacity>
                   </View>
               ) : (
-                  <TouchableOpacity style={styles.joinRequestButton} onPress={handleRequestJoin}>
-                      <Text style={styles.joinRequestButtonText}>참가 신청 보내기</Text>
-                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.joinRequestButton} onPress={handleRequestJoin}><Text style={styles.joinRequestButtonText}>참가 신청 보내기</Text></TouchableOpacity>
               )}
-
               <TouchableOpacity style={styles.profileCloseButton} onPress={onClose}><Text style={styles.profileCloseButtonText}>닫기</Text></TouchableOpacity>
             </View>
           </TouchableWithoutFeedback>
@@ -359,7 +256,6 @@ const MatchHostModal = ({ visible, onClose, match, currentUser, onDelete }: { vi
   );
 };
 
-// --- 3. Home 컴포넌트 ---
 export interface HomeProps {
   onStartGame: () => void;
   onGoToChat?: () => void;
@@ -392,7 +288,11 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [isHostModalVisible, setIsHostModalVisible] = useState(false);
 
-  // 날짜/시간 플로우 구분을 위한 모드 세분화
+  // 참가 신청자 프로필 확인용 상태 추가
+  const [applicantProfile, setApplicantProfile] = useState<any>(null);
+  const [isApplicantProfileVisible, setIsApplicantProfileVisible] = useState(false);
+  const [currentNotification, setCurrentNotification] = useState<any>(null);
+
   const [datePickerMode, setDatePickerMode] = useState<'createDate' | 'createTime' | 'filter'>('createDate');
   const [regionModalMode, setRegionModalMode] = useState<'create' | 'filter'>('create');
   const [tempMainRegion, setTempMainRegion] = useState<string | null>(null);
@@ -408,9 +308,7 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
 
   useEffect(() => {
     const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, user => {
-        setCurrentUser(user);
-    });
+    const unsubscribe = onAuthStateChanged(auth, user => setCurrentUser(user));
     return () => unsubscribe();
   }, []);
 
@@ -440,13 +338,9 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
           }
         } as Match;
       });
-
       fetchedMatches.sort((a, b) => parseMatchDateStr(a.date).getTime() - parseMatchDateStr(b.date).getTime());
       setMatches(fetchedMatches);
-    }, error => {
-      console.error("매칭 데이터를 불러오는 중 오류 발생:", error);
-    });
-
+    }, error => console.error("매칭 데이터 로드 오류:", error));
     return () => unsubscribe();
   }, []);
 
@@ -456,26 +350,12 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
         return;
     }
     const db = getFirestore();
-    const q = query(
-        collection(db, 'notifications'),
-        where('receiverId', '==', currentUser.uid)
-    );
-
+    const q = query(collection(db, 'notifications'), where('receiverId', '==', currentUser.uid));
     const unsubscribe = onSnapshot(q, snapshot => {
-        const fetchedNotifs = snapshot.docs.map(docSnap => ({
-            id: docSnap.id,
-            ...docSnap.data()
-        }));
-
-        fetchedNotifs.sort((a: any, b: any) => {
-            const timeA = a.createdAt?.toMillis?.() || 0;
-            const timeB = b.createdAt?.toMillis?.() || 0;
-            return timeB - timeA;
-        });
-
+        const fetchedNotifs = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+        fetchedNotifs.sort((a: any, b: any) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
         setNotifications(fetchedNotifs);
     });
-
     return () => unsubscribe();
   }, [currentUser]);
 
@@ -492,15 +372,72 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
     return `${Math.floor(hours / 24)}일 전`;
   };
 
-  const handleNotificationPress = async (notifId: string, action: 'accept' | 'decline') => {
+  // 알림 클릭 시 참가자의 프로필을 불러오고 띄우는 함수 추가
+  const handleOpenApplicantProfile = async (notif: any) => {
+      const db = getFirestore();
+      let pData: any = {};
+      try {
+          const profileDoc = await getDoc(doc(db, 'artifacts', 'rally-app-main', 'users', notif.senderId, 'profile', 'info'));
+          if (profileDoc.exists()) {
+              pData = profileDoc.data();
+          }
+      } catch (e) {
+          console.log("신청자 프로필 로드 실패", e);
+      }
+
+      setApplicantProfile({
+          id: notif.senderId,
+          name: pData.nickname || notif.senderName || '참가자',
+          location: pData.region || '지역 미설정',
+          tier: pData.tier || 'Unranked',
+          win: pData.wins || 0,
+          loss: pData.losses || 0,
+          mannerScore: pData.mannerScore || 5.0,
+          avatar: pData.avatarUrl ? { uri: pData.avatarUrl } : require('../assets/images/profile.png'),
+      });
+      setCurrentNotification(notif);
+      setIsApplicantProfileVisible(true);
+  };
+
+  const handleNotificationPress = async (notif: any, action: 'accept' | 'decline') => {
       try {
           const db = getFirestore();
-          await deleteDoc(doc(db, 'notifications', notifId));
+          await deleteDoc(doc(db, 'notifications', notif.id));
 
           if (action === 'accept') {
+            const roomTitle = notif.matchTitle || '새로운 매칭방';
+            const initialMessage = `'${roomTitle}' 매칭 참가가 수락되었습니다! 즐거운 경기 되세요.`;
+
+            let myName = currentUser.displayName || '방장';
+            try {
+                const myProfile = await getDoc(doc(db, 'artifacts', 'rally-app-main', 'users', currentUser.uid, 'profile', 'info'));
+                if(myProfile.exists()) myName = myProfile.data().nickname;
+            } catch(e){}
+
+            const newRoomRef = await addDoc(collection(db, 'chats'), {
+                matchTitle: roomTitle,
+                participants: [currentUser.uid, notif.senderId],
+                participantDetails: {
+                  [currentUser.uid]: { name: myName },
+                  [notif.senderId]: { name: applicantProfile?.name || notif.senderName || '참가자' }
+                },
+                updatedAt: serverTimestamp(),
+                lastMessage: initialMessage,
+                type: 'match'
+            });
+
+            await addDoc(collection(db, 'chats', newRoomRef.id, 'messages'), {
+                text: initialMessage,
+                senderId: 'system',
+                createdAt: serverTimestamp()
+            });
+
+            setIsApplicantProfileVisible(false);
             setIsNotifModalVisible(false);
+            Alert.alert('수락 완료', '참가 신청을 수락하여 채팅방이 생성되었습니다.');
             onGoToChat?.();
           } else {
+            setIsApplicantProfileVisible(false);
             Alert.alert('거절 완료', '참가 신청을 거절했습니다.');
           }
       } catch (error) {
@@ -525,33 +462,63 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
       ]);
   };
 
+  const saveMatchToDB = async () => {
+    const db = getFirestore();
+    const finalLocation = `${createRegion} - ${detailedLocation.trim()}`;
+    let hostProfile = {
+      name: currentUser?.displayName || '나(본인)', location: createRegion || '미정', tier: 'Unranked', win: 0, loss: 0, mannerScore: 5.0, avatarUrl: currentUser?.photoURL || null, uid: currentUser?.uid || ''
+    };
+
+    if (currentUser) {
+      try {
+        const userDocRef = doc(db, 'artifacts', 'rally-app-main', 'users', currentUser.uid, 'profile', 'info');
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          hostProfile = { ...hostProfile, name: userData?.nickname || hostProfile.name, tier: userData?.tier || hostProfile.tier, win: userData?.wins || hostProfile.win, loss: userData?.losses || hostProfile.loss, mannerScore: userData?.mannerScore || hostProfile.mannerScore, avatarUrl: userData?.avatarUrl || hostProfile.avatarUrl, uid: currentUser.uid };
+        }
+      } catch (e) { console.log('프로필 로드 실패', e); }
+    }
+
+    const newMatch = {
+      status: '모집 중', playerCount: '1명', title: roomName.trim(), date: formatMatchDate(createDate), location: finalLocation, region: createRegion || '기타', gender: createGender, maxCount: createCount, host: hostProfile, createdAt: serverTimestamp()
+    };
+
+    try {
+      await addDoc(collection(db, 'matches'), newMatch);
+      Alert.alert("생성 완료", "새로운 매칭방이 등록되었습니다.");
+      setModalVisible(false);
+      setRoomName(''); setCreateRegion(null); setDetailedLocation(''); setCreateGender('무관'); setCreateCount(4); setCreateDate(new Date());
+    } catch (error) {
+      Alert.alert("오류", "매칭방 생성에 실패했습니다.");
+    }
+  };
+
+  const handleConfirmCreation = () => {
+    if (roomName.trim().length < 2) return Alert.alert("입력 오류", "모임 이름을 2글자 이상 입력해주세요.");
+    if (!createRegion) return Alert.alert("입력 오류", "지역을 선택해주세요.");
+    if (detailedLocation.trim().length < 2) return Alert.alert("입력 오류", "상세 장소를 2글자 이상 입력해주세요.");
+    Alert.alert("매칭방 생성", "입력하신 정보로 새로운 매칭방을 생성하시겠습니까?", [{ text: "취소", style: "cancel" }, { text: "추가", onPress: saveMatchToDB }]);
+  };
+
   const displayMatches = useMemo(() => {
     return matches.filter(match => {
       const matchDate = parseMatchDateStr(match.date);
       if (matchDate <= now) return false;
-
       if (!isSearching && selectedDate) {
-        const isSameDay = matchDate.getFullYear() === selectedDate.getFullYear() &&
-                          matchDate.getMonth() === selectedDate.getMonth() &&
-                          matchDate.getDate() === selectedDate.getDate();
+        const isSameDay = matchDate.getFullYear() === selectedDate.getFullYear() && matchDate.getMonth() === selectedDate.getMonth() && matchDate.getDate() === selectedDate.getDate();
         if (!isSameDay) return false;
       }
-
       if (isSearching) {
         if (searchText && !match.title.toLowerCase().includes(searchText.toLowerCase()) && !match.location.toLowerCase().includes(searchText.toLowerCase())) return false;
         if (filterDate) {
-           const isSameDay = matchDate.getFullYear() === filterDate.getFullYear() &&
-                             matchDate.getMonth() === filterDate.getMonth() &&
-                             matchDate.getDate() === filterDate.getDate();
+           const isSameDay = matchDate.getFullYear() === filterDate.getFullYear() && matchDate.getMonth() === filterDate.getMonth() && matchDate.getDate() === filterDate.getDate();
            if (!isSameDay) return false;
         }
         if (filterRegion !== '전체') {
             const isMainRegion = MAIN_REGIONS.some(r => r.value === filterRegion);
-            if (isMainRegion) {
-                if (match.region && match.region !== filterRegion) return false;
-            } else {
-                if (!match.location.includes(filterRegion)) return false;
-            }
+            if (isMainRegion) { if (match.region && match.region !== filterRegion) return false; }
+            else { if (!match.location.includes(filterRegion)) return false; }
         }
         if (filterGender !== '무관' && match.gender !== filterGender && match.gender !== '무관') return false;
         if (filterCount !== '전체' && match.maxCount !== filterCount) return false;
@@ -572,283 +539,43 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
     return list;
   }, []);
 
-  const getDayTextColor = (dateString: string) => {
-    const d = new Date(dateString);
-    const dayOfWeek = d.getDay();
-    const holidayList = getHolidays();
-    if (holidayList.includes(dateString) || dayOfWeek === 0) return '#EF4444';
-    if (dayOfWeek === 6) return '#3B82F6';
-    return '#1F2937';
-  };
-
   const calendarMarks = useMemo(() => {
     const marks: any = {};
     matches.forEach((match) => {
       const parts = match.date.match(/(\d{4})년 (\d{1,2})월 (\d{1,2})일/);
-      if (parts) {
-        const isoDate = `${parts[1]}-${parts[2].padStart(2, '0')}-${parts[3].padStart(2, '0')}`;
-        marks[isoDate] = { hasMatch: true };
-      }
+      if (parts) marks[`${parts[1]}-${parts[2].padStart(2, '0')}-${parts[3].padStart(2, '0')}`] = { hasMatch: true };
     });
     return marks;
   }, [matches]);
 
   const renderCalendarDay = ({ date, state }: any) => {
     const dateString = date.dateString;
-    const textColor = state === 'disabled' ? '#D1D5DB' : getDayTextColor(dateString);
-    const hasMatch = calendarMarks[dateString]?.hasMatch;
-
+    const textColor = state === 'disabled' ? '#D1D5DB' : (getHolidays().includes(dateString) || new Date(dateString).getDay() === 0 ? '#EF4444' : new Date(dateString).getDay() === 6 ? '#3B82F6' : '#1F2937');
     const isToday = dateString === getLocalDateString(new Date());
-
     const currentDay = new Date(date.year, date.month - 1, date.day);
-    const isSelected = selectedDate ? (
-        selectedDate.getFullYear() === currentDay.getFullYear() &&
-        selectedDate.getMonth() === currentDay.getMonth() &&
-        selectedDate.getDate() === currentDay.getDate()
-    ) : false;
+    const isSelected = selectedDate ? (selectedDate.getFullYear() === currentDay.getFullYear() && selectedDate.getMonth() === currentDay.getMonth() && selectedDate.getDate() === currentDay.getDate()) : false;
 
     return (
-      <TouchableOpacity
-        onPress={() => {
-            setSelectedDate(currentDay);
-            setCalendarModalVisible(false);
-        }}
-        style={styles.calendarDayContainer}
-      >
-        <View style={[
-            styles.calendarDayTextContainer,
-            isToday && styles.todayBackground,
-            isSelected && styles.dateButtonSelected
-        ]}>
-          <Text style={[
-              styles.calendarDayText,
-              { color: (isToday || isSelected) ? 'white' : textColor },
-              (state === 'today') && { fontWeight: 'bold' }
-          ]}>{date.day}</Text>
+      <TouchableOpacity onPress={() => { setSelectedDate(currentDay); setCalendarModalVisible(false); }} style={styles.calendarDayContainer}>
+        <View style={[styles.calendarDayTextContainer, isToday && styles.todayBackground, isSelected && styles.dateButtonSelected]}>
+          <Text style={[styles.calendarDayText, { color: (isToday || isSelected) ? 'white' : textColor }, (state === 'today') && { fontWeight: 'bold' }]}>{date.day}</Text>
         </View>
-        {hasMatch && <View style={styles.matchDot} />}
+        {calendarMarks[dateString]?.hasMatch && <View style={styles.matchDot} />}
       </TouchableOpacity>
-    );
-  };
-
-  const handleCreateRoom = () => {
-    setDatePickerMode('createDate');
-    setRegionModalMode('create');
-    setModalVisible(true);
-  };
-
-  // 실제 DB 저장을 담당하는 함수
-  const saveMatchToDB = async () => {
-    const db = getFirestore();
-    const finalLocation = `${createRegion} - ${detailedLocation.trim()}`;
-
-    let hostProfile = {
-      name: currentUser?.displayName || '나(본인)',
-      location: createRegion || '미정',
-      tier: 'Unranked',
-      win: 0,
-      loss: 0,
-      mannerScore: 5.0,
-      avatarUrl: currentUser?.photoURL || null,
-      uid: currentUser?.uid || ''
-    };
-
-    if (currentUser) {
-      try {
-        const appId = 'rally-app-main';
-        const userDocRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'profile', 'info');
-        const userDoc = await getDoc(userDocRef);
-
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          hostProfile = {
-            ...hostProfile,
-            name: userData?.nickname || hostProfile.name,
-            tier: userData?.tier || hostProfile.tier,
-            win: userData?.wins || hostProfile.win,
-            loss: userData?.losses || hostProfile.loss,
-            mannerScore: userData?.mannerScore || hostProfile.mannerScore,
-            avatarUrl: userData?.avatarUrl || hostProfile.avatarUrl,
-            uid: currentUser.uid
-          };
-        }
-      } catch (e) {
-        console.log('유저 프로필 정보를 불러오는데 실패했습니다.', e);
-      }
-    }
-
-    const newMatch = {
-      status: '모집 중',
-      playerCount: '1명',
-      title: roomName.trim(),
-      date: formatMatchDate(createDate),
-      location: finalLocation,
-      region: createRegion || '기타',
-      gender: createGender,
-      maxCount: createCount,
-      host: hostProfile,
-      createdAt: serverTimestamp(),
-    };
-
-    try {
-      await addDoc(collection(db, 'matches'), newMatch);
-      Alert.alert("생성 완료", "새로운 매칭방이 등록되었습니다.");
-
-      setModalVisible(false);
-      setRoomName(''); setCreateRegion(null); setDetailedLocation(''); setCreateGender('무관'); setCreateCount(4); setCreateDate(new Date());
-    } catch (error) {
-      console.error("매칭방 생성 중 오류:", error);
-      Alert.alert("오류", "매칭방 생성에 실패했습니다. 다시 시도해주세요.");
-    }
-  };
-
-  // 데이터 검증 및 더블 체크 로직 (추가 버튼 클릭 시 실행)
-  const handleConfirmCreation = () => {
-    if (roomName.trim().length < 2) {
-      Alert.alert("입력 오류", "모임 이름을 2글자 이상 입력해주세요.");
-      return;
-    }
-    if (!createRegion) {
-      Alert.alert("입력 오류", "지역을 선택해주세요.");
-      return;
-    }
-    if (detailedLocation.trim().length < 2) {
-      Alert.alert("입력 오류", "상세 장소를 2글자 이상 입력해주세요.");
-      return;
-    }
-
-    Alert.alert(
-      "매칭방 생성",
-      "입력하신 정보로 새로운 매칭방을 생성하시겠습니까?",
-      [
-        { text: "취소", style: "cancel" },
-        { text: "추가", onPress: saveMatchToDB }
-      ]
     );
   };
 
   const handleRegionItemPress = (itemValue: string) => {
     if (!tempMainRegion) {
         if (itemValue === '전체') {
-            if (regionModalMode === 'create') setCreateRegion(null);
-            else setFilterRegion('전체');
+            if (regionModalMode === 'create') setCreateRegion(null); else setFilterRegion('전체');
             setIsRegionModalVisible(false);
-        } else {
-            setTempMainRegion(itemValue);
-        }
+        } else setTempMainRegion(itemValue);
     } else {
         const finalRegion = itemValue === '전체' ? tempMainRegion : itemValue;
-        if (regionModalMode === 'create') setCreateRegion(finalRegion);
-        else setFilterRegion(finalRegion);
-        setIsRegionModalVisible(false);
-        setTempMainRegion(null);
+        if (regionModalMode === 'create') setCreateRegion(finalRegion); else setFilterRegion(finalRegion);
+        setIsRegionModalVisible(false); setTempMainRegion(null);
     }
-  };
-
-  const renderListHeader = () => {
-    if (isSearching) return null;
-
-    const screenWidth = Dimensions.get('window').width;
-    const containerPadding = 24;
-    const arrowButtonWidth = 32;
-    const arrowMargin = 8;
-    const scrollMarginRight = 10;
-    const totalDeduction = containerPadding + arrowButtonWidth + arrowMargin + scrollMarginRight;
-
-    const visibleItems = 6.5;
-    const gap = 10;
-    const availableWidth = screenWidth - totalDeduction;
-    const itemWidth = (availableWidth - (Math.floor(visibleItems) * gap)) / visibleItems;
-
-    return (
-      <View>
-        <NoticeSection onNoticePress={() => setIsRmrGuideVisible(true)} />
-        <View style={styles.dateSelectorContainer}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={{ flex: 1, marginRight: 10 }}
-              contentContainerStyle={{ gap: gap, paddingRight: 10 }}
-            >
-            {dates.map((item) => {
-                const isSelected = selectedDate ? (
-                    selectedDate.getFullYear() === item.fullDate.getFullYear() &&
-                    selectedDate.getMonth() === item.fullDate.getMonth() &&
-                    selectedDate.getDate() === item.fullDate.getDate()
-                ) : false;
-
-                const dateStr = getLocalDateString(item.fullDate);
-                const hasMatch = calendarMarks[dateStr]?.hasMatch;
-
-                return (
-                <TouchableOpacity
-                    key={dateStr}
-                    onPress={() => {
-                        if (isSelected) setSelectedDate(null);
-                        else setSelectedDate(item.fullDate);
-                    }}
-                    activeOpacity={0.7}
-                    style={[
-                        styles.dateButton,
-                        isSelected && styles.dateButtonSelected,
-                        { width: itemWidth }
-                    ]}
-                >
-                    <Text style={[styles.dateButtonDay, { color: isSelected ? 'white' : getDayTextColor(dateStr) }]}>{item.day}</Text>
-                    <Text style={[styles.dateButtonLabel, isSelected && styles.dateButtonTextSelected]}>{item.label}</Text>
-                    {hasMatch && !isSelected && <View style={styles.sliderMatchDot} />}
-                    {hasMatch && isSelected && <View style={[styles.sliderMatchDot, { backgroundColor: 'white' }]} />}
-                </TouchableOpacity>
-                );
-            })}
-            </ScrollView>
-            <TouchableOpacity
-                style={styles.calendarButton}
-                onPress={() => setCalendarModalVisible(true)}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-                <CalendarIcon size={20} color="white" />
-            </TouchableOpacity>
-        </View>
-      </View>
-    );
-  };
-
-  const renderRegionList = () => {
-    if (!tempMainRegion) {
-        return (
-            <FlatList
-                data={MAIN_REGIONS}
-                keyExtractor={(item) => item.value}
-                renderItem={({ item }) => (
-                    <TouchableOpacity style={styles.regionItem} onPress={() => handleRegionItemPress(item.value)}>
-                        <Text style={styles.regionItemText}>{item.label}</Text>
-                        {item.value !== '전체' && <ChevronRight size={16} color="#D1D5DB" />}
-                    </TouchableOpacity>
-                )}
-            />
-        );
-    }
-    const subRegions = SUB_REGIONS[tempMainRegion] || ['전체'];
-    return (
-        <View style={{flex: 1, width: '100%'}}>
-            <TouchableOpacity style={styles.regionHeaderBack} onPress={() => setTempMainRegion(null)}>
-                <ChevronLeft size={20} color="#374151" />
-                <Text style={styles.regionHeaderBackText}>{tempMainRegion} (다시 선택)</Text>
-            </TouchableOpacity>
-            <FlatList
-                data={subRegions}
-                keyExtractor={(item) => item}
-                renderItem={({ item }) => (
-                    <TouchableOpacity style={styles.regionItem} onPress={() => handleRegionItemPress(item)}>
-                        <Text style={[styles.regionItemText, (regionModalMode === 'filter' && filterRegion === item) && { color: '#34D399', fontWeight: 'bold' }]}>
-                            {item === '전체' ? `${tempMainRegion} 전체` : item}
-                        </Text>
-                    </TouchableOpacity>
-                )}
-            />
-        </View>
-    );
   };
 
   return (
@@ -866,20 +593,11 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
         </View>
         <View style={styles.searchRow}>
           <View style={styles.searchContainer}>
-            <TextInput
-              placeholder="제목, 장소 검색"
-              placeholderTextColor="#9CA3AF"
-              style={styles.searchInput}
-              value={searchText}
-              onChangeText={setSearchText}
-              onFocus={() => { setIsSearching(true); setActiveFilterTab('date'); }}
-            />
+            <TextInput placeholder="제목, 장소 검색" placeholderTextColor="#9CA3AF" style={styles.searchInput} value={searchText} onChangeText={setSearchText} onFocus={() => { setIsSearching(true); setActiveFilterTab('date'); }} />
             <Search size={20} color="#9CA3AF" style={styles.searchIcon} />
           </View>
           {isSearching && (
-            <TouchableOpacity style={styles.cancelButton} onPress={() => {
-                setIsSearching(false); setSearchText(''); setFilterDate(null); setFilterRegion('전체'); setFilterGender('무관'); setFilterCount('전체');
-            }}>
+            <TouchableOpacity style={styles.cancelButton} onPress={() => { setIsSearching(false); setSearchText(''); setFilterDate(null); setFilterRegion('전체'); setFilterGender('무관'); setFilterCount('전체'); }}>
               <Text style={styles.cancelButtonText}>취소</Text>
             </TouchableOpacity>
           )}
@@ -891,11 +609,7 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
             <View style={styles.filterPanelContainer}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterTabsScroll}>
                     {(['date', 'region', 'gender', 'count'] as const).map(tab => (
-                        <TouchableOpacity
-                            key={tab}
-                            style={[styles.filterTab, activeFilterTab === tab && styles.filterTabActive]}
-                            onPress={() => setActiveFilterTab(tab)}
-                        >
+                        <TouchableOpacity key={tab} style={[styles.filterTab, activeFilterTab === tab && styles.filterTabActive]} onPress={() => setActiveFilterTab(tab)}>
                             <Text style={[styles.filterTabText, activeFilterTab === tab && styles.filterTabTextActive]}>
                                 {tab === 'date' ? '날짜' : tab === 'region' ? '지역' : tab === 'gender' ? '성별' : '인원'}
                             </Text>
@@ -947,7 +661,29 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
                 <MatchCard match={item} onPress={(m) => { setSelectedMatch(m as any); setIsHostModalVisible(true); }} />
               </View>
             )}
-            ListHeaderComponent={renderListHeader}
+            ListHeaderComponent={() => !isSearching ? (
+              <View>
+                <NoticeSection onNoticePress={() => setIsRmrGuideVisible(true)} />
+                <View style={styles.dateSelectorContainer}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1, marginRight: 10 }} contentContainerStyle={{ gap: 10, paddingRight: 10 }}>
+                    {dates.map((item) => {
+                        const isSelected = selectedDate ? (selectedDate.getFullYear() === item.fullDate.getFullYear() && selectedDate.getMonth() === item.fullDate.getMonth() && selectedDate.getDate() === item.fullDate.getDate()) : false;
+                        const dateStr = getLocalDateString(item.fullDate);
+                        const hasMatch = calendarMarks[dateStr]?.hasMatch;
+                        return (
+                        <TouchableOpacity key={dateStr} onPress={() => { if (isSelected) setSelectedDate(null); else setSelectedDate(item.fullDate); }} activeOpacity={0.7} style={[styles.dateButton, isSelected && styles.dateButtonSelected, { width: (Dimensions.get('window').width - 74) / 6.5 }]}>
+                            <Text style={[styles.dateButtonDay, { color: isSelected ? 'white' : (getHolidays().includes(dateStr) || item.fullDate.getDay() === 0 ? '#EF4444' : item.fullDate.getDay() === 6 ? '#3B82F6' : '#1F2937') }]}>{item.day}</Text>
+                            <Text style={[styles.dateButtonLabel, isSelected && styles.dateButtonTextSelected]}>{item.label}</Text>
+                            {hasMatch && !isSelected && <View style={styles.sliderMatchDot} />}
+                            {hasMatch && isSelected && <View style={[styles.sliderMatchDot, { backgroundColor: 'white' }]} />}
+                        </TouchableOpacity>
+                        );
+                    })}
+                    </ScrollView>
+                    <TouchableOpacity style={styles.calendarButton} onPress={() => setCalendarModalVisible(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><CalendarIcon size={20} color="white" /></TouchableOpacity>
+                </View>
+              </View>
+            ) : null}
             contentContainerStyle={styles.listContent}
             ListEmptyComponent={() => (
                 <View style={{padding: 40, alignItems: 'center', marginTop: 50}}>
@@ -958,60 +694,49 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
         />
 
         {!isSearching && (
-            <TouchableOpacity style={styles.fab} onPress={handleCreateRoom} activeOpacity={0.8}><Plus size={28} color="white" /></TouchableOpacity>
+            <TouchableOpacity style={styles.fab} onPress={() => { setDatePickerMode('createDate'); setRegionModalMode('create'); setModalVisible(true); }} activeOpacity={0.8}><Plus size={28} color="white" /></TouchableOpacity>
         )}
       </View>
 
       <RMRGuideModal visible={isRmrGuideVisible} onClose={() => setIsRmrGuideVisible(false)} />
 
-      {/* 방장 프로필 모달 */}
-      <MatchHostModal
-        visible={isHostModalVisible}
-        onClose={() => setIsHostModalVisible(false)}
-        match={selectedMatch}
-        currentUser={currentUser}
-        onDelete={handleDeleteMatch}
-      />
+      <MatchHostModal visible={isHostModalVisible} onClose={() => setIsHostModalVisible(false)} match={selectedMatch} currentUser={currentUser} onDelete={handleDeleteMatch} />
 
       <Modal animationType="slide" transparent={true} visible={isRegionModalVisible} onRequestClose={() => setIsRegionModalVisible(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setIsRegionModalVisible(false)}>
           <Pressable style={styles.regionModalContent} onPress={() => {}}>
             <Text style={styles.modalTitle}>지역 선택</Text>
-            {renderRegionList()}
+            {tempMainRegion ? (
+              <View style={{flex: 1, width: '100%'}}>
+                  <TouchableOpacity style={styles.regionHeaderBack} onPress={() => setTempMainRegion(null)}><ChevronLeft size={20} color="#374151" /><Text style={styles.regionHeaderBackText}>{tempMainRegion} (다시 선택)</Text></TouchableOpacity>
+                  <FlatList data={SUB_REGIONS[tempMainRegion] || ['전체']} keyExtractor={(item) => item} renderItem={({ item }) => (
+                      <TouchableOpacity style={styles.regionItem} onPress={() => handleRegionItemPress(item)}><Text style={[styles.regionItemText, (regionModalMode === 'filter' && filterRegion === item) && { color: '#34D399', fontWeight: 'bold' }]}>{item === '전체' ? `${tempMainRegion} 전체` : item}</Text></TouchableOpacity>
+                  )} />
+              </View>
+            ) : (
+              <FlatList data={MAIN_REGIONS} keyExtractor={(item) => item.value} renderItem={({ item }) => (
+                  <TouchableOpacity style={styles.regionItem} onPress={() => handleRegionItemPress(item.value)}><Text style={styles.regionItemText}>{item.label}</Text>{item.value !== '전체' && <ChevronRight size={16} color="#D1D5DB" />}</TouchableOpacity>
+              )} />
+            )}
           </Pressable>
         </Pressable>
       </Modal>
 
-      {/* Date -> Time 흐름을 지원하는 DatePicker */}
-      <DatePicker
-        modal
-        open={isDatePickerVisible}
-        date={datePickerMode.startsWith('create') ? createDate : (filterDate || new Date())}
+      <DatePicker modal open={isDatePickerVisible} date={datePickerMode.startsWith('create') ? createDate : (filterDate || new Date())}
         onConfirm={(d) => {
             setDatePickerVisible(false);
             if (datePickerMode === 'createDate') {
                 const newDate = new Date(createDate);
                 newDate.setFullYear(d.getFullYear(), d.getMonth(), d.getDate());
                 setCreateDate(newDate);
-                // 날짜 선택이 완료되면 약간의 딜레이 후 시간 선택기를 자동으로 오픈
-                setTimeout(() => {
-                    setDatePickerMode('createTime');
-                    setDatePickerVisible(true);
-                }, 400);
+                setTimeout(() => { setDatePickerMode('createTime'); setDatePickerVisible(true); }, 400);
             } else if (datePickerMode === 'createTime') {
                 const newDate = new Date(createDate);
                 newDate.setHours(d.getHours(), d.getMinutes());
                 setCreateDate(newDate);
-            } else {
-                setFilterDate(d);
-            }
+            } else { setFilterDate(d); }
         }}
-        onCancel={() => setDatePickerVisible(false)}
-        title={datePickerMode === 'createDate' ? "날짜 선택" : datePickerMode === 'createTime' ? "시간 선택" : "날짜로 검색"}
-        confirmText="확인"
-        cancelText="취소"
-        minuteInterval={5}
-        mode={datePickerMode === 'createDate' ? 'date' : datePickerMode === 'createTime' ? 'time' : 'date'}
+        onCancel={() => setDatePickerVisible(false)} title={datePickerMode === 'createDate' ? "날짜 선택" : datePickerMode === 'createTime' ? "시간 선택" : "날짜로 검색"} confirmText="확인" cancelText="취소" minuteInterval={5} mode={datePickerMode === 'createDate' ? 'date' : datePickerMode === 'createTime' ? 'time' : 'date'}
       />
 
       <Modal visible={isNotifModalVisible} transparent={true} animationType="fade" onRequestClose={() => setIsNotifModalVisible(false)}>
@@ -1020,27 +745,54 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
             <View style={styles.notifHeader}><Text style={styles.modalTitle}>알림 센터</Text><TouchableOpacity onPress={() => setIsNotifModalVisible(false)}><X size={24} color="#6B7280" /></TouchableOpacity></View>
             {notifications.length === 0 ? <View style={styles.emptyNotifContainer}><Bell size={48} color="#D1D5DB" /><Text style={styles.emptyNotifText}>새로운 알림이 없습니다.</Text></View> : (
               <FlatList data={notifications} keyExtractor={(item) => item.id.toString()} renderItem={({ item }) => (
-                <View style={styles.notifItem}>
+                <TouchableOpacity style={styles.notifItem} onPress={() => handleOpenApplicantProfile(item)}>
                   <View style={styles.notifTextContainer}>
-                      <View style={styles.notifTitleRow}>
-                          <Text style={styles.notifTitle}>{item.title}</Text>
-                          <Text style={styles.notifTime}>{formatTimeAgo(item.createdAt)}</Text>
-                      </View>
+                      <View style={styles.notifTitleRow}><Text style={styles.notifTitle}>{item.title}</Text><Text style={styles.notifTime}>{formatTimeAgo(item.createdAt)}</Text></View>
                       <Text style={styles.notifMessage}>{item.message}</Text>
                   </View>
                   <View style={styles.notifActionContainer}>
-                    <TouchableOpacity style={[styles.actionBtn, styles.declineBtn]} onPress={() => handleNotificationPress(item.id, 'decline')}>
-                      <X size={18} color="#EF4444" />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.actionBtn, styles.acceptBtn]} onPress={() => handleNotificationPress(item.id, 'accept')}>
-                      <Check size={18} color="white" />
-                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.actionBtn, styles.declineBtn]} onPress={() => handleNotificationPress(item, 'decline')}><X size={18} color="#EF4444" /></TouchableOpacity>
+                    {/* 수락 버튼은 모달 안으로 이동되었으나, 빠른 수락을 위해 여기 남겨둘 수도 있습니다. 여기서는 터치 시 모달이 뜨도록 변경했으므로 위 TouchableOpacity로 묶음 */}
                   </View>
-                </View>
+                </TouchableOpacity>
               )} />
             )}
           </View>
         </Pressable>
+      </Modal>
+
+      {/* 매칭 신청자 프로필 확인 및 수락 모달 */}
+      <Modal animationType="fade" transparent={true} visible={isApplicantProfileVisible} onRequestClose={() => setIsApplicantProfileVisible(false)}>
+        <TouchableWithoutFeedback onPress={() => setIsApplicantProfileVisible(false)}>
+          <View style={styles.profileModalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.profileModalContent}>
+                {applicantProfile && (
+                  <>
+                    <View style={styles.profileSection}>
+                      <Image source={applicantProfile.avatar} style={styles.profileAvatar} />
+                      <Text style={styles.profileNameText}>{applicantProfile.name}</Text>
+                      <View style={{flexDirection:'row', alignItems:'center', gap:4}}><MapPin size={12} color="#A0A0A0"/><Text style={styles.profileLocationText}>{applicantProfile.location}</Text></View>
+                      <Text style={[styles.hostBadgeText, { backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38BDF8' }]}>참가 신청자</Text>
+                    </View>
+                    <View style={styles.statsContainer}>
+                      <View style={styles.statItem}><Text style={styles.statLabel}>티어</Text><Text style={[styles.statValue, { color: '#00E0C6' }]}>{applicantProfile.tier}</Text></View>
+                      <View style={styles.statDivider} />
+                      <View style={styles.statItem}><Text style={styles.statLabel}>승/패</Text><Text style={styles.statValue}>{applicantProfile.win}승 {applicantProfile.loss}패</Text></View>
+                      <View style={styles.statDivider} />
+                      <View style={styles.statItem}><Text style={styles.statLabel}>매너 점수</Text><Text style={styles.statValue}>{applicantProfile.mannerScore}</Text></View>
+                    </View>
+                    <View style={{flexDirection: 'row', gap: 10, width: '100%'}}>
+                        <TouchableOpacity style={[styles.joinRequestButton, {flex: 1, backgroundColor: '#374151'}]} onPress={() => handleNotificationPress(currentNotification, 'decline')}><Text style={styles.joinRequestButtonText}>거절</Text></TouchableOpacity>
+                        <TouchableOpacity style={[styles.joinRequestButton, {flex: 1}]} onPress={() => handleNotificationPress(currentNotification, 'accept')}><Text style={styles.joinRequestButtonText}>수락 (채팅 생성)</Text></TouchableOpacity>
+                    </View>
+                  </>
+                )}
+                <TouchableOpacity style={[styles.profileCloseButton, {marginTop: 12}]} onPress={() => setIsApplicantProfileVisible(false)}><Text style={styles.profileCloseButtonText}>닫기</Text></TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
       <Modal animationType="slide" transparent={true} visible={isModalVisible} onRequestClose={() => setModalVisible(false)}>
@@ -1114,7 +866,6 @@ const styles = StyleSheet.create({
 
   dateSelectorContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', paddingVertical: 16, paddingHorizontal: 12 },
   calendarButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#1F2937', justifyContent: 'center', alignItems: 'center', marginHorizontal: 4 },
-  dateList: { flex: 1, flexDirection: 'row', justifyContent: 'space-around' },
   dateButton: { alignItems: 'center', justifyContent: 'center', borderRadius: 22, height: 48 },
   dateButtonSelected: { backgroundColor: '#34D399' },
   dateButtonDay: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
@@ -1149,11 +900,11 @@ const styles = StyleSheet.create({
   regionHeaderBack: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#E5E7EB', marginBottom: 8 },
   regionHeaderBackText: { fontSize: 16, fontWeight: 'bold', color: '#374151', marginLeft: 8 },
 
-  calendarModalContent: { width: '90%', backgroundColor: 'white', borderRadius: 20, padding: 20, elevation: 5, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } },
+  calendarModalContent: { width: '90%', backgroundColor: 'white', borderRadius: 20, padding: 20, elevation: 5 },
   closeButton: { marginTop: 15, backgroundColor: '#34D399', padding: 12, borderRadius: 10, alignItems: 'center' },
   closeButtonText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
 
-  notifModalContent: { width: '90%', backgroundColor: 'white', borderRadius: 16, padding: 24, alignSelf: 'center', maxHeight: '80%', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 10 },
+  notifModalContent: { width: '90%', backgroundColor: 'white', borderRadius: 16, padding: 24, alignSelf: 'center', maxHeight: '80%', elevation: 10 },
   notifHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   emptyNotifContainer: { alignItems: 'center', paddingVertical: 32 },
   emptyNotifText: { color: '#9CA3AF', marginTop: 12, fontSize: 16 },
@@ -1186,7 +937,7 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 12, color: '#888', marginBottom: 5 },
   statValue: { fontSize: 16, fontWeight: 'bold', color: '#FFF' },
   statDivider: { width: 1, height: '60%', backgroundColor: '#444' },
-  joinRequestButton: { width: '100%', backgroundColor: '#34D399', paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginBottom: 12 },
+  joinRequestButton: { width: '100%', backgroundColor: '#34D399', paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginBottom: 0 },
   editButton: { flex: 1, backgroundColor: '#374151', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
   deleteButton: { flex: 1, backgroundColor: '#EF4444', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
   joinRequestButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },

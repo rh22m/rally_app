@@ -18,8 +18,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { Users, MessageCircle, Plus, X, Search, Phone } from 'lucide-react-native';
 
-// Firebase 웹 SDK
-import { getFirestore, collection, onSnapshot, query, where, orderBy, getDocs, doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, query, where, orderBy, getDocs, doc, setDoc, getDoc, serverTimestamp, collectionGroup } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
 import OpponentProfileModal from './OpponentProfileModal';
@@ -46,7 +45,6 @@ export default function ChatListScreen() {
   const [addFriendMode, setAddFriendMode] = useState<'nickname' | 'phone'>('nickname');
   const [addFriendInput, setAddFriendInput] = useState('');
 
-  // 현재 로그인한 사용자 가져오기
   useEffect(() => {
     const auth = getAuth();
     const unsubscribe = onAuthStateChanged(auth, user => {
@@ -55,7 +53,7 @@ export default function ChatListScreen() {
     return () => unsubscribe();
   }, []);
 
-  // 채팅방 목록 불러오기 (실시간)
+  // 채팅방 목록 불러오기 (실시간 동기화 개선)
   useEffect(() => {
     if (!currentUser) return;
     const db = getFirestore();
@@ -65,38 +63,80 @@ export default function ChatListScreen() {
       orderBy('updatedAt', 'desc')
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const rooms = snapshot.docs.map(docSnap => {
-        const data = docSnap.data();
-        // 상대방 정보 추출 (1:1 채팅 가정)
-        const opponentId = data.participants.find((id: string) => id !== currentUser.uid) || currentUser.uid;
-        const opponentInfo = data.participantDetails ? data.participantDetails[opponentId] : {};
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      let hasBotRoom = false;
 
-        // 날짜 포맷팅
+      const roomsPromises = snapshot.docs.map(async (docSnap) => {
+        const data = docSnap.data();
+
+        // 중요: 참가자 배열에서 '나'를 제외한 상대방 ID 찾기
+        const opponentId = data.participants.find((id: string) => id !== currentUser.uid) || currentUser.uid;
+
+        if (opponentId === 'bot') hasBotRoom = true;
+
         const timeDate = data.updatedAt?.toDate() || new Date();
         const hours = timeDate.getHours();
         const minutes = timeDate.getMinutes().toString().padStart(2, '0');
         const ampm = hours >= 12 ? '오후' : '오전';
         const formattedTime = `${ampm} ${hours % 12 || 12}:${minutes}`;
 
+        // participantDetails에 상대방 정보가 저장되어 있다면 우선적으로 사용
+        let finalOpponentName = data.participantDetails?.[opponentId]?.name;
+        let finalAvatarUrl = data.participantDetails?.[opponentId]?.avatarUrl;
+
+        // DB에 저장된 이름이 없거나, 1:1 채팅인데 누락된 경우 직접 유저 프로필 탐색
+        if (!finalOpponentName || finalOpponentName === '알 수 없음') {
+             try {
+                 const profileDocInfo = await getDoc(doc(db, 'artifacts', 'rally-app-main', 'users', opponentId, 'profile', 'info'));
+                 if (profileDocInfo.exists() && profileDocInfo.data().nickname) {
+                     finalOpponentName = profileDocInfo.data().nickname;
+                     finalAvatarUrl = profileDocInfo.data().avatarUrl;
+                 }
+             } catch (e) {}
+        }
+
+        let avatarSource = require('../../assets/images/profile.png');
+        if (opponentId === 'bot') {
+          avatarSource = require('../../assets/images/rally-logo.png');
+        } else if (finalAvatarUrl) {
+          avatarSource = { uri: finalAvatarUrl };
+        }
+
         return {
           id: docSnap.id,
-          matchTitle: data.matchTitle || '채팅방',
+          // 1:1 대화면 상대방 이름을 타이틀로, 아니면 방 이름 사용
+          matchTitle: data.type === 'direct' ? finalOpponentName : (data.matchTitle || '채팅방'),
           opponentId: opponentId,
-          opponentName: opponentInfo?.name || '알 수 없음',
+          opponentName: finalOpponentName || (opponentId === 'bot' ? '랠리 AI 챗봇' : '이름 없음'),
           lastMessage: data.lastMessage || '',
           time: formattedTime,
           unreadCount: data.unreadCount?.[currentUser.uid] || 0,
-          avatar: opponentInfo?.avatarUrl ? { uri: opponentInfo.avatarUrl } : require('../../assets/images/profile.png'),
+          avatar: avatarSource,
           type: data.type || 'match',
         };
       });
-      setChatRooms(rooms);
+
+      const resolvedRooms = await Promise.all(roomsPromises);
+
+      if (!hasBotRoom) {
+        resolvedRooms.unshift({
+          id: 'new_bot_chat',
+          matchTitle: '랠리 공식 AI',
+          opponentId: 'bot',
+          opponentName: '랠리 AI 챗봇',
+          lastMessage: '안녕하세요! 랠리 AI 챗봇입니다. 궁금한 점이 있으신가요?',
+          time: '상시',
+          unreadCount: 0,
+          avatar: require('../../assets/images/rally-logo.png'),
+          type: 'bot',
+        });
+      }
+
+      setChatRooms(resolvedRooms);
     });
     return () => unsubscribe();
   }, [currentUser]);
 
-  // 친구 목록 불러오기 (실시간)
   useEffect(() => {
     if (!currentUser) return;
     const db = getFirestore();
@@ -104,12 +144,17 @@ export default function ChatListScreen() {
 
     const unsubscribe = onSnapshot(friendsRef, async (snapshot) => {
       const friendsData = await Promise.all(snapshot.docs.map(async (friendDoc) => {
-        // 친구의 프로필 정보 가져오기
-        const profileDoc = await getDoc(doc(db, 'profiles', friendDoc.id));
-        const pData = profileDoc.exists() ? profileDoc.data() : {};
+        let pData: any = {};
+        try {
+            const profileDocInfo = await getDoc(doc(db, 'artifacts', 'rally-app-main', 'users', friendDoc.id, 'profile', 'info'));
+            if (profileDocInfo.exists()) {
+                pData = profileDocInfo.data();
+            }
+        } catch (e) {}
+
         return {
           id: friendDoc.id,
-          name: pData.nickname || '이름 없음',
+          name: pData.nickname || friendDoc.data().name || '이름 없음',
           isOnline: pData.isOnline || false,
           tier: pData.tier || 'Unranked',
           win: pData.wins || 0,
@@ -144,7 +189,6 @@ export default function ChatListScreen() {
     });
   };
 
-  // 실제 DB 검색 및 친구 추가 로직
   const handleAddFriend = async () => {
     if (!addFriendInput.trim() || !currentUser) {
       Alert.alert('알림', '정보를 정확히 입력해주세요.');
@@ -153,33 +197,58 @@ export default function ChatListScreen() {
 
     try {
       const db = getFirestore();
-      const profilesRef = collection(db, 'profiles');
-      const searchField = addFriendMode === 'nickname' ? 'nickname' : 'phone';
-      const q = query(profilesRef, where(searchField, '==', addFriendInput.trim()));
-      const querySnapshot = await getDocs(q);
+      let targetUserId = null;
+      let targetUserName = '';
 
-      if (querySnapshot.empty) {
-        Alert.alert('결과 없음', '해당 사용자를 찾을 수 없습니다.');
+      const searchField = addFriendMode === 'nickname' ? 'nickname' : 'phone';
+      const searchValue = addFriendInput.trim();
+
+      const groupQuery = query(collectionGroup(db, 'profile'), where(searchField, '==', searchValue));
+      const groupSnapshot = await getDocs(groupQuery);
+
+      if (!groupSnapshot.empty) {
+          const docSnap = groupSnapshot.docs[0];
+          const pathParts = docSnap.ref.path.split('/');
+          const usersIndex = pathParts.indexOf('users');
+          if (usersIndex !== -1 && pathParts.length > usersIndex + 1) {
+               targetUserId = pathParts[usersIndex + 1];
+          } else {
+               targetUserId = docSnap.id;
+          }
+          targetUserName = docSnap.data().nickname || searchValue;
+      }
+      else {
+          const profilesRef = collection(db, 'profiles');
+          const q = query(profilesRef, where(searchField, '==', searchValue));
+          const querySnapshot = await getDocs(q);
+
+          if (!querySnapshot.empty) {
+             targetUserId = querySnapshot.docs[0].id;
+             targetUserName = querySnapshot.docs[0].data().nickname || searchValue;
+          }
+      }
+
+      if (!targetUserId) {
+        Alert.alert('결과 없음', '해당 정보를 가진 사용자를 찾을 수 없습니다.');
         return;
       }
 
-      const targetUser = querySnapshot.docs[0];
-      if (targetUser.id === currentUser.uid) {
+      if (targetUserId === currentUser.uid) {
         Alert.alert('알림', '본인은 친구로 추가할 수 없습니다.');
         return;
       }
 
-      // 내 친구 목록에 추가
-      await setDoc(doc(db, 'users', currentUser.uid, 'friends', targetUser.id), {
-        addedAt: serverTimestamp()
+      await setDoc(doc(db, 'users', currentUser.uid, 'friends', targetUserId), {
+        addedAt: serverTimestamp(),
+        name: targetUserName
       });
 
-      Alert.alert('추가 완료', '친구 목록에 추가되었습니다.');
+      Alert.alert('추가 완료', `'${targetUserName}'님을 친구 목록에 추가했습니다.`);
       setAddFriendVisible(false);
       setAddFriendInput('');
     } catch (error) {
       console.error("친구 추가 중 오류:", error);
-      Alert.alert('오류', '친구를 추가하는 데 실패했습니다.');
+      Alert.alert('오류', '데이터베이스 검색에 실패했습니다.');
     }
   };
 
@@ -293,7 +362,7 @@ export default function ChatListScreen() {
                </View>
 
                <TouchableOpacity style={styles.addButton} onPress={handleAddFriend}>
-                 <Text style={styles.addButtonText}>추가</Text>
+                 <Text style={styles.addButtonText}>검색 및 추가</Text>
                </TouchableOpacity>
              </Pressable>
             </KeyboardAvoidingView>

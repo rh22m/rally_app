@@ -18,7 +18,7 @@ import { getFirestore, doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
 interface UserProfile {
-  id: string; // 상대방 UID
+  id: string;
   name: string;
   location: string;
   tier: string;
@@ -53,7 +53,7 @@ const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile, 
       title: userProfile.name,
       opponentName: userProfile.name,
       opponentId: userProfile.id,
-      roomId: 'new_chat',
+      roomId: userProfile.id === 'bot' ? 'new_bot_chat' : 'new_chat',
     });
   };
 
@@ -138,7 +138,14 @@ const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile, 
               </View>
 
               <View style={styles.actionContainer}>
-                {relationType === 'friend' ? (
+                {userProfile.id === 'bot' ? (
+                  <TouchableOpacity style={styles.mainActionButton} onPress={handleChat}>
+                    <View style={styles.iconRow}>
+                      <MessageCircleMore size={20} color="#064E3B" />
+                      <Text style={styles.mainActionText}>1:1 대화하기</Text>
+                    </View>
+                  </TouchableOpacity>
+                ) : relationType === 'friend' ? (
                   <>
                     <TouchableOpacity style={styles.mainActionButton} onPress={handleChat}>
                       <View style={styles.iconRow}>

@@ -13,11 +13,17 @@ import {
   ScrollView,
   Modal,
   Animated,
-  ActivityIndicator
+  ActivityIndicator,
+  FlatList,
+  Image
 } from 'react-native';
-import { RotateCcw, Play, Pause, ArrowLeft, XCircle, AlertTriangle, Timer, TrendingUp, Activity, Flame, Trophy, Zap, ShieldAlert, Lightbulb, Watch } from 'lucide-react-native';
+import { RotateCcw, Play, Pause, ArrowLeft, XCircle, AlertTriangle, Timer, TrendingUp, Activity, Flame, Trophy, Zap, ShieldAlert, Lightbulb, Watch, Users, X } from 'lucide-react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { sendMessage, watchEvents } from 'react-native-wear-connectivity';
+
+// Firebase 웹 SDK 추가
+import { getFirestore, doc, getDoc, collection, onSnapshot } from 'firebase/firestore';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
 // --- Types ---
 export interface PointLog {
@@ -92,7 +98,7 @@ function InternalGameLoadingScreen({ visible, onFinish }: { visible: boolean; on
       Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }).start();
       const timer = setTimeout(() => {
         Animated.timing(fadeAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => onFinish());
-      }, 4000); // 4초 로딩
+      }, 3000); // 로딩 3초
       return () => clearTimeout(timer);
     }
   }, [visible]);
@@ -132,11 +138,16 @@ const loadingStyles = StyleSheet.create({
 
 // --- MAIN COMPONENT: ScoreTracker ---
 export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
+  // DB & Current User State
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [friendsList, setFriendsList] = useState<any[]>([]);
+  const [isFriendModalVisible, setIsFriendModalVisible] = useState(false);
+
   // Setup State
   const [isSetupMode, setIsSetupMode] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [team1Name, setTeam1Name] = useState('');
-  const [team2Name, setTeam2Name] = useState('');
+  const [team2Name, setTeam2Name] = useState('나(본인)'); // 기본값 설정
 
   // Game State
   const [team1Score, setTeam1Score] = useState(0);
@@ -147,8 +158,8 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
 
-  // 워치 연결 상태 및 가이드
-  const [isWatchConnected, setIsWatchConnected] = useState(false); // [추가] 실제 연결 여부
+  // 워치 연결 상태
+  const [isWatchConnected, setIsWatchConnected] = useState(false);
   const [showWatchGuide, setShowWatchGuide] = useState(false);
   const guideOpacity = useRef(new Animated.Value(0)).current;
 
@@ -163,25 +174,77 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
     return `${mins}:${secs}`;
   };
 
-  // --- Watch Connectivity Logic ---
-
-  // [추가] 로딩 중에 워치에 생존 확인(PING) 요청
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isLoading) {
-      interval = setInterval(() => {
-        // 워치앱이 켜져있다면 PONG으로 응답할 것임
-        sendMessage({ type: 'PING' });
-      }, 1000);
+  // --- 워치 안전 전송 래퍼 (크래쉬 방지) ---
+  const safeSendMessage = (message: any) => {
+    try {
+      if (sendMessage) {
+        sendMessage(message);
+      }
+    } catch (error) {
+      console.log('워치 연동 모듈 에러 무시:', error);
     }
-    return () => clearInterval(interval);
-  }, [isLoading]);
+  };
 
-  // 통합 메시지 수신 핸들러 (연결 확인 + 게임 명령)
+  // --- DB Fetching Logic ---
+  useEffect(() => {
+    const auth = getAuth();
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setCurrentUser(user);
+
+        // 1순위: auth의 displayName 사용
+        let fetchedNickname = user.displayName;
+
+        // 2순위: Firestore에서 닉네임 탐색
+        const db = getFirestore();
+        try {
+          // Rally 앱 구조에 맞는 프로필 경로 탐색 시도
+          const profileDoc = await getDoc(doc(db, 'profile', user.uid));
+          if (profileDoc.exists() && profileDoc.data().nickname) {
+            fetchedNickname = profileDoc.data().nickname;
+          }
+        } catch(e) {
+          console.log("DB 닉네임 로드 에러 (무시됨)");
+        }
+
+        const finalName = fetchedNickname ? `나(${fetchedNickname})` : '나(본인)';
+        setTeam2Name(finalName);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const db = getFirestore();
+    const friendsRef = collection(db, 'users', currentUser.uid, 'friends');
+
+    const unsubscribe = onSnapshot(friendsRef, async (snapshot) => {
+      const friendsData = await Promise.all(snapshot.docs.map(async (friendDoc) => {
+        let pData: any = {};
+        try {
+            const profileDoc = await getDoc(doc(db, 'profile', friendDoc.id));
+            if (profileDoc.exists()) pData = profileDoc.data();
+        } catch (e) {}
+
+        return {
+          id: friendDoc.id,
+          name: pData.nickname || '이름 없음',
+          avatar: pData.avatarUrl ? { uri: pData.avatarUrl } : require('../assets/images/profile.png'),
+        };
+      }));
+      setFriendsList(friendsData);
+    });
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  // --- Watch Connectivity ---
+  // 리스너를 한 번만 등록하도록 최적화
   const handlersRef = useRef({
     handleScore: (team: 'team1' | 'team2') => {},
     handleUndo: () => {},
-    togglePause: () => {}
+    togglePause: () => {},
+    setConnected: () => {}
   });
 
   useEffect(() => {
@@ -189,95 +252,80 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
       handleScore: (team) => handleScore(team),
       handleUndo: () => handleUndo(),
       togglePause: () => setIsTimerRunning(prev => !prev),
+      setConnected: () => setIsWatchConnected(true)
     };
   });
 
   useEffect(() => {
-    const unsubscribe = watchEvents.on('message', (msg) => {
-      if (!msg) return;
-
-      // 1. [추가] 연결 확인 응답 (PONG) 수신
-      if (msg.type === 'PONG') {
-        if (!isWatchConnected) setIsWatchConnected(true);
-        return;
+    let unsubscribe: any;
+    try {
+      if (watchEvents && typeof watchEvents.on === 'function') {
+        unsubscribe = watchEvents.on('message', (msg) => {
+          if (!msg) return;
+          if (msg.type === 'PONG') {
+            handlersRef.current.setConnected();
+            return;
+          }
+          if (msg.command) {
+            switch (msg.command) {
+              case 'INCREMENT_MY': handlersRef.current.handleScore('team2'); break;
+              case 'INCREMENT_OPP': handlersRef.current.handleScore('team1'); break;
+              case 'UNDO': handlersRef.current.handleUndo(); break;
+              case 'PAUSE_TOGGLE': handlersRef.current.togglePause(); break;
+            }
+          }
+        });
       }
+    } catch (e) {
+      console.log('워치 이벤트 등록 실패 (무시됨)');
+    }
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, []);
 
-      // 2. 게임 명령 처리 (게임 중일 때만)
-      if (!isSetupMode && msg.command) {
-        switch (msg.command) {
-          case 'INCREMENT_MY':
-            handlersRef.current.handleScore('team2');
-            break;
-          case 'INCREMENT_OPP':
-            handlersRef.current.handleScore('team1');
-            break;
-          case 'UNDO':
-            handlersRef.current.handleUndo();
-            break;
-          case 'PAUSE_TOGGLE':
-            handlersRef.current.togglePause();
-            break;
-        }
-      }
-    });
-
-    return () => unsubscribe();
-  }, [isSetupMode, isWatchConnected]); // 상태 변경 시 리스너 갱신
-
-  // 1. 타이머 동기화
+  // 로딩 시 워치 생존 확인
   useEffect(() => {
-    if (isSetupMode) return;
-    sendMessage({
-      type: 'SYNC_TIMER',
-      timer: formatTime(elapsedTime),
-    });
-  }, [elapsedTime, isSetupMode]);
+    let interval: NodeJS.Timeout;
+    if (isLoading) {
+      interval = setInterval(() => safeSendMessage({ type: 'PING' }), 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isLoading]);
 
-  // 2. 상태 동기화
+  // 워치 상태 동기화
   useEffect(() => {
-    if (isSetupMode) return;
-    sendMessage({
-      type: 'SYNC_STATE',
-      myScore: team2Score,
-      opponentScore: team1Score,
-      isPause: !isTimerRunning,
-    });
-  }, [team1Score, team2Score, isTimerRunning, isSetupMode]);
+    if (!isSetupMode && !isLoading) {
+      safeSendMessage({ type: 'SYNC_TIMER', timer: formatTime(elapsedTime) });
+    }
+  }, [elapsedTime, isSetupMode, isLoading]);
 
-  // 3. 종료 신호
+  useEffect(() => {
+    if (!isSetupMode && !isLoading) {
+      safeSendMessage({ type: 'SYNC_STATE', myScore: team2Score, opponentScore: team1Score, isPause: !isTimerRunning });
+    }
+  }, [team1Score, team2Score, isTimerRunning, isSetupMode, isLoading]);
+
   useEffect(() => {
     return () => {
-      if (!isSetupMode) {
-        sendMessage({ type: 'GAME_END' });
-      }
+      if (!isSetupMode) safeSendMessage({ type: 'GAME_END' });
     };
   }, [isSetupMode]);
 
-
-  // [수정] 워치 가이드 표시 로직: 연결된 상태(isWatchConnected)일 때만 표시
+  // 가이드 애니메이션
   useEffect(() => {
-    if (!isSetupMode && isWatchConnected) {
+    if (!isSetupMode && !isLoading && isWatchConnected) {
         setTimeout(() => {
             setShowWatchGuide(true);
-            Animated.timing(guideOpacity, {
-                toValue: 1,
-                duration: 500,
-                useNativeDriver: true
-            }).start();
-
+            Animated.timing(guideOpacity, { toValue: 1, duration: 500, useNativeDriver: true }).start();
             setTimeout(() => {
-                Animated.timing(guideOpacity, {
-                    toValue: 0,
-                    duration: 500,
-                    useNativeDriver: true
-                }).start(() => setShowWatchGuide(false));
-            }, 6000);
+                Animated.timing(guideOpacity, { toValue: 0, duration: 500, useNativeDriver: true }).start(() => setShowWatchGuide(false));
+            }, 5000);
         }, 1000);
     }
-  }, [isSetupMode, isWatchConnected]);
+  }, [isSetupMode, isLoading, isWatchConnected]);
 
-
-  // Timer Logic
+  // 타이머 로직
   useEffect(() => {
     if (isTimerRunning) {
       if (lastPointTimeRef.current === 0) lastPointTimeRef.current = Date.now();
@@ -291,16 +339,14 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
   // --- Handlers ---
   const handleStartButtonPress = () => {
     if (!team1Name.trim()) setTeam1Name("TEAM 1");
-    if (!team2Name.trim()) setTeam2Name("TEAM 2");
     Keyboard.dismiss();
-    // 로딩 시작 시 연결 상태 초기화
     setIsWatchConnected(false);
-    setIsLoading(true);
+    setIsLoading(true); // 로딩 모달 켬
   };
 
   const handleLoadingFinish = () => {
-    setIsLoading(false);
-    setIsSetupMode(false);
+    setIsLoading(false); // 로딩 모달 끔
+    setIsSetupMode(false); // 이 때 화면이 경기장으로 전환됨
     setIsTimerRunning(true);
     lastPointTimeRef.current = Date.now();
   };
@@ -308,7 +354,7 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
   const handleScore = (team: 'team1' | 'team2') => {
     if (!isTimerRunning) return;
 
-    setScoreHistory([...scoreHistory, { t1Score: team1Score, t2Score: team2Score, t1Wins: team1SetWins, t2Wins: team2SetWins }]);
+    setScoreHistory(prev => [...prev, { t1Score: team1Score, t2Score: team2Score, t1Wins: team1SetWins, t2Wins: team2SetWins }]);
 
     const now = Date.now();
     const duration = (now - lastPointTimeRef.current) / 1000;
@@ -320,13 +366,7 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
     let newSet2 = team2SetWins;
 
     const currentSet = newSet1 + newSet2 + 1;
-    const newLog: PointLog = {
-      scorer: team === 'team1' ? 'A' : 'B',
-      scoreA: newT1, scoreB: newT2,
-      setIndex: currentSet,
-      timestamp: now,
-      duration: duration
-    };
+    const newLog: PointLog = { scorer: team === 'team1' ? 'A' : 'B', scoreA: newT1, scoreB: newT2, setIndex: currentSet, timestamp: now, duration: duration };
     const updatedLogs = [...pointLogs, newLog];
     setPointLogs(updatedLogs);
 
@@ -348,10 +388,7 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
 
     if (newSet1 === 2 || newSet2 === 2) {
       setIsTimerRunning(false);
-      onComplete({
-        duration: elapsedTime, team1Wins: newSet1, team2Wins: newSet2, isForced: false,
-        pointLogs: updatedLogs, team1Name: team1Name || "TEAM 1", team2Name: team2Name || "TEAM 2"
-      });
+      onComplete({ duration: elapsedTime, team1Wins: newSet1, team2Wins: newSet2, isForced: false, pointLogs: updatedLogs, team1Name: team1Name || "TEAM 1", team2Name: team2Name });
     }
   };
 
@@ -360,8 +397,8 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
     const last = scoreHistory[scoreHistory.length - 1];
     setTeam1Score(last.t1Score); setTeam2Score(last.t2Score);
     setTeam1SetWins(last.t1Wins); setTeam2SetWins(last.t2Wins);
-    setScoreHistory(scoreHistory.slice(0, -1));
-    setPointLogs(pointLogs.slice(0, -1));
+    setScoreHistory(prev => prev.slice(0, -1));
+    setPointLogs(prev => prev.slice(0, -1));
   };
 
   const handleExitPress = () => {
@@ -371,7 +408,7 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
 
   const handleExitConfirm = (reason: 'injury' | 'etc' | 'cancel') => {
     setShowExitModal(false);
-    sendMessage({ type: 'GAME_END' });
+    safeSendMessage({ type: 'GAME_END' });
 
     if (reason === 'cancel') {
         onCancel();
@@ -380,7 +417,7 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
     onComplete({
       duration: elapsedTime, team1Wins: team1SetWins, team2Wins: team2SetWins,
       isForced: true, stopReason: reason, pointLogs: pointLogs,
-      team1Name: team1Name || "TEAM 1", team2Name: team2Name || "TEAM 2"
+      team1Name: team1Name || "TEAM 1", team2Name: team2Name
     });
   };
 
@@ -389,60 +426,174 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
     setIsTimerRunning(true);
   };
 
-  // --- Render Setup ---
-  if (isSetupMode) {
-    return (
-      <View style={{flex: 1, backgroundColor: '#0f172a'}}>
-        <InternalGameLoadingScreen visible={isLoading} onFinish={handleLoadingFinish} />
-
-        <StatusBar barStyle="light-content" backgroundColor="#1e293b" translucent={false} />
-        <LinearGradient colors={['#1e293b', '#0f172a']} style={{flex: 1}}>
-            <SafeAreaView style={{flex: 1}}>
-                <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{flex: 1}}>
-                    <ScrollView contentContainerStyle={{flexGrow: 1, padding: 24}}>
-                        <TouchableOpacity onPress={onCancel} style={styles.backButton}>
-                            <ArrowLeft size={28} color="#94a3b8" />
-                        </TouchableOpacity>
-                        <View style={{flex: 1, justifyContent: 'center', paddingBottom: 60}}>
-                            <View style={styles.setupHeader}>
-                                <Text style={styles.setupTitle}>MATCH SETUP</Text>
-                                <Text style={styles.setupSubtitle}>경기 참가자를 입력해주세요</Text>
-                                <View style={styles.noticeContainer}><Text style={styles.noticeText}>📌 위쪽 입력란이 상대편, 아래쪽 입력란이 내 편입니다.</Text></View>
-                            </View>
-                            <View style={styles.formCard}>
-                                <View style={styles.inputGroup}>
-                                    <View style={[styles.colorDot, { backgroundColor: '#34D399' }]} />
-                                    <View style={{flex: 1}}>
-                                        <Text style={[styles.label, {color:'#34D399'}]}>TEAM 1 (상대)</Text>
-                                        <TextInput style={styles.input} placeholder="팀 이름" placeholderTextColor="#64748b" value={team1Name} onChangeText={setTeam1Name} autoCorrect={false} />
-                                    </View>
-                                </View>
-                                <View style={styles.vsDivider}><View style={styles.line} /><Text style={styles.vsText}>VS</Text><View style={styles.line} /></View>
-                                <View style={styles.inputGroup}>
-                                    <View style={[styles.colorDot, { backgroundColor: '#38BDF8' }]} />
-                                    <View style={{flex: 1}}>
-                                        <Text style={[styles.label, {color:'#38BDF8'}]}>TEAM 2 (나)</Text>
-                                        <TextInput style={styles.input} placeholder="팀 이름" placeholderTextColor="#64748b" value={team2Name} onChangeText={setTeam2Name} autoCorrect={false} />
-                                    </View>
-                                </View>
-                            </View>
-                        </View>
-                        <TouchableOpacity style={styles.startButton} onPress={handleStartButtonPress}>
-                            <Text style={styles.startButtonText}>설정 완료</Text>
-                        </TouchableOpacity>
-                    </ScrollView>
-                </KeyboardAvoidingView>
-            </SafeAreaView>
-        </LinearGradient>
-      </View>
-    );
-  }
-
-  // --- Render Game ---
+  // --- RENDER ---
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#000000" translucent={false} />
+    <View style={{ flex: 1, backgroundColor: '#0f172a' }}>
 
+      {/* 화면 전체를 담당하는 조건부 렌더링 */}
+      {isSetupMode ? (
+        // === 1. 설정 화면 ===
+        <>
+            <StatusBar barStyle="light-content" backgroundColor="#1e293b" translucent={false} />
+            <LinearGradient colors={['#1e293b', '#0f172a']} style={{flex: 1}}>
+                <SafeAreaView style={{flex: 1}}>
+                    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{flex: 1}}>
+                        <ScrollView contentContainerStyle={{flexGrow: 1, padding: 24}}>
+                            <TouchableOpacity onPress={onCancel} style={styles.backButton}>
+                                <ArrowLeft size={28} color="#94a3b8" />
+                            </TouchableOpacity>
+                            <View style={{flex: 1, justifyContent: 'center', paddingBottom: 60}}>
+                                <View style={styles.setupHeader}>
+                                    <Text style={styles.setupTitle}>MATCH SETUP</Text>
+                                    <Text style={styles.setupSubtitle}>경기 참가자를 입력해주세요</Text>
+                                    <View style={styles.noticeContainer}><Text style={styles.noticeText}>📌 위쪽 입력란이 상대편, 아래쪽 입력란이 내 편입니다.</Text></View>
+                                </View>
+                                <View style={styles.formCard}>
+                                    <View style={styles.inputGroup}>
+                                        <View style={[styles.colorDot, { backgroundColor: '#34D399' }]} />
+                                        <View style={{flex: 1}}>
+                                            <Text style={[styles.label, {color:'#34D399'}]}>TEAM 1 (상대)</Text>
+                                            <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
+                                                <TextInput
+                                                    style={[styles.input, {flex: 1}]}
+                                                    placeholder="상대 이름 (직접 입력)"
+                                                    placeholderTextColor="#64748b"
+                                                    value={team1Name}
+                                                    onChangeText={setTeam1Name}
+                                                    autoCorrect={false}
+                                                />
+                                                <TouchableOpacity
+                                                    style={styles.friendSelectBtn}
+                                                    onPress={() => setIsFriendModalVisible(true)}
+                                                    activeOpacity={0.8}
+                                                >
+                                                    <Users size={20} color="#34D399" />
+                                                </TouchableOpacity>
+                                            </View>
+                                        </View>
+                                    </View>
+                                    <View style={styles.vsDivider}><View style={styles.line} /><Text style={styles.vsText}>VS</Text><View style={styles.line} /></View>
+                                    <View style={styles.inputGroup}>
+                                        <View style={[styles.colorDot, { backgroundColor: '#38BDF8' }]} />
+                                        <View style={{flex: 1}}>
+                                            <Text style={[styles.label, {color:'#38BDF8'}]}>TEAM 2 (나)</Text>
+                                            {/* 내 정보는 수정 불가 */}
+                                            <TextInput
+                                                style={[styles.input, { color: '#94a3b8', backgroundColor: '#1e293b' }]}
+                                                placeholder="내 이름 불러오는 중..."
+                                                placeholderTextColor="#64748b"
+                                                value={team2Name}
+                                                editable={false}
+                                                autoCorrect={false}
+                                            />
+                                        </View>
+                                    </View>
+                                </View>
+                            </View>
+                            <TouchableOpacity style={styles.startButton} onPress={handleStartButtonPress}>
+                                <Text style={styles.startButtonText}>설정 완료</Text>
+                            </TouchableOpacity>
+                        </ScrollView>
+                    </KeyboardAvoidingView>
+                </SafeAreaView>
+            </LinearGradient>
+        </>
+      ) : (
+        // === 2. 경기 모드 화면 ===
+        <SafeAreaView style={styles.container}>
+            <StatusBar barStyle="light-content" backgroundColor="#000000" translucent={false} />
+
+            {showWatchGuide && (
+                <Animated.View style={[styles.watchGuideContainer, { opacity: guideOpacity }]} pointerEvents="none">
+                    <View style={styles.watchGuideContent}>
+                        <Watch size={24} color="#34D399" />
+                        <Text style={styles.watchGuideText}>워치 연결됨! 터치하여 득점 기록</Text>
+                    </View>
+                </Animated.View>
+            )}
+
+            <View style={styles.gameContainer}>
+                {/* Team 1 Area */}
+                <LinearGradient colors={['#6EE7B7', '#34D399']} style={styles.scoreArea}>
+                    <View style={styles.inGameHeader}>
+                        <TouchableOpacity onPress={handleExitPress} style={styles.iconButton}><ArrowLeft size={24} color="rgba(255,255,255,0.8)" /></TouchableOpacity>
+                        <View style={styles.timerBadge}><Text style={styles.timerText}>{formatTime(elapsedTime)}</Text></View>
+                        <View style={{width: 24}} />
+                    </View>
+                    <TouchableOpacity style={styles.scoreTouchArea} onPress={() => handleScore('team1')} activeOpacity={0.8}>
+                        <View style={styles.playerBadge}><Text style={styles.playerName}>{team1Name || "TEAM 1"}</Text></View>
+                        <Text style={styles.bigScore}>{team1Score}</Text>
+                        <View style={styles.setScoreContainer}><Text style={styles.setScoreLabel}>SET SCORE</Text><Text style={styles.setScoreValue}>{team1SetWins}</Text></View>
+                    </TouchableOpacity>
+                </LinearGradient>
+
+                {/* Team 2 Area */}
+                <LinearGradient colors={['#38BDF8', '#22D3EE']} style={styles.scoreArea}>
+                    <TouchableOpacity style={styles.scoreTouchArea} onPress={() => handleScore('team2')} activeOpacity={0.8}>
+                        <View style={styles.setScoreContainerTop}><Text style={styles.setScoreLabel}>SET SCORE</Text><Text style={styles.setScoreValue}>{team2SetWins}</Text></View>
+                        <Text style={styles.bigScore}>{team2Score}</Text>
+                        <View style={styles.playerBadge}><Text style={styles.playerName}>{team2Name}</Text></View>
+                    </TouchableOpacity>
+
+                    <View style={styles.controlsBar}>
+                        <TouchableOpacity
+                            onPress={handleUndo}
+                            style={styles.controlButtonSide}
+                            disabled={scoreHistory.length === 0}
+                            hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}
+                        >
+                            <RotateCcw size={28} color={scoreHistory.length === 0 ? "rgba(255,255,255,0.4)" : "white"} />
+                            <Text style={[styles.controlLabel, scoreHistory.length === 0 && {opacity: 0.4}]}>되돌리기</Text>
+                        </TouchableOpacity>
+                        <View style={{flex: 1}} />
+                        <TouchableOpacity
+                            onPress={() => setIsTimerRunning(!isTimerRunning)}
+                            style={styles.controlButtonSide}
+                            hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}
+                        >
+                            {isTimerRunning ? <Pause size={32} color="white" fill="white" /> : <Play size={32} color="white" fill="white" />}
+                            <Text style={styles.controlLabel}>{isTimerRunning ? "일시정지" : "계속하기"}</Text>
+                        </TouchableOpacity>
+                    </View>
+                </LinearGradient>
+            </View>
+        </SafeAreaView>
+      )}
+
+      {/* === 3. 모든 모달 영역 (가장 바깥으로 빼어 안전하게 렌더링 보장) === */}
+
+      {/* 3-1. 로딩 모달 */}
+      <InternalGameLoadingScreen visible={isLoading} onFinish={handleLoadingFinish} />
+
+      {/* 3-2. 친구 목록 불러오기 모달 */}
+      <Modal visible={isFriendModalVisible} transparent={true} animationType="fade" onRequestClose={() => setIsFriendModalVisible(false)}>
+        <View style={styles.friendModalOverlay}>
+            <View style={styles.friendModalContent}>
+                <View style={styles.friendModalHeader}>
+                    <Text style={styles.friendModalTitle}>친구 목록에서 불러오기</Text>
+                    <TouchableOpacity onPress={() => setIsFriendModalVisible(false)}>
+                        <X size={24} color="#94a3b8" />
+                    </TouchableOpacity>
+                </View>
+                <FlatList
+                    data={friendsList}
+                    keyExtractor={item => item.id}
+                    renderItem={({item}) => (
+                        <TouchableOpacity style={styles.friendItem} onPress={() => {
+                            setTeam1Name(item.name);
+                            setIsFriendModalVisible(false);
+                        }}>
+                            <Image source={item.avatar} style={styles.friendAvatar} />
+                            <Text style={styles.friendNameText}>{item.name}</Text>
+                        </TouchableOpacity>
+                    )}
+                    ListEmptyComponent={<Text style={styles.emptyFriendText}>등록된 친구가 없습니다.</Text>}
+                />
+            </View>
+        </View>
+      </Modal>
+
+      {/* 3-3. 경기 중단 모달 */}
       <Modal visible={showExitModal} transparent={true} animationType="fade" onRequestClose={handleResume}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -469,62 +620,7 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
         </View>
       </Modal>
 
-      {/* 워치 가이드 */}
-      {showWatchGuide && (
-        <Animated.View style={[styles.watchGuideContainer, { opacity: guideOpacity }]} pointerEvents="none">
-            <View style={styles.watchGuideContent}>
-                <Watch size={24} color="#34D399" />
-                <Text style={styles.watchGuideText}>워치 연결됨! 터치하여 득점 기록</Text>
-            </View>
-        </Animated.View>
-      )}
-
-      <View style={styles.gameContainer}>
-        {/* Team 1 Area */}
-        <LinearGradient colors={['#6EE7B7', '#34D399']} style={styles.scoreArea}>
-            <View style={styles.inGameHeader}>
-                <TouchableOpacity onPress={handleExitPress} style={styles.iconButton}><ArrowLeft size={24} color="rgba(255,255,255,0.8)" /></TouchableOpacity>
-                <View style={styles.timerBadge}><Text style={styles.timerText}>{formatTime(elapsedTime)}</Text></View>
-                <View style={{width: 24}} />
-            </View>
-            <TouchableOpacity style={styles.scoreTouchArea} onPress={() => handleScore('team1')} activeOpacity={0.8}>
-                <View style={styles.playerBadge}><Text style={styles.playerName}>{team1Name || "TEAM 1"}</Text></View>
-                <Text style={styles.bigScore}>{team1Score}</Text>
-                <View style={styles.setScoreContainer}><Text style={styles.setScoreLabel}>SET SCORE</Text><Text style={styles.setScoreValue}>{team1SetWins}</Text></View>
-            </TouchableOpacity>
-        </LinearGradient>
-
-        {/* Team 2 Area */}
-        <LinearGradient colors={['#38BDF8', '#22D3EE']} style={styles.scoreArea}>
-            <TouchableOpacity style={styles.scoreTouchArea} onPress={() => handleScore('team2')} activeOpacity={0.8}>
-                <View style={styles.setScoreContainerTop}><Text style={styles.setScoreLabel}>SET SCORE</Text><Text style={styles.setScoreValue}>{team2SetWins}</Text></View>
-                <Text style={styles.bigScore}>{team2Score}</Text>
-                <View style={styles.playerBadge}><Text style={styles.playerName}>{team2Name || "TEAM 2"}</Text></View>
-            </TouchableOpacity>
-
-            <View style={styles.controlsBar}>
-                <TouchableOpacity
-                    onPress={handleUndo}
-                    style={styles.controlButtonSide}
-                    disabled={scoreHistory.length === 0}
-                    hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}
-                >
-                    <RotateCcw size={28} color={scoreHistory.length === 0 ? "rgba(255,255,255,0.4)" : "white"} />
-                    <Text style={[styles.controlLabel, scoreHistory.length === 0 && {opacity: 0.4}]}>되돌리기</Text>
-                </TouchableOpacity>
-                <View style={{flex: 1}} />
-                <TouchableOpacity
-                    onPress={() => setIsTimerRunning(!isTimerRunning)}
-                    style={styles.controlButtonSide}
-                    hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}
-                >
-                    {isTimerRunning ? <Pause size={32} color="white" fill="white" /> : <Play size={32} color="white" fill="white" />}
-                    <Text style={styles.controlLabel}>{isTimerRunning ? "일시정지" : "계속하기"}</Text>
-                </TouchableOpacity>
-            </View>
-        </LinearGradient>
-      </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -543,11 +639,21 @@ const styles = StyleSheet.create({
   colorDot: { width: 12, height: 12, borderRadius: 6, marginTop: 6 },
   label: { fontSize: 14, fontWeight: 'bold', marginBottom: 8, letterSpacing: 1 },
   input: { backgroundColor: '#0f172a', borderRadius: 12, padding: 16, color: 'white', fontSize: 18, borderWidth: 1, borderColor: '#334155' },
+  friendSelectBtn: { backgroundColor: '#1e293b', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#334155', justifyContent: 'center', alignItems: 'center' },
   vsDivider: { flexDirection: 'row', alignItems: 'center', marginVertical: 24 },
   line: { flex: 1, height: 1, backgroundColor: '#334155' },
   vsText: { color: '#64748b', fontWeight: 'bold', marginHorizontal: 16, fontSize: 14 },
   startButton: { backgroundColor: 'white', padding: 20, borderRadius: 16, alignItems: 'center', marginTop: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4.65, elevation: 8 },
   startButtonText: { color: '#0f172a', fontSize: 18, fontWeight: 'bold' },
+  // Friend Modal Styles
+  friendModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  friendModalContent: { backgroundColor: '#1e293b', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '70%' },
+  friendModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  friendModalTitle: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  friendItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#334155' },
+  friendAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 12, backgroundColor: '#0f172a' },
+  friendNameText: { color: 'white', fontSize: 16, fontWeight: '600' },
+  emptyFriendText: { color: '#94a3b8', textAlign: 'center', paddingVertical: 40, fontSize: 14 },
   // Game Styles
   scoreArea: { flex: 1 },
   inGameHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 10, marginBottom: 10 },
