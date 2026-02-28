@@ -13,9 +13,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { MessageCircleMore, UserPlus, UserMinus, Siren, Ban } from 'lucide-react-native';
 
-// Firebase 웹 SDK
-import { getFirestore, doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, setDoc, deleteDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 
 interface UserProfile {
   id: string;
@@ -32,18 +30,24 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   userProfile: UserProfile | null;
-  relationType: 'friend' | 'opponent';
+  currentUser?: any; // 부모로부터 전달받음
 }
 
-const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile, relationType = 'opponent' }) => {
+const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile, currentUser }) => {
   const navigation = useNavigation<any>();
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isAlreadyFriend, setIsAlreadyFriend] = useState(false);
 
+  // 모달이 열릴 때마다 DB에서 이미 친구인지 확인
   useEffect(() => {
-    const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, user => setCurrentUser(user));
-    return () => unsubscribe();
-  }, []);
+    if (visible && currentUser && userProfile && userProfile.id !== 'bot') {
+      const checkFriendStatus = async () => {
+        const db = getFirestore();
+        const friendDoc = await getDoc(doc(db, 'users', currentUser.uid, 'friends', userProfile.id));
+        setIsAlreadyFriend(friendDoc.exists());
+      };
+      checkFriendStatus();
+    }
+  }, [visible, currentUser, userProfile]);
 
   if (!userProfile) return null;
 
@@ -62,10 +66,11 @@ const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile, 
     try {
       const db = getFirestore();
       await setDoc(doc(db, 'users', currentUser.uid, 'friends', userProfile.id), {
-        addedAt: serverTimestamp()
+        addedAt: serverTimestamp(),
+        name: userProfile.name
       });
+      setIsAlreadyFriend(true);
       Alert.alert("친구 추가", `${userProfile.name}님을 친구로 추가했습니다.`);
-      onClose();
     } catch (error) {
       console.error("친구 추가 실패:", error);
       Alert.alert("오류", "친구 추가 중 문제가 발생했습니다.");
@@ -83,8 +88,9 @@ const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile, 
           try {
             const db = getFirestore();
             await deleteDoc(doc(db, 'users', currentUser.uid, 'friends', userProfile.id));
+            setIsAlreadyFriend(false);
             Alert.alert("삭제 완료", "친구 목록에서 삭제되었습니다.");
-            onClose();
+            onClose(); // 삭제 후 닫기
           } catch (error) {
             console.error("친구 삭제 실패:", error);
             Alert.alert("오류", "삭제 중 문제가 발생했습니다.");
@@ -145,7 +151,8 @@ const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile, 
                       <Text style={styles.mainActionText}>1:1 대화하기</Text>
                     </View>
                   </TouchableOpacity>
-                ) : relationType === 'friend' ? (
+                ) : isAlreadyFriend ? (
+                  // 이미 친구인 경우: 1:1 대화 및 친구 삭제 노출
                   <>
                     <TouchableOpacity style={styles.mainActionButton} onPress={handleChat}>
                       <View style={styles.iconRow}>
@@ -162,6 +169,7 @@ const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile, 
                     </TouchableOpacity>
                   </>
                 ) : (
+                  // 친구가 아닌 경우: 친구 추가 노출
                   <>
                     <TouchableOpacity style={styles.mainActionButton} onPress={handleAddFriend}>
                       <View style={styles.iconRow}>

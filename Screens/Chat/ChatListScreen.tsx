@@ -18,7 +18,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { Users, MessageCircle, Plus, X, Search, Phone } from 'lucide-react-native';
 
-import { getFirestore, collection, onSnapshot, query, where, orderBy, getDocs, doc, setDoc, getDoc, serverTimestamp, collectionGroup } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, query, where, orderBy, getDocs, doc, setDoc, getDoc, serverTimestamp, collectionGroup, updateDoc, arrayRemove, deleteDoc } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
 import OpponentProfileModal from './OpponentProfileModal';
@@ -39,7 +39,6 @@ export default function ChatListScreen() {
   const [viewMode, setViewMode] = useState<'chat' | 'friends'>('chat');
   const [selectedProfile, setSelectedProfile] = useState<any>(null);
   const [isModalVisible, setModalVisible] = useState(false);
-  const [modalType, setModalType] = useState<'friend' | 'opponent'>('opponent');
 
   const [isAddFriendVisible, setAddFriendVisible] = useState(false);
   const [addFriendMode, setAddFriendMode] = useState<'nickname' | 'phone'>('nickname');
@@ -53,7 +52,7 @@ export default function ChatListScreen() {
     return () => unsubscribe();
   }, []);
 
-  // 채팅방 목록 불러오기 (실시간 동기화 개선)
+  // 채팅방 목록 불러오기
   useEffect(() => {
     if (!currentUser) return;
     const db = getFirestore();
@@ -68,8 +67,6 @@ export default function ChatListScreen() {
 
       const roomsPromises = snapshot.docs.map(async (docSnap) => {
         const data = docSnap.data();
-
-        // 중요: 참가자 배열에서 '나'를 제외한 상대방 ID 찾기
         const opponentId = data.participants.find((id: string) => id !== currentUser.uid) || currentUser.uid;
 
         if (opponentId === 'bot') hasBotRoom = true;
@@ -80,11 +77,9 @@ export default function ChatListScreen() {
         const ampm = hours >= 12 ? '오후' : '오전';
         const formattedTime = `${ampm} ${hours % 12 || 12}:${minutes}`;
 
-        // participantDetails에 상대방 정보가 저장되어 있다면 우선적으로 사용
         let finalOpponentName = data.participantDetails?.[opponentId]?.name;
         let finalAvatarUrl = data.participantDetails?.[opponentId]?.avatarUrl;
 
-        // DB에 저장된 이름이 없거나, 1:1 채팅인데 누락된 경우 직접 유저 프로필 탐색
         if (!finalOpponentName || finalOpponentName === '알 수 없음') {
              try {
                  const profileDocInfo = await getDoc(doc(db, 'artifacts', 'rally-app-main', 'users', opponentId, 'profile', 'info'));
@@ -104,15 +99,16 @@ export default function ChatListScreen() {
 
         return {
           id: docSnap.id,
-          // 1:1 대화면 상대방 이름을 타이틀로, 아니면 방 이름 사용
           matchTitle: data.type === 'direct' ? finalOpponentName : (data.matchTitle || '채팅방'),
           opponentId: opponentId,
           opponentName: finalOpponentName || (opponentId === 'bot' ? '랠리 AI 챗봇' : '이름 없음'),
           lastMessage: data.lastMessage || '',
           time: formattedTime,
+          // 안 읽은 메시지 갯수 (내 UID 기준)
           unreadCount: data.unreadCount?.[currentUser.uid] || 0,
           avatar: avatarSource,
           type: data.type || 'match',
+          participants: data.participants
         };
       });
 
@@ -137,6 +133,7 @@ export default function ChatListScreen() {
     return () => unsubscribe();
   }, [currentUser]);
 
+  // 친구 목록 불러오기 (티어 정보 일치)
   useEffect(() => {
     if (!currentUser) return;
     const db = getFirestore();
@@ -176,7 +173,6 @@ export default function ChatListScreen() {
 
   const handleFriendPress = (friend: any) => {
     setSelectedProfile(friend);
-    setModalType('friend');
     setModalVisible(true);
   };
 
@@ -187,6 +183,36 @@ export default function ChatListScreen() {
       opponentName: room.opponentName,
       opponentId: room.opponentId,
     });
+  };
+
+  // 채팅방 나가기 (Long Press)
+  const handleRoomLongPress = (room: any) => {
+    if (room.id === 'new_bot_chat') return; // 기본 봇 방은 삭제 불가
+
+    Alert.alert('채팅방 나가기', `'${room.matchTitle}' 방을 나가시겠습니까? 나간 방의 대화 내용은 복구할 수 없습니다.`, [
+      { text: '취소', style: 'cancel' },
+      { text: '나가기', style: 'destructive', onPress: () => leaveChatRoom(room) }
+    ]);
+  };
+
+  const leaveChatRoom = async (room: any) => {
+    try {
+      const db = getFirestore();
+      const roomRef = doc(db, 'chats', room.id);
+
+      if (room.participants.length <= 1) {
+        // 혼자 남은 방이면 문서 자체를 삭제
+        await deleteDoc(roomRef);
+      } else {
+        // 나만 빠져나가기
+        await updateDoc(roomRef, {
+          participants: arrayRemove(currentUser.uid)
+        });
+      }
+    } catch (e) {
+      console.error('방 나가기 오류:', e);
+      Alert.alert('오류', '방을 나가는 중 문제가 발생했습니다.');
+    }
   };
 
   const handleAddFriend = async () => {
@@ -275,7 +301,13 @@ export default function ChatListScreen() {
              <View style={{padding: 40, alignItems: 'center'}}><Text style={{color: '#6B7280'}}>진행 중인 대화가 없습니다.</Text></View>
           ) : (
             chatRooms.map((room) => (
-              <TouchableOpacity key={room.id} style={styles.itemContainer} activeOpacity={0.7} onPress={() => handleRoomPress(room)}>
+              <TouchableOpacity
+                key={room.id}
+                style={styles.itemContainer}
+                activeOpacity={0.7}
+                onPress={() => handleRoomPress(room)}
+                onLongPress={() => handleRoomLongPress(room)}
+              >
                 <Image source={room.avatar} style={styles.avatar} />
                 <View style={styles.contentContainer}>
                   <View style={styles.topRow}>
@@ -287,6 +319,7 @@ export default function ChatListScreen() {
                       <Text style={styles.senderName}>{room.opponentName}: </Text>
                       {room.lastMessage}
                     </Text>
+                    {/* 안 읽은 메시지 배지 노출 */}
                     {room.unreadCount > 0 && (
                       <View style={styles.unreadBadge}>
                         <Text style={styles.unreadText}>{room.unreadCount}</Text>
@@ -322,11 +355,12 @@ export default function ChatListScreen() {
         </TouchableOpacity>
       )}
 
+      {/* 모달에 현재 유저 정보 함께 전달 */}
       <OpponentProfileModal
         visible={isModalVisible}
         onClose={() => setModalVisible(false)}
         userProfile={selectedProfile}
-        relationType={modalType}
+        currentUser={currentUser}
       />
 
       <Modal animationType="fade" transparent={true} visible={isAddFriendVisible} onRequestClose={() => setAddFriendVisible(false)}>

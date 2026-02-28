@@ -8,13 +8,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   FlatList,
-  Image
+  Image,
+  Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { ArrowLeft, Send } from 'lucide-react-native';
+import { ArrowLeft, Send, MoreVertical } from 'lucide-react-native';
 
-import { getFirestore, collection, onSnapshot, addDoc, updateDoc, doc, query, where, orderBy, serverTimestamp, getDoc, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, addDoc, updateDoc, doc, query, where, orderBy, serverTimestamp, getDoc, getDocs, arrayRemove, deleteDoc, increment } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
 import OpponentProfileModal from './OpponentProfileModal';
@@ -42,6 +43,7 @@ export default function ChatRoomScreen() {
 
   const flatListRef = useRef<FlatList>(null);
   const [isModalVisible, setModalVisible] = useState(false);
+  const [showMenu, setShowMenu] = useState(false); // 우측 상단 메뉴 상태
 
   useEffect(() => {
     const auth = getAuth();
@@ -49,7 +51,7 @@ export default function ChatRoomScreen() {
     return () => unsubscribe();
   }, []);
 
-  // 1:1 채팅 중복 생성 방지: participants에 두 사람 모두 포함된 방 찾기
+  // 1:1 채팅 중복 생성 방지
   useEffect(() => {
     if (currentRoomId === 'new_chat' && currentUser && opponentId && opponentId !== 'bot') {
       const findExistingDirectRoom = async () => {
@@ -58,17 +60,27 @@ export default function ChatRoomScreen() {
         const snap = await getDocs(q);
         const existingRoom = snap.docs.find(d => {
           const data = d.data();
-          // 타입이 direct이고, 참가자 배열에 상대방도 포함되어 있는지 확인
           return data.type === 'direct' && data.participants.includes(opponentId);
         });
 
-        if (existingRoom) {
-          setCurrentRoomId(existingRoom.id);
-        }
+        if (existingRoom) setCurrentRoomId(existingRoom.id);
       };
       findExistingDirectRoom();
     }
   }, [currentRoomId, currentUser, opponentId]);
+
+  // 안 읽은 메시지(unreadCount) 0으로 초기화
+  useEffect(() => {
+    if (currentRoomId && currentRoomId !== 'new_chat' && currentRoomId !== 'new_bot_chat' && currentUser) {
+        const resetUnreadCount = async () => {
+            const db = getFirestore();
+            await updateDoc(doc(db, 'chats', currentRoomId), {
+                [`unreadCount.${currentUser.uid}`]: 0
+            });
+        };
+        resetUnreadCount();
+    }
+  }, [currentRoomId, currentUser]);
 
   const generateBotResponse = (msg: string) => {
     const lowerMsg = msg.toLowerCase();
@@ -93,18 +105,11 @@ export default function ChatRoomScreen() {
     return "죄송합니다. 랠리 시스템이나 배드민턴과 관련된 질문을 남겨주시면 최선을 다해 답변해 드릴게요!";
   };
 
-  // 상대방 프로필 정보 가져오기
+  // 상대방 프로필 정보 가져오기 (티어 등 정확하게)
   useEffect(() => {
     if (opponentId === 'bot') {
       setOpponentProfile({
-        id: 'bot',
-        name: '랠리 AI 챗봇',
-        location: '랠리 공식 고객센터',
-        tier: 'AI Master',
-        win: 999,
-        loss: 0,
-        mannerScore: 5.0,
-        avatar: require('../../assets/images/rally-logo.png'),
+        id: 'bot', name: '랠리 AI 챗봇', location: '랠리 공식 고객센터', tier: 'AI Master', win: 999, loss: 0, mannerScore: 5.0, avatar: require('../../assets/images/rally-logo.png'),
       });
       return;
     }
@@ -139,19 +144,16 @@ export default function ChatRoomScreen() {
     fetchOpponentProfile();
   }, [opponentId, opponentName]);
 
-  // 메시지 리스너
+  // 메시지 실시간 로드
   useEffect(() => {
     if (!currentRoomId || currentRoomId === 'new_chat' || currentRoomId === 'new_bot_chat' || !currentUser) {
        if (opponentId === 'bot') {
          setMessages([{
            id: 'welcome_bot_msg',
            text: '안녕하세요! 랠리 공식 AI 챗봇입니다.\n\n앱 사용법, RMR 시스템의 원리, 배드민턴 규칙 등 궁금한 점이 있다면 언제든지 편하게 질문해 주세요! 😊',
-           sender: 'other',
-           time: '안내'
+           sender: 'other', time: '안내'
          }]);
-       } else {
-         setMessages([]);
-       }
+       } else setMessages([]);
        return;
     }
 
@@ -167,35 +169,29 @@ export default function ChatRoomScreen() {
         const ampm = hours >= 12 ? '오후' : '오전';
 
         return {
-          id: docSnap.id,
-          text: data.text,
+          id: docSnap.id, text: data.text,
           sender: data.senderId === currentUser.uid ? 'me' : 'other',
           time: `${ampm} ${hours % 12 || 12}:${minutes}`,
         };
       });
 
       if (opponentId === 'bot') {
-         msgs.unshift({
-           id: 'welcome_bot_msg',
-           text: '안녕하세요! 랠리 공식 AI 챗봇입니다.\n\n앱 사용법, RMR 시스템의 원리, 배드민턴 규칙 등 궁금한 점이 있다면 언제든지 편하게 질문해 주세요! 😊',
-           sender: 'other',
-           time: '안내'
-         });
+         msgs.unshift({ id: 'welcome_bot_msg', text: '안녕하세요! 랠리 공식 AI 챗봇입니다.\n\n앱 사용법, RMR 시스템의 원리, 배드민턴 규칙 등 궁금한 점이 있다면 언제든지 편하게 질문해 주세요! 😊', sender: 'other', time: '안내' });
       }
 
       setMessages(msgs);
+      // 메시지가 올 때마다 내가 보고 있는 방이면 내 unreadCount 다시 0으로
+      updateDoc(doc(db, 'chats', currentRoomId), { [`unreadCount.${currentUser.uid}`]: 0 }).catch(()=>{});
     });
 
     return () => unsubscribe();
   }, [currentRoomId, currentUser, opponentId]);
 
   useEffect(() => {
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 200);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200);
   }, [messages]);
 
-  // 메시지 전송 (방 생성 및 양방향 정보 저장 핵심 수정부)
+  // 메시지 전송 로직 (배지 카운트 증가 포함)
   const sendMessage = async () => {
     if (text.trim().length === 0 || !currentUser) return;
     const db = getFirestore();
@@ -203,18 +199,6 @@ export default function ChatRoomScreen() {
     const userMsg = text.trim();
 
     try {
-      // 새 채팅방 전송 직전에 한 번 더 체크 (경쟁 조건 방지)
-      if (targetRoomId === 'new_chat' && opponentId !== 'bot') {
-          const q = query(collection(db, 'chats'), where('participants', 'array-contains', currentUser.uid));
-          const snap = await getDocs(q);
-          const existing = snap.docs.find(d => d.data().type === 'direct' && d.data().participants.includes(opponentId));
-          if (existing) {
-              targetRoomId = existing.id;
-              setCurrentRoomId(targetRoomId);
-          }
-      }
-
-      // 방이 없을 경우 최초 방 생성 (participantDetails를 양쪽 모두 완벽히 구성)
       if (targetRoomId === 'new_chat' || targetRoomId === 'new_bot_chat') {
         let myName = currentUser.displayName || '나';
         let myAvatar = currentUser.photoURL || null;
@@ -228,55 +212,82 @@ export default function ChatRoomScreen() {
 
         const roomRef = await addDoc(collection(db, 'chats'), {
           matchTitle: opponentId === 'bot' ? '랠리 공식 AI' : '1:1 대화',
-          // 중요: 배열에 정확히 2명의 UID가 들어가야 양쪽의 ChatList에 노출됨
           participants: [currentUser.uid, opponentId],
           participantDetails: {
             [currentUser.uid]: { name: myName, avatarUrl: myAvatar },
             [opponentId]: { name: opponentProfile.name, avatarUrl: opponentProfile.avatar?.uri || null }
           },
+          // 나 외의 상대방의 unreadCount 1로 시작
+          unreadCount: { [opponentId]: 1, [currentUser.uid]: 0 },
           updatedAt: serverTimestamp(),
           lastMessage: userMsg,
           type: opponentId === 'bot' ? 'bot' : 'direct'
         });
         targetRoomId = roomRef.id;
         setCurrentRoomId(targetRoomId);
+      } else {
+         // 기존 방일 경우, 상대방의 unreadCount +1 증가
+         const roomDoc = await getDoc(doc(db, 'chats', targetRoomId));
+         if (roomDoc.exists()) {
+             const participants = roomDoc.data().participants;
+             const updates: any = {
+                lastMessage: userMsg,
+                updatedAt: serverTimestamp()
+             };
+             participants.forEach((pId: string) => {
+                 if (pId !== currentUser.uid) updates[`unreadCount.${pId}`] = increment(1);
+             });
+             await updateDoc(doc(db, 'chats', targetRoomId), updates);
+         }
       }
 
       await addDoc(collection(db, 'chats', targetRoomId, 'messages'), {
-        text: userMsg,
-        senderId: currentUser.uid,
-        createdAt: serverTimestamp()
+        text: userMsg, senderId: currentUser.uid, createdAt: serverTimestamp()
       });
-
-      if (targetRoomId !== 'new_chat' && targetRoomId !== 'new_bot_chat') {
-        await updateDoc(doc(db, 'chats', targetRoomId), {
-          lastMessage: userMsg,
-          updatedAt: serverTimestamp()
-        });
-      }
       setText('');
 
       if (opponentId === 'bot') {
         setTimeout(async () => {
           try {
             const botReply = generateBotResponse(userMsg);
-            await addDoc(collection(db, 'chats', targetRoomId, 'messages'), {
-              text: botReply,
-              senderId: 'bot',
-              createdAt: serverTimestamp()
-            });
-            await updateDoc(doc(db, 'chats', targetRoomId), {
-              lastMessage: botReply,
-              updatedAt: serverTimestamp()
-            });
-          } catch (e) {
-            console.error("챗봇 응답 실패", e);
-          }
+            await addDoc(collection(db, 'chats', targetRoomId, 'messages'), { text: botReply, senderId: 'bot', createdAt: serverTimestamp() });
+            // 봇이 보낼 때 내 unreadCount를 올릴 필요는 없음 (보고 있으니까)
+            await updateDoc(doc(db, 'chats', targetRoomId), { lastMessage: botReply, updatedAt: serverTimestamp() });
+          } catch (e) { console.error("챗봇 응답 실패", e); }
         }, 1500);
       }
     } catch (error) {
       console.error("메시지 전송 실패:", error);
     }
+  };
+
+  // 우측 상단 옵션: 방 나가기
+  const handleLeaveRoom = () => {
+    setShowMenu(false);
+    Alert.alert('채팅방 나가기', '방을 나가면 대화 내용이 모두 사라집니다. 정말 나가시겠습니까?', [
+      { text: '취소', style: 'cancel' },
+      { text: '나가기', style: 'destructive', onPress: async () => {
+          if (!currentRoomId || currentRoomId === 'new_chat' || currentRoomId === 'new_bot_chat') {
+              navigation.goBack(); return;
+          }
+          try {
+              const db = getFirestore();
+              const roomRef = doc(db, 'chats', currentRoomId);
+              const roomDoc = await getDoc(roomRef);
+              if (roomDoc.exists()) {
+                  const currentParticipants = roomDoc.data().participants || [];
+                  if (currentParticipants.length <= 1) {
+                      await deleteDoc(roomRef); // 나 혼자면 완전 삭제
+                  } else {
+                      await updateDoc(roomRef, { participants: arrayRemove(currentUser.uid) }); // 배열에서 나만 빼기
+                  }
+              }
+              navigation.goBack();
+          } catch (e) {
+              Alert.alert('오류', '방을 나가는 데 실패했습니다.');
+          }
+      }}
+    ]);
   };
 
   const renderItem = ({ item }: { item: any }) => {
@@ -290,9 +301,7 @@ export default function ChatRoomScreen() {
         )}
         <View style={{ maxWidth: '70%', alignItems: isMe ? 'flex-end' : 'flex-start' }}>
           <View style={[styles.bubble, isMe ? styles.bubbleRight : styles.bubbleLeft]}>
-            <Text style={[styles.msgText, isMe ? styles.msgTextRight : styles.msgTextLeft]}>
-              {item.text}
-            </Text>
+            <Text style={[styles.msgText, isMe ? styles.msgTextRight : styles.msgTextLeft]}>{item.text}</Text>
           </View>
           <Text style={styles.timeText}>{item.time}</Text>
         </View>
@@ -310,8 +319,29 @@ export default function ChatRoomScreen() {
             <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
             <Text style={styles.headerSubTitle} numberOfLines={1}>{opponentName}</Text>
         </View>
-        <View style={{ width: 40 }} />
+        <View style={{ width: 40, alignItems: 'flex-end' }}>
+            {opponentId !== 'bot' && (
+              <TouchableOpacity onPress={() => setShowMenu(!showMenu)} style={{padding: 8}}>
+                <MoreVertical color="white" size={20} />
+              </TouchableOpacity>
+            )}
+        </View>
       </View>
+
+      {/* 우측 상단 옵션 메뉴 팝업 */}
+      {showMenu && (
+          <TouchableOpacity
+              style={styles.menuOverlay}
+              activeOpacity={1}
+              onPress={() => setShowMenu(false)}
+          >
+              <View style={styles.menuBox}>
+                  <TouchableOpacity style={styles.menuItem} onPress={handleLeaveRoom}>
+                      <Text style={styles.menuTextDestructive}>채팅방 나가기</Text>
+                  </TouchableOpacity>
+              </View>
+          </TouchableOpacity>
+      )}
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <FlatList
@@ -344,7 +374,7 @@ export default function ChatRoomScreen() {
         visible={isModalVisible}
         onClose={() => setModalVisible(false)}
         userProfile={opponentProfile}
-        relationType="opponent"
+        currentUser={currentUser} // 추가
       />
     </SafeAreaView>
   );
@@ -352,7 +382,7 @@ export default function ChatRoomScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111827' },
-  header: { height: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, backgroundColor: '#1F2937', borderBottomWidth: 1, borderBottomColor: '#374151' },
+  header: { height: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, backgroundColor: '#1F2937', borderBottomWidth: 1, borderBottomColor: '#374151', zIndex: 10 },
   backBtn: { padding: 12 },
   headerInfo: { flex: 1, alignItems: 'center' },
   headerTitle: { fontSize: 17, fontWeight: 'bold', color: 'white' },
@@ -374,4 +404,9 @@ const styles = StyleSheet.create({
   input: { flex: 1, minHeight: 40, maxHeight: 100, backgroundColor: '#374151', borderRadius: 20, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, color: 'white', marginRight: 10, textAlignVertical: 'center' },
   sendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#34D399', justifyContent: 'center', alignItems: 'center', marginBottom: 0 },
   sendBtnDisabled: { backgroundColor: '#4B5563', opacity: 0.5 },
+  // 옵션 메뉴 스타일
+  menuOverlay: { position: 'absolute', top: 60, left: 0, right: 0, bottom: 0, zIndex: 100 },
+  menuBox: { position: 'absolute', top: 5, right: 15, backgroundColor: '#1F2937', borderRadius: 8, padding: 5, elevation: 5, borderWidth: 1, borderColor: '#374151' },
+  menuItem: { paddingVertical: 12, paddingHorizontal: 20 },
+  menuTextDestructive: { color: '#EF4444', fontSize: 15, fontWeight: 'bold' }
 });
