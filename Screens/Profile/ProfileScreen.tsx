@@ -424,8 +424,8 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
                     if (isTarget) {
                       const diff = level.minRmr - user.rmr;
                       if (isCurrent) { line1 = `◀ ${level.name} (현재 ${user.rmr}점)`; line2 = `   구간: ${level.minRmr} ~ ${TIER_LEVELS[index - 1]?.minRmr - 1 || 'MAX'}점`; labelColor = '#34D399'; }
-                      else if (diff > 0) { line1 = `◀ ${level.name} (컷: ${level.minRmr}점)`; line2 = `   승급까지 +${diff}점 필요`; labelColor = '#F87171'; }
-                      else { line1 = `◀ ${level.name} (컷: ${level.minRmr}점)`; line2 = `   달성 완료 (여유 +${Math.abs(diff)}점)`; labelColor = '#60A5FA'; }
+                      else if (diff > 0) { line1 = `◀ ${level.name} (${level.minRmr}점⬆)`; line2 = `   승급까지 +${diff}점 필요`; labelColor = '#F87171'; }
+                      else { line1 = `◀ ${level.name} (${level.minRmr}점⬆)`; line2 = `   달성 완료 (여유 +${Math.abs(diff)}점)`; labelColor = '#60A5FA'; }
                     }
 
                     return (

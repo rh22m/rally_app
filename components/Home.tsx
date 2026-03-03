@@ -42,6 +42,7 @@ import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
 import { MatchCard } from './MatchCard';
 import { RMRGuideModal } from './RMRGuideModal';
+import { getRmrTier } from '../utils/rmrCalculator';
 
 LocaleConfig.locales['kr'] = {
   monthNames: ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'],
@@ -180,10 +181,62 @@ const FilterOptionButton = ({ label, icon, isSelected, onPress, type = 'text' }:
   );
 };
 
+const COLORS = {
+  gold: '#FDB931',
+  silver: '#E0E0E0',
+  bronze: '#FFA07A',
+  default: '#34D399'
+};
+
+const getTierColor = (tierName: string) => {
+  if (tierName.includes('Gold')) return COLORS.gold;
+  if (tierName.includes('Silver')) return COLORS.silver;
+  if (tierName.includes('Bronze')) return COLORS.bronze;
+  return COLORS.default;
+};
+
 const MatchHostModal = ({ visible, onClose, match, currentUser, onDelete }: { visible: boolean, onClose: () => void, match: Match | null, currentUser: any, onDelete: (id: string) => void }) => {
+  const [realTimeHost, setRealTimeHost] = useState<any>(null);
+  const [calculatedTier, setCalculatedTier] = useState<string>('Bronze 3');
+
+  useEffect(() => {
+    if (visible && match?.host?.uid) {
+      const fetchHostProfile = async () => {
+        const db = getFirestore();
+        try {
+          const docRef = doc(db, 'artifacts', 'rally-app-main', 'users', match.host.uid, 'profile', 'info');
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setRealTimeHost(data);
+            const rmr = data.rmr || 1000;
+            setCalculatedTier(getRmrTier(rmr));
+          } else {
+            setRealTimeHost(null);
+            setCalculatedTier(match.host.tier || 'Bronze 3');
+          }
+        } catch (error) {
+          console.error("방장 프로필 로드 실패:", error);
+          setRealTimeHost(null);
+          setCalculatedTier(match.host.tier || 'Bronze 3');
+        }
+      };
+      fetchHostProfile();
+    } else if (!visible) {
+      setRealTimeHost(null);
+    }
+  }, [visible, match]);
+
   if (!match || !match.host) return null;
   const isHost = currentUser && match.host.uid === currentUser.uid;
-  const formattedMannerScore = Number(match.host.mannerScore || 5.0).toFixed(1);
+
+  const displayWin = realTimeHost?.wins !== undefined ? realTimeHost.wins : match.host.win;
+  const displayLoss = realTimeHost?.losses !== undefined ? realTimeHost.losses : match.host.loss;
+  const displayMannerScore = realTimeHost?.mannerScore !== undefined ? Number(realTimeHost.mannerScore).toFixed(1) : Number(match.host.mannerScore || 5.0).toFixed(1);
+  const displayName = realTimeHost?.nickname || match.host.name;
+  const displayAvatar = realTimeHost?.avatarUrl ? { uri: realTimeHost.avatarUrl } : match.host.avatar;
+  const displayLocation = realTimeHost?.region || match.host.location;
+  const tierColor = getTierColor(calculatedTier);
 
   const handleRequestJoin = async () => {
     Alert.alert("참가 신청", `'${match.title}' 모임에 참가 신청을 보내시겠습니까?`, [
@@ -225,17 +278,17 @@ const MatchHostModal = ({ visible, onClose, match, currentUser, onDelete }: { vi
           <TouchableWithoutFeedback>
             <View style={styles.profileModalContent}>
               <View style={styles.profileSection}>
-                <Image source={match.host.avatar} style={styles.profileAvatar} />
-                <Text style={styles.profileNameText}>{match.host.name}</Text>
-                <View style={{flexDirection:'row', alignItems:'center', gap:4}}><MapPin size={12} color="#A0A0A0"/><Text style={styles.profileLocationText}>{match.host.location}</Text></View>
+                <Image source={displayAvatar} style={styles.profileAvatar} />
+                <Text style={styles.profileNameText}>{displayName}</Text>
+                <View style={{flexDirection:'row', alignItems:'center', gap:4}}><MapPin size={12} color="#A0A0A0"/><Text style={styles.profileLocationText}>{displayLocation}</Text></View>
                 <Text style={styles.hostBadgeText}>방장(Host)</Text>
               </View>
               <View style={styles.statsContainer}>
-                <View style={styles.statItem}><Text style={styles.statLabel}>티어</Text><Text style={[styles.statValue, { color: '#00E0C6' }]}>{match.host.tier}</Text></View>
+                <View style={styles.statItem}><Text style={styles.statLabel}>티어</Text><Text style={[styles.statValue, { color: tierColor }]}>{calculatedTier}</Text></View>
                 <View style={styles.statDivider} />
-                <View style={styles.statItem}><Text style={styles.statLabel}>승/패</Text><Text style={styles.statValue}>{match.host.win}승 {match.host.loss}패</Text></View>
+                <View style={styles.statItem}><Text style={styles.statLabel}>승/패</Text><Text style={styles.statValue}>{displayWin}승 {displayLoss}패</Text></View>
                 <View style={styles.statDivider} />
-                <View style={styles.statItem}><Text style={styles.statLabel}>매너 점수</Text><Text style={styles.statValue}>{formattedMannerScore} / 5.0</Text></View>
+                <View style={styles.statItem}><Text style={styles.statLabel}>매너 점수</Text><Text style={styles.statValue}>{displayMannerScore} / 5.0</Text></View>
               </View>
               {isHost ? (
                   <View style={{flexDirection: 'row', gap: 10, width: '100%', marginBottom: 12}}>
@@ -381,11 +434,14 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
           console.log("신청자 프로필 로드 실패", e);
       }
 
+      const rmr = pData.rmr || 1000;
+      const calculatedAppTier = getRmrTier(rmr);
+
       setApplicantProfile({
           id: notif.senderId,
           name: pData.nickname || notif.senderName || '사용자',
           location: pData.region || '지역 미설정',
-          tier: pData.tier || 'Unranked',
+          tier: calculatedAppTier,
           win: pData.wins || 0,
           loss: pData.losses || 0,
           mannerScore: pData.mannerScore !== undefined ? Number(pData.mannerScore).toFixed(1) : '5.0',
@@ -796,7 +852,7 @@ export function Home({ onStartGame, onGoToChat }: HomeProps) {
                       </Text>
                     </View>
                     <View style={styles.statsContainer}>
-                      <View style={styles.statItem}><Text style={styles.statLabel}>티어</Text><Text style={[styles.statValue, { color: '#00E0C6' }]}>{applicantProfile.tier}</Text></View>
+                      <View style={styles.statItem}><Text style={styles.statLabel}>티어</Text><Text style={[styles.statValue, { color: getTierColor(applicantProfile.tier) }]}>{applicantProfile.tier}</Text></View>
                       <View style={styles.statDivider} />
                       <View style={styles.statItem}><Text style={styles.statLabel}>승/패</Text><Text style={styles.statValue}>{applicantProfile.win}승 {applicantProfile.loss}패</Text></View>
                       <View style={styles.statDivider} />
@@ -924,6 +980,7 @@ const styles = StyleSheet.create({
   closeButton: { marginTop: 15, backgroundColor: '#34D399', padding: 12, borderRadius: 10, alignItems: 'center' },
   closeButtonText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
 
+  // ✅ 캘린더 날짜 커스텀 컴포넌트(renderCalendarDay)에 사용되는 스타일 추가
   calendarDayContainer: { alignItems: 'center', justifyContent: 'center', height: 44, width: 40 },
   calendarDayTextContainer: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   calendarDayText: { fontSize: 15, color: '#1F2937' },
