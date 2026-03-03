@@ -319,7 +319,7 @@ function MainScreen({
     team2Wins: 2,
     isForced: false,
     team1Name: '상대팀',
-    team2Name: '나 & 파트너',
+    team2Name: userProfile?.nickname || '본인',
     pointLogs: [
         { scorer: 'B', scoreA: 0, scoreB: 1, setIndex: 1, timestamp: Date.now(), duration: 10 },
         { scorer: 'B', scoreA: 0, scoreB: 2, setIndex: 1, timestamp: Date.now(), duration: 4 },

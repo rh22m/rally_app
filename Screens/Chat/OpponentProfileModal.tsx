@@ -14,12 +14,14 @@ import { useNavigation } from '@react-navigation/native';
 import { MessageCircleMore, UserPlus, UserMinus, Siren, Ban } from 'lucide-react-native';
 
 import { getFirestore, doc, setDoc, deleteDoc, serverTimestamp, getDoc, collection, addDoc, query, where, getDocs, updateDoc } from 'firebase/firestore';
+import { getRmrTier } from '../../utils/rmrCalculator';
 
 interface UserProfile {
   id: string;
   name: string;
   location: string;
-  tier: string;
+  tier?: string;
+  rmr?: number;
   win: number;
   loss: number;
   mannerScore: number | string;
@@ -33,10 +35,37 @@ interface Props {
   currentUser?: any;
 }
 
+const TIER_LEVELS = [
+  { name: 'Gold 1', type: 'gold', minRmr: 1500 },
+  { name: 'Gold 2', type: 'gold', minRmr: 1400 },
+  { name: 'Gold 3', type: 'gold', minRmr: 1300 },
+  { name: 'Silver 1', type: 'silver', minRmr: 1200 },
+  { name: 'Silver 2', type: 'silver', minRmr: 1100 },
+  { name: 'Silver 3', type: 'silver', minRmr: 1000 },
+  { name: 'Bronze 1', type: 'bronze', minRmr: 900 },
+  { name: 'Bronze 2', type: 'bronze', minRmr: 800 },
+  { name: 'Bronze 3', type: 'bronze', minRmr: 0 },
+];
+
+const COLORS = {
+  gold: '#FDB931',
+  silver: '#E0E0E0',
+  bronze: '#FFA07A',
+  default: '#34D399' // 봇(God)이나 예외 상황을 위한 기본색상
+};
+
+const getTierColor = (tierName: string) => {
+  if (tierName.includes('Gold')) return COLORS.gold;
+  if (tierName.includes('Silver')) return COLORS.silver;
+  if (tierName.includes('Bronze')) return COLORS.bronze;
+  return COLORS.default;
+};
+
 const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile, currentUser }) => {
   const navigation = useNavigation<any>();
   const [isAlreadyFriend, setIsAlreadyFriend] = useState(false);
   const [isRequestSent, setIsRequestSent] = useState(false);
+  const [calculatedTier, setCalculatedTier] = useState<string>('Bronze 3'); // 기본값
 
   useEffect(() => {
     if (visible && currentUser && userProfile && userProfile.id !== 'bot') {
@@ -55,14 +84,35 @@ const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile, 
             const snapshot = await getDocs(q);
             setIsRequestSent(!snapshot.empty);
         }
+
+        // DB에서 직접 상대방의 최신 프로필 정보를 가져와 RMR 기반으로 티어 계산
+        try {
+            const profileDoc = await getDoc(doc(db, 'artifacts', 'rally-app-main', 'users', userProfile.id, 'profile', 'info'));
+            if (profileDoc.exists()) {
+                const rmr = profileDoc.data().rmr || 1000;
+                const tier = getRmrTier(rmr);
+                setCalculatedTier(tier);
+            }
+        } catch (error) {
+            console.error("상대방 프로필 RMR 조회 실패:", error);
+            // 에러 발생 시 userProfile에 전달받은 rmr 값이 있다면 사용, 없으면 Bronze 3
+            if(userProfile.rmr){
+                setCalculatedTier(getRmrTier(userProfile.rmr));
+            } else {
+                 setCalculatedTier('Bronze 3');
+            }
+        }
       };
       checkFriendStatus();
+    } else if (visible && userProfile?.id === 'bot') {
+        setCalculatedTier('God'); // 봇의 경우 예외 처리
     }
   }, [visible, currentUser, userProfile]);
 
   if (!userProfile) return null;
 
   const formattedMannerScore = Number(userProfile.mannerScore || 5.0).toFixed(1);
+  const tierColor = getTierColor(calculatedTier);
 
   const handleChat = () => {
     onClose();
@@ -186,7 +236,8 @@ const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile, 
               <View style={styles.statsContainer}>
                 <View style={styles.statItem}>
                   <Text style={styles.statLabel}>티어</Text>
-                  <Text style={[styles.statValue, { color: '#34D399' }]}>{userProfile.tier}</Text>
+                  {/* 동적으로 계산된 티어 색상 반영 */}
+                  <Text style={[styles.statValue, { color: tierColor }]}>{calculatedTier}</Text>
                 </View>
                 <View style={styles.divider} />
                 <View style={styles.statItem}>
@@ -274,7 +325,7 @@ const styles = StyleSheet.create({
   statsContainer: { flexDirection: 'row', backgroundColor: '#111827', borderRadius: 16, paddingVertical: 16, width: '100%', justifyContent: 'space-around', alignItems: 'center', marginBottom: 24 },
   statItem: { alignItems: 'center', flex: 1 },
   statLabel: { fontSize: 12, color: '#9CA3AF', marginBottom: 6 },
-  statValue: { fontSize: 16, fontWeight: '700', color: '#F3F4F6' },
+  statValue: { fontSize: 16, fontWeight: '700', color: '#F3F4F6' }, // ✅ 누락된 원래 텍스트 색상 복구
   divider: { width: 1, height: '60%', backgroundColor: '#374151' },
   actionContainer: { width: '100%' },
   mainActionButton: { width: '100%', backgroundColor: '#34D399', paddingVertical: 16, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 12, elevation: 2 },

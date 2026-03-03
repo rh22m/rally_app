@@ -123,7 +123,7 @@ export function ScoreTracker({ onComplete, onCancel, guestMatchId, onClearGuestM
   const [isSetupMode, setIsSetupMode] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [team1Name, setTeam1Name] = useState('');
-  const [team2Name, setTeam2Name] = useState('나(본인)');
+  const [team2Name, setTeam2Name] = useState('본인');
 
   const [team1Score, setTeam1Score] = useState(0);
   const [team2Score, setTeam2Score] = useState(0);
@@ -167,7 +167,7 @@ export function ScoreTracker({ onComplete, onCancel, guestMatchId, onClearGuestM
           const profileDoc = await getDoc(doc(db, 'artifacts', 'rally-app-main', 'users', user.uid, 'profile', 'info'));
           if (profileDoc.exists() && profileDoc.data().nickname) fetchedNickname = profileDoc.data().nickname;
         } catch(e) {}
-        const finalName = fetchedNickname ? `나(${fetchedNickname})` : '나(본인)';
+        const finalName = fetchedNickname ? fetchedNickname : '본인';
         setTeam2Name(finalName);
       }
     });
@@ -200,7 +200,7 @@ export function ScoreTracker({ onComplete, onCancel, guestMatchId, onClearGuestM
     return () => unsubscribe();
   }, [currentUser]);
 
-  // ✅ [게스트 관전 모드] 상대방이 점수 올릴 때마다 화면에 미러링
+  // [게스트 관전 모드] 상대방이 점수 올릴 때마다 화면에 미러링
   useEffect(() => {
     if (guestMatchId) {
        setIsSetupMode(false);
@@ -324,7 +324,7 @@ export function ScoreTracker({ onComplete, onCancel, guestMatchId, onClearGuestM
   }, [isTimerRunning, isHost]);
 
   const handleStartButtonPress = async () => {
-    if (!team1Name.trim()) setTeam1Name("TEAM 1");
+    if (!team1Name.trim()) setTeam1Name("상대팀");
     Keyboard.dismiss();
 
     if (Platform.OS === 'android' && Platform.Version >= 31) {
@@ -446,7 +446,7 @@ export function ScoreTracker({ onComplete, onCancel, guestMatchId, onClearGuestM
 
     if (newSet1 === 2 || newSet2 === 2) {
       setIsTimerRunning(false);
-      onComplete({ duration: elapsedTime, team1Wins: newSet1, team2Wins: newSet2, isForced: false, pointLogs: updatedLogs, team1Name: team1Name || "TEAM 1", team2Name: team2Name });
+      onComplete({ duration: elapsedTime, team1Wins: newSet1, team2Wins: newSet2, isForced: false, pointLogs: updatedLogs, team1Name: team1Name || "상대팀", team2Name: team2Name });
     }
   };
 
@@ -497,7 +497,7 @@ export function ScoreTracker({ onComplete, onCancel, guestMatchId, onClearGuestM
     onComplete({
       duration: elapsedTime, team1Wins: team1SetWins, team2Wins: team2SetWins,
       isForced: true, stopReason: reason, pointLogs: pointLogs,
-      team1Name: team1Name || "TEAM 1", team2Name: team2Name
+      team1Name: team1Name || "상대팀", team2Name: team2Name
     });
   };
 
@@ -534,7 +534,7 @@ export function ScoreTracker({ onComplete, onCancel, guestMatchId, onClearGuestM
                               <View style={styles.inputGroup}>
                                   <View style={[styles.colorDot, { backgroundColor: '#34D399' }]} />
                                   <View style={{flex: 1}}>
-                                      <Text style={[styles.label, {color:'#34D399'}]}>TEAM 1 (상대)</Text>
+                                      <Text style={[styles.label, {color:'#34D399'}]}>TEAM 1 (상대팀)</Text>
                                       <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
                                           <TextInput
                                               style={[styles.input, {flex: 1}]}
@@ -554,7 +554,7 @@ export function ScoreTracker({ onComplete, onCancel, guestMatchId, onClearGuestM
                               <View style={styles.inputGroup}>
                                   <View style={[styles.colorDot, { backgroundColor: '#38BDF8' }]} />
                                   <View style={{flex: 1}}>
-                                      <Text style={[styles.label, {color:'#38BDF8'}]}>TEAM 2 (나)</Text>
+                                      <Text style={[styles.label, {color:'#38BDF8'}]}>TEAM 2 (내 팀)</Text>
                                       <TextInput
                                           style={[styles.input, { color: '#94a3b8', backgroundColor: '#1e293b' }]}
                                           placeholder="내 이름 불러오는 중..."
@@ -600,7 +600,7 @@ export function ScoreTracker({ onComplete, onCancel, guestMatchId, onClearGuestM
                 <View style={{width: 24}} />
             </View>
             <TouchableOpacity style={styles.scoreTouchArea} onPress={() => { if(isHost) handleScore('team1') }} activeOpacity={isHost ? 0.8 : 1}>
-                <View style={styles.playerBadge}><Text style={styles.playerName}>{team1Name || "TEAM 1"}</Text></View>
+                <View style={styles.playerBadge}><Text style={styles.playerName}>{team1Name || "상대팀"}</Text></View>
                 <Text style={styles.bigScore}>{team1Score}</Text>
                 <View style={styles.setScoreContainer}><Text style={styles.setScoreLabel}>SET SCORE</Text><Text style={styles.setScoreValue}>{team1SetWins}</Text></View>
             </TouchableOpacity>
