@@ -924,6 +924,12 @@ const styles = StyleSheet.create({
   closeButton: { marginTop: 15, backgroundColor: '#34D399', padding: 12, borderRadius: 10, alignItems: 'center' },
   closeButtonText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
 
+  calendarDayContainer: { alignItems: 'center', justifyContent: 'center', height: 44, width: 40 },
+  calendarDayTextContainer: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  calendarDayText: { fontSize: 15, color: '#1F2937' },
+  todayBackground: { backgroundColor: '#9CA3AF' },
+  matchDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#34D399', position: 'absolute', bottom: 0 },
+
   notifModalContent: { width: '90%', backgroundColor: 'white', borderRadius: 16, padding: 24, alignSelf: 'center', maxHeight: '80%', elevation: 10 },
   notifHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   emptyNotifContainer: { alignItems: 'center', paddingVertical: 32 },
