@@ -15,7 +15,8 @@ import {
   Animated,
   ActivityIndicator,
   FlatList,
-  Image
+  Image,
+  PermissionsAndroid
 } from 'react-native';
 import { RotateCcw, Play, Pause, ArrowLeft, XCircle, AlertTriangle, Timer, TrendingUp, Activity, Flame, Trophy, Zap, ShieldAlert, Lightbulb, Watch, Users, X } from 'lucide-react-native';
 import LinearGradient from 'react-native-linear-gradient';
@@ -270,9 +271,25 @@ export function ScoreTracker({ onComplete, onCancel }: ScoreTrackerProps) {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isTimerRunning]);
 
-  const handleStartButtonPress = () => {
+  const handleStartButtonPress = async () => {
     if (!team1Name.trim()) setTeam1Name("TEAM 1");
     Keyboard.dismiss();
+
+    if (Platform.OS === 'android' && Platform.Version >= 31) {
+      try {
+        const granted = await PermissionsAndroid.requestMultiple([
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+        ]);
+
+        if (granted['android.permission.BLUETOOTH_CONNECT'] !== PermissionsAndroid.RESULTS.GRANTED) {
+          console.warn('블루투스 권한이 거부되어 워치 연동이 원활하지 않을 수 있습니다.');
+        }
+      } catch (err) {
+        console.warn(err);
+      }
+    }
+
     setIsWatchConnected(false);
     setIsLoading(true);
   };
