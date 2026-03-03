@@ -645,6 +645,7 @@ export default function App() {
         rd: rd || 350,
         region: region || '',
         gender: gender || '',
+        mannerScore: 5.0,
         wins: 0,
         losses: 0,
         createdAt: serverTimestamp(),

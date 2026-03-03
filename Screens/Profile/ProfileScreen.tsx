@@ -165,6 +165,7 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
     name: userProfile?.nickname || '사용자',
     location: userProfile?.region || '지역 미설정',
     rmr: userProfile?.rmr || 1000,
+    mannerScore: userProfile?.mannerScore ?? 5.0,
     wins: userProfile?.wins || 0,
     losses: userProfile?.losses || 0,
     avatar: userProfile?.avatarUrl ? { uri: userProfile.avatarUrl } : require('../../assets/images/profile.png'),
@@ -349,7 +350,7 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
           <View style={styles.profileRight}>
             <View style={styles.statItem}><Text style={styles.statLabel}>티어</Text><Text style={styles.statValueTier}>{currentTierName}</Text></View>
             <View style={styles.statItem}><Text style={styles.statLabel}>전적</Text><Text style={styles.statValue}>{user.wins}승 {user.losses}패</Text></View>
-            <View style={styles.statItem}><Text style={styles.statLabel}>매너</Text><Text style={styles.statValue}>4.8 / 5.0</Text></View>
+            <View style={styles.statItem}><Text style={styles.statLabel}>매너</Text><Text style={styles.statValue}>{Number(user.mannerScore).toFixed(1)} / 5.0</Text></View>
           </View>
         </View>
 

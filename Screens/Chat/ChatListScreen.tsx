@@ -170,8 +170,33 @@ export default function ChatListScreen() {
     setViewMode((prev) => (prev === 'chat' ? 'friends' : 'chat'));
   };
 
-  const handleFriendPress = (friend: any) => {
-    setSelectedProfile(friend);
+  // ✅ 친구를 눌렀을 때 DB에서 최신 매너 점수/기록을 한 번 더 조회하여 동기화
+  const handleFriendPress = async (friend: any) => {
+    try {
+      const db = getFirestore();
+      const profileDocInfo = await getDoc(doc(db, 'artifacts', 'rally-app-main', 'users', friend.id, 'profile', 'info'));
+
+      if (profileDocInfo.exists()) {
+        const pData = profileDocInfo.data();
+        const mScore = pData.mannerScore !== undefined ? pData.mannerScore : 5.0;
+
+        setSelectedProfile({
+          ...friend,
+          name: pData.nickname || friend.name,
+          tier: pData.tier || friend.tier,
+          win: pData.wins || friend.win,
+          loss: pData.losses || friend.loss,
+          mannerScore: Number(mScore).toFixed(1),
+          avatar: pData.avatarUrl ? { uri: pData.avatarUrl } : friend.avatar,
+          location: pData.region || friend.location,
+        });
+      } else {
+        setSelectedProfile(friend);
+      }
+    } catch (e) {
+      console.error("최신 프로필 가져오기 실패:", e);
+      setSelectedProfile(friend); // 실패 시 기존 목록 데이터 사용
+    }
     setModalVisible(true);
   };
 
@@ -253,7 +278,7 @@ export default function ChatListScreen() {
           tier: pData.tier || 'Unranked',
           win: pData.wins || 0,
           loss: pData.losses || 0,
-          mannerScore: Number(mScore).toFixed(1),
+          mannerScore: Number(mScore).toFixed(1), // 검색된 유저의 매너 점수도 정확히 표시
           avatar: pData.avatarUrl ? { uri: pData.avatarUrl } : require('../../assets/images/profile.png'),
       };
 

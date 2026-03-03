@@ -21,15 +21,17 @@ import {
   X
 } from 'lucide-react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import { getFirestore, doc, getDoc, updateDoc } from 'firebase/firestore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface OpponentEvaluationProps {
   onComplete: () => void;
   opponentName: string;
+  opponentId?: string;
 }
 
-export function OpponentEvaluation({ onComplete, opponentName }: OpponentEvaluationProps) {
+export function OpponentEvaluation({ onComplete, opponentName, opponentId }: OpponentEvaluationProps) {
   const [rating, setRating] = useState(0); // 0 ~ 5
   const [isFriendRequested, setIsFriendRequested] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -48,8 +50,30 @@ export function OpponentEvaluation({ onComplete, opponentName }: OpponentEvaluat
     }
   };
 
-  const handleComplete = () => {
-    // 실제 앱에서는 여기서 서버로 평가 데이터를 전송합니다.
+  const handleComplete = async () => {
+    if (opponentId) {
+      try {
+        const db = getFirestore();
+        const userRef = doc(db, 'artifacts', 'rally-app-main', 'users', opponentId, 'profile', 'info');
+        const snap = await getDoc(userRef);
+
+        if (snap.exists()) {
+          const currentScore = snap.data().mannerScore ?? 5.0;
+
+          // 3점을 기준으로 증감폭 설정 (예: 5점 -> +0.1, 4점 -> +0.05, 3점 -> 0, 2점 -> -0.05, 1점 -> -0.1)
+          const scoreChange = (rating - 3) * 0.05;
+          let newScore = currentScore + scoreChange;
+
+          // 0.0 ~ 5.0 사이로 제한하고 소수점 첫째 자리까지만 저장
+          newScore = Math.max(0.0, Math.min(5.0, newScore));
+
+          await updateDoc(userRef, { mannerScore: Number(newScore.toFixed(1)) });
+        }
+      } catch (error) {
+        console.error("매너 점수 업데이트 실패:", error);
+      }
+    }
+
     Alert.alert(
         "평가 완료",
         "소중한 평가가 반영되었습니다.",

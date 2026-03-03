@@ -13,7 +13,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { MessageCircleMore, UserPlus, UserMinus, Siren, Ban } from 'lucide-react-native';
 
-import { getFirestore, doc, setDoc, deleteDoc, serverTimestamp, getDoc, collection, addDoc, query, where, getDocs } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, deleteDoc, serverTimestamp, getDoc, collection, addDoc, query, where, getDocs, updateDoc } from 'firebase/firestore';
 
 interface UserProfile {
   id: string;
@@ -128,9 +128,39 @@ const OpponentProfileModal: React.FC<Props> = ({ visible, onClose, userProfile, 
   };
 
   const handleReport = () => {
-    Alert.alert("신고하기", `${userProfile.name}님을 신고하시겠습니까?`, [
+    Alert.alert("신고하기", `${userProfile.name}님을 신고하시겠습니까?\n허위 신고 시 불이익을 받을 수 있습니다.`, [
       { text: "취소", style: "cancel" },
-      { text: "신고", onPress: () => onClose() }
+      {
+        text: "신고",
+        style: "destructive",
+        onPress: async () => {
+          if (!userProfile || userProfile.id === 'bot') {
+            onClose();
+            return;
+          }
+
+          try {
+            const db = getFirestore();
+            const userRef = doc(db, 'artifacts', 'rally-app-main', 'users', userProfile.id, 'profile', 'info');
+            const snap = await getDoc(userRef);
+
+            if (snap.exists()) {
+              const currentScore = snap.data().mannerScore ?? 5.0;
+              // 신고 패널티로 0.3점 차감
+              let newScore = currentScore - 0.3;
+              newScore = Math.max(0.0, Math.min(5.0, newScore));
+
+              await updateDoc(userRef, { mannerScore: Number(newScore.toFixed(1)) });
+            }
+
+            Alert.alert("신고 완료", "신고가 정상적으로 접수되었습니다.");
+            onClose();
+          } catch (error) {
+            console.error("신고 처리 중 오류:", error);
+            Alert.alert("오류", "신고 처리 중 문제가 발생했습니다.");
+          }
+        }
+      }
     ]);
   };
 
