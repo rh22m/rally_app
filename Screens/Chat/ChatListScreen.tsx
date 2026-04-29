@@ -100,7 +100,7 @@ export default function ChatListScreen() {
           id: docSnap.id,
           matchTitle: data.type === 'direct' ? finalOpponentName : (data.matchTitle || '채팅방'),
           opponentId: opponentId,
-          opponentName: finalOpponentName || (opponentId === 'bot' ? '랠리 AI 챗봇' : '이름 없음'),
+          opponentName: finalOpponentName || (opponentId === 'bot' ? '레코 AI 챗봇' : '이름 없음'),
           lastMessage: data.lastMessage || '',
           time: formattedTime,
           unreadCount: data.unreadCount?.[currentUser.uid] || 0,
@@ -115,10 +115,10 @@ export default function ChatListScreen() {
       if (!hasBotRoom) {
         resolvedRooms.unshift({
           id: 'new_bot_chat',
-          matchTitle: '랠리 공식 AI',
+          matchTitle: '레코 공식 AI',
           opponentId: 'bot',
-          opponentName: '랠리 AI 챗봇',
-          lastMessage: '안녕하세요! 랠리 AI 챗봇입니다. 궁금한 점이 있으신가요?',
+          opponentName: '레코 AI 챗봇',
+          lastMessage: '안녕하세요! 레코 공식 AI 챗봇입니다.',
           time: '상시',
           unreadCount: 0,
           avatar: require('../../assets/images/reco-logo.png'),
