@@ -1,4 +1,4 @@
-// RMR(Rally Match Rating) v4 Calculator
+// RMR(RECO Match Rating) v4 Calculator
 
 export interface PointLog {
   scorer: 'A' | 'B';

@@ -21,7 +21,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path, Defs, LinearGradient, Stop, G, Text as SvgText, TSpan } from 'react-native-svg';
 
-// 갤러리 접근용 패키지 (사전 설치 필요: npm install react-native-image-picker)
+// 갤러리 접근용 패키지
 import { launchImageLibrary } from 'react-native-image-picker';
 
 // Firebase 연동
@@ -45,21 +45,6 @@ const TIER_IMAGES = {
   bronze: require('../../assets/images/tier_bronze.png'),
 };
 
-const RACKET_IMAGES: Record<string, any> = {
-  ast_100ZZ: require('../../assets/images/rackets/ast_100ZZ.png'),
-  apx_ziggler: require('../../assets/images/rackets/apx_ziggler.png'),
-  ast_77PRO: require('../../assets/images/rackets/ast_77PRO.png'),
-  vic_K12: require('../../assets/images/rackets/vic_K12.png'),
-  acs_11PRO: require('../../assets/images/rackets/acs_11PRO.png'),
-  vic_7K: require('../../assets/images/rackets/vic_7K.png'),
-  vic_09: require('../../assets/images/rackets/vic_09.png'),
-  mus_POW: require('../../assets/images/rackets/mus_POW.png'),
-  nano_1000Z: require('../../assets/images/rackets/nano_1000Z.png'),
-  nano_900POW: require('../../assets/images/rackets/nano_900POW.png'),
-  nano_700: require('../../assets/images/rackets/nano_700.png'),
-  nano_001: require('../../assets/images/rackets/nano_001.png'),
-};
-
 const TIER_LEVELS = [
   { name: 'Gold 1', type: 'gold', minRmr: 1500 },
   { name: 'Gold 2', type: 'gold', minRmr: 1400 },
@@ -80,9 +65,9 @@ const COLORS = {
 };
 
 const LEGAL_TEXTS = {
-  terms: `제1조 (목적)\n본 약관은 랠리(Rally) 서비스 이용과 관련하여 회사와 회원 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.\n\n제2조 (서비스 이용)\n회원은 회사가 제공하는 배드민턴 매칭 및 분석 서비스를 상호 존중과 페어플레이 정신에 입각하여 사용하여야 합니다.`,
+  terms: `제1조 (목적)\n본 약관은 레코(RECO) 서비스 이용과 관련하여 회사와 회원 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.\n\n제2조 (서비스 이용)\n회원은 회사가 제공하는 배드민턴 매칭 및 분석 서비스를 상호 존중과 페어플레이 정신에 입각하여 사용하여야 합니다.`,
   privacy: `1. 개인정보 수집 항목\n이메일, 비밀번호, 닉네임, 휴대폰 번호, 활동 지역, 성별 등 서비스 제공에 필요한 최소한의 정보를 수집합니다.\n\n2. 이용 목적\n수집된 정보는 유저 간의 원활한 매칭 연결과 RMR 기반의 분석 서비스 제공을 위해 사용됩니다.`,
-  location: `1. 위치정보 이용 목적\n사용자의 현재 위치를 기반으로 주변 경기장 및 실시간 매칭 파트너 정보를 제공하기 위해 위치정보를 이용합니다.\n\n2. 권리 표기\n본 서비스 내 제공되는 AI 분석 알고리즘, Glicko-2 기반의 RMR 레이팅 시스템의 모든 권리는 랠리(Rally)에 있습니다.`
+  location: `1. 위치정보 이용 목적\n사용자의 현재 위치를 기반으로 주변 경기장 및 실시간 매칭 파트너 정보를 제공하기 위해 위치정보를 이용합니다.\n\n2. 권리 표기\n본 서비스 내 제공되는 AI 분석 알고리즘, Glicko-2 기반의 RMR 레이팅 시스템의 모든 권리는 레코(RECO)에 있습니다.`
 };
 
 export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenProps) {
@@ -92,6 +77,7 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
 
   const [videoHistory, setVideoHistory] = useState<AnalysisReport[]>([]);
   const [latestFlow, setLatestFlow] = useState({ tempo: 0.5, endurance: 0.5 });
+  const [allRacketsData, setAllRacketsData] = useState<RacketDetail[]>([]);
   const [isLoadingDB, setIsLoadingDB] = useState(true);
 
   const [detailModalVisible, setDetailModalVisible] = useState(false);
@@ -133,6 +119,7 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
             const db = getFirestore(getApp());
             const appId = 'rally-app-main';
 
+            // 유저 데이터 로드
             if (userProfile.latestFlow) {
                 setLatestFlow(userProfile.latestFlow);
             }
@@ -151,6 +138,15 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
             } else {
                 setVideoHistory(vHist);
             }
+
+            // 라켓 DB 데이터 로드
+            const racketRef = collection(db, 'rackets');
+            const racketSnap = await getDocs(racketRef);
+            if (!racketSnap.empty) {
+                const fetchedRackets = racketSnap.docs.map(d => ({ id: d.id, ...d.data() } as RacketDetail));
+                setAllRacketsData(fetchedRackets);
+            }
+
         } catch (e) {
             console.error("Firestore DB 펫치 에러:", e);
         } finally {
@@ -160,7 +156,6 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
     fetchData();
   }, [userProfile]);
 
-  // userProfile에 등록된 avatarUrl이 있으면 우선 적용, 없으면 기본 이미지
   const user = {
     name: userProfile?.nickname || '사용자',
     location: userProfile?.region || '지역 미설정',
@@ -179,9 +174,9 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
   const targetTierName = selectedTierName ?? currentTierName;
 
   const racketResult = useMemo(() => {
-    if (isLoadingDB) return null;
-    return recommendRacket(user.videoHistory, user.rmr, user.latestFlow);
-  }, [user.rmr, user.videoHistory, user.latestFlow, isLoadingDB]);
+    if (isLoadingDB || allRacketsData.length === 0) return null;
+    return recommendRacket(user.videoHistory, user.rmr, user.latestFlow, allRacketsData);
+  }, [user.rmr, user.videoHistory, user.latestFlow, allRacketsData, isLoadingDB]);
 
   const handleTierPress = (tierName: string) => {
     if (selectedTierName === tierName) setSelectedTierName(null);
@@ -199,7 +194,6 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
     setLegalModalVisible(true);
   };
 
-  // --- 계정 설정 로직 ---
   const handleCheckNickname = async () => {
     if (!newNickname.trim()) {
         setNicknameMessage('닉네임을 입력해주세요.');
@@ -271,18 +265,15 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
 
               setIsSaving(true);
               try {
-                  // URI에서 파일 데이터를 Blob 형태로 패치
                   const responseUrl = await fetch(asset.uri);
                   const blob = await responseUrl.blob();
 
-                  // Firebase Storage에 업로드
                   const storage = getStorage(getApp());
                   const imageRef = ref(storage, `artifacts/rally-app-main/users/${userProfile.uid}/profile_image.jpg`);
 
                   await uploadBytesResumable(imageRef, blob);
                   const downloadURL = await getDownloadURL(imageRef);
 
-                  // Firestore 사용자 프로필 정보에 다운로드 URL 병합
                   const db = getFirestore(getApp());
                   const userRef = doc(db, 'artifacts', 'rally-app-main', 'users', userProfile.uid, 'profile', 'info');
                   await updateDoc(userRef, { avatarUrl: downloadURL });
@@ -313,7 +304,6 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
                       if (currentUser) {
                           try {
                               await currentUser.delete();
-                              // Delete는 성공 시 자동으로 Auth 상태가 변하며 로그아웃 처리됩니다.
                           } catch (e: any) {
                               if (e.code === 'auth/requires-recent-login') {
                                   Alert.alert('오류', '보안을 위해 다시 로그인한 후 탈퇴를 진행해주세요.');
@@ -446,7 +436,11 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
             </View>
           ) : (
             <View style={styles.racketSection}>
-              {racketResult ? (
+              {isLoadingDB ? (
+                  <Text style={{color: '#9CA3AF', textAlign: 'center', marginTop: 40}}>추천 데이터를 불러오는 중입니다...</Text>
+              ) : allRacketsData.length === 0 ? (
+                  <Text style={{color: '#9CA3AF', textAlign: 'center', marginTop: 40}}>라켓 데이터가 없습니다. Home에서 DB셋업을 실행해주세요.</Text>
+              ) : racketResult ? (
                 <>
                   <View style={styles.racketHeaderCard}>
                     <Dumbbell size={28} color="#34D399" />
@@ -473,9 +467,7 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
                     </View>
                   </View>
                 </>
-              ) : (
-                <Text style={{color: '#9CA3AF', textAlign: 'center', marginTop: 40}}>추천 데이터를 불러오는 중입니다...</Text>
-              )}
+              ) : null}
             </View>
           )}
         </View>
@@ -508,10 +500,12 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
             </View>
             <View style={styles.modalScroll}>
               <View style={styles.racketImagePlaceholder}>
-                {selectedRacket && RACKET_IMAGES[selectedRacket.id] ? (
+                {selectedRacket?.imageUrl ? (
+                    <Image source={{ uri: selectedRacket.imageUrl }} style={{ width: 200, height: 200, borderRadius: 20, resizeMode: 'contain' }} />
+                ) : selectedRacket?.id && RACKET_IMAGES[selectedRacket.id] ? (
                   <Image source={RACKET_IMAGES[selectedRacket.id]} style={{ width: 200, height: 200, borderRadius: 20, resizeMode: 'contain' }} />
                 ) : (
-                  <Text style={{ color: '#4B5563' }}>이미지 불러오기 실패</Text>
+                  <Text style={{ color: '#4B5563' }}>이미지 없음</Text>
                 )}
               </View>
               <Text style={styles.detailRacketName}>{selectedRacket?.name}</Text>
@@ -700,7 +694,7 @@ const styles = StyleSheet.create({
   productBadgeText: { color: '#FDB931', fontSize: 10, fontWeight: 'bold', marginLeft: 4 },
   productName: { color: 'white', fontSize: 13, fontWeight: 'bold', textAlign: 'center', marginTop:8, height: 28 },
   productTag: { color: '#6B7280', fontSize: 10, marginBottom: 10 },
-  buyButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#34D399', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, marginBottom: 2 },
+  buyButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#374151', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, marginBottom: 2 },
   buyText: { color: 'white', fontSize: 11, fontWeight: 'bold', marginLeft: 4 },
   menuSection: { backgroundColor: '#1F2937', marginTop: 20 },
   menuItem: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#374151' },

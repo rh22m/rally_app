@@ -123,8 +123,8 @@ interface TutorialStep {
 const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'welcome',
-    title: '랠리에 오신 것을 환영합니다!',
-    desc: '배드민턴 파트너 찾기부터 경기 분석까지,\n랠리의 주요 기능을 소개해 드릴게요.',
+    title: '레코에 오신 것을 환영합니다!',
+    desc: '배드민턴 파트너 찾기부터 경기 분석까지,\n레코의 주요 기능을 소개해 드릴게요.',
     targetTab: null,
   },
   {
@@ -448,10 +448,10 @@ function MainScreen({
         participants: [user.uid],
         createdAt: serverTimestamp(),
       });
-      Alert.alert('성공', '새로운 랠리가 개설되었습니다!');
+      Alert.alert('성공', '새로운 계정이 생성되었습니다!');
     } catch (e) {
-      console.error("Create Rally Error:", e);
-      Alert.alert('실패', '랠리 개설에 실패했습니다.');
+      console.error("Create RECO Error:", e);
+      Alert.alert('실패', '계정 생성에 실패했습니다.');
     }
   };
 

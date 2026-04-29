@@ -88,28 +88,28 @@ export default function ChatRoomScreen() {
       return "보안 및 개인정보 보호 정책에 따라 회원님의 개인정보, 서버 구동 방식, 앱 내부 코드 및 데이터베이스 구조 등 민감한 정보에 대해서는 절대 답변해 드릴 수 없습니다.";
     }
     if (lowerMsg.includes("rmr") || lowerMsg.includes("알엠알")) {
-      return "RMR(Rally Match Rating)은 단순한 경기 승패뿐만 아니라 점수 득실차, 경기 소요 시간, 랠리 횟수를 통한 지구력, 매너 점수 등을 종합적으로 계산하여 진짜 실력을 측정하는 시스템입니다.";
+      return "RMR(RECO Match Rating)은 단순한 경기 승패뿐만 아니라 점수 득실차, 경기 소요 시간, 레코 횟수를 통한 지구력, 매너 점수 등을 종합적으로 계산하여 진짜 실력을 측정하는 시스템입니다.";
     }
-    if (lowerMsg.includes("랠리") || lowerMsg.includes("앱") || lowerMsg.includes("기능")) {
-      return "저희 '랠리(Rally)'는 단순한 매칭을 넘어 내 주변 매칭 탐색, 워치 연동 실시간 점수 기록, RMR 기반 정밀 실력 분석 등을 제공하는 스마트 배드민턴 플랫폼입니다.";
+    if (lowerMsg.includes("레코") || lowerMsg.includes("앱") || lowerMsg.includes("기능")) {
+      return "저희 '레코(RECO)'는 단순한 매칭을 넘어 내 주변 매칭 탐색, 워치 연동 실시간 점수 기록, RMR 기반 정밀 실력 분석 등을 제공하는 스마트 배드민턴 플랫폼입니다.";
     }
     if (lowerMsg.includes("배드민턴") || lowerMsg.includes("규칙") || lowerMsg.includes("점수")) {
       return "배드민턴은 기본적으로 21점 3세트 2선승제로 진행됩니다. 20대 20 동점일 경우 듀스가 적용되어 2점을 먼저 내는 쪽이 승리합니다.";
     }
     if (lowerMsg.includes("안녕") || lowerMsg.includes("반가워")) {
-      return "안녕하세요! 랠리 AI 챗봇입니다. 랠리 앱 사용법, RMR 시스템, 배드민턴 규칙에 대해 궁금한 점이 있으시면 편하게 물어보세요!";
+      return "안녕하세요! 레코 AI 챗봇입니다. 레코 앱 사용법, RMR 시스템, 배드민턴 규칙에 대해 궁금한 점이 있으시면 편하게 물어보세요!";
     }
     if (lowerMsg.includes("매너") || lowerMsg.includes("노쇼") || lowerMsg.includes("강제 종료")) {
       return "노쇼나 강제 종료 등 비매너 행위 누적 시 패배보다 더 큰 RMR 하락 페널티가 부여되며 서비스 이용이 제한될 수 있습니다.";
     }
-    return "죄송합니다. 랠리 시스템이나 배드민턴과 관련된 질문을 남겨주시면 최선을 다해 답변해 드릴게요!";
+    return "죄송합니다. 레코 시스템이나 배드민턴과 관련된 질문을 남겨주시면 최선을 다해 답변해 드릴게요!";
   };
 
   // 상대방 프로필 정보 가져오기 (티어 등 정확하게)
   useEffect(() => {
     if (opponentId === 'bot') {
       setOpponentProfile({
-        id: 'bot', name: '랠리 AI 챗봇', location: '랠리 공식 고객센터', tier: 'AI Master', win: 999, loss: 0, mannerScore: 5.0, avatar: require('../../assets/images/rally-logo.png'),
+        id: 'bot', name: '레코 AI 챗봇', location: '레코 공식 고객센터', tier: 'AI Master', win: 999, loss: 0, mannerScore: 5.0, avatar: require('../../assets/images/rally-logo.png'),
       });
       return;
     }
@@ -150,7 +150,7 @@ export default function ChatRoomScreen() {
        if (opponentId === 'bot') {
          setMessages([{
            id: 'welcome_bot_msg',
-           text: '안녕하세요! 랠리 공식 AI 챗봇입니다.\n\n앱 사용법, RMR 시스템의 원리, 배드민턴 규칙 등 궁금한 점이 있다면 언제든지 편하게 질문해 주세요! 😊',
+           text: '안녕하세요! 레코 공식 AI 챗봇입니다.\n\n앱 사용법, RMR 시스템의 원리, 배드민턴 규칙 등 궁금한 점이 있다면 언제든지 편하게 질문해 주세요! 😊',
            sender: 'other', time: '안내'
          }]);
        } else setMessages([]);
@@ -176,7 +176,7 @@ export default function ChatRoomScreen() {
       });
 
       if (opponentId === 'bot') {
-         msgs.unshift({ id: 'welcome_bot_msg', text: '안녕하세요! 랠리 공식 AI 챗봇입니다.\n\n앱 사용법, RMR 시스템의 원리, 배드민턴 규칙 등 궁금한 점이 있다면 언제든지 편하게 질문해 주세요! 😊', sender: 'other', time: '안내' });
+         msgs.unshift({ id: 'welcome_bot_msg', text: '안녕하세요! 레코 공식 AI 챗봇입니다.\n\n앱 사용법, RMR 시스템의 원리, 배드민턴 규칙 등 궁금한 점이 있다면 언제든지 편하게 질문해 주세요! 😊', sender: 'other', time: '안내' });
       }
 
       setMessages(msgs);
@@ -211,7 +211,7 @@ export default function ChatRoomScreen() {
         } catch(e) {}
 
         const roomRef = await addDoc(collection(db, 'chats'), {
-          matchTitle: opponentId === 'bot' ? '랠리 공식 AI' : '1:1 대화',
+          matchTitle: opponentId === 'bot' ? '레코 공식 AI' : '1:1 대화',
           participants: [currentUser.uid, opponentId],
           participantDetails: {
             [currentUser.uid]: { name: myName, avatarUrl: myAvatar },

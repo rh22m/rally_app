@@ -89,7 +89,7 @@ export default function LoginScreen({ onGoToSignUp, onLogin }: LoginScreenProps)
           style={styles.logo}
           resizeMode="contain"
         />
-        <Text style={styles.title}>Rally</Text>
+        <Text style={styles.title}>RECO</Text>
         <Text style={styles.subtitle}>로그인하여 랠리를 시작하세요!</Text>
 
         {/* 2. 이메일 입력 폼 */}

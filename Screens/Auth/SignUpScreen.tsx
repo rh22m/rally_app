@@ -73,7 +73,7 @@ const SUB_REGIONS: { [key: string]: string[] } = {
 };
 
 const LEGAL_TEXTS = {
-  terms: `제1조 (목적)\n본 약관은 랠리(Rally) 서비스 이용과 관련하여 회사와 회원 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.`,
+  terms: `제1조 (목적)\n본 약관은 레코(RECO) 서비스 이용과 관련하여 회사와 회원 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.`,
   privacy: `1. 개인정보 수집 항목\n이메일, 비밀번호, 닉네임, 휴대폰 번호, 활동 지역, 성별 등 서비스 제공에 필요한 최소한의 정보를 수집합니다.`,
   location: `1. 위치정보 이용 목적\n사용자의 현재 위치를 기반으로 주변 경기장 및 매칭 정보를 제공하기 위해 위치정보를 이용합니다.`
 };
@@ -175,7 +175,7 @@ const Step1_TOS = ({ onNext }: { onNext: () => void }) => {
   return (
     <>
       <Text style={styles.title}>약관 동의</Text>
-      <Text style={styles.subtitle}>랠리(Rally) 여정을 위해 동의가 필요해요.</Text>
+      <Text style={styles.subtitle}>레코(RECO) 여정을 위해 동의가 필요해요.</Text>
       <TouchableOpacity style={[styles.checkContainer, styles.checkAll]} onPress={() => handleAgreeAll(!agreeAll)}>
         <View style={[styles.checkbox, agreeAll && styles.checkboxActive]}>
           {agreeAll && <Check size={16} color="white" />}
