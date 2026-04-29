@@ -41,6 +41,18 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:host="oauth"
+                    android:scheme="kakaodc649ee12b1db07aaa604ab16303932c" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name=".wearConnectivity.WearListenerService"
             android:exported="true">

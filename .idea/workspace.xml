@@ -8,11 +8,11 @@
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Screens/Auth/LoginScreen.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/Auth/LoginScreen.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Screens/Auth/SignUpScreen.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/Auth/SignUpScreen.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Screens/Chat/ChatListScreen.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/Chat/ChatListScreen.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Screens/Chat/ChatRoomScreen.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/Chat/ChatRoomScreen.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/assets/images/rally-logo.png" beforeDir="false" afterPath="$PROJECT_DIR$/assets/images/reco-logo.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/Home.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/Home.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/WatchScoreTracker.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/WatchScoreTracker.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/AndroidManifest.xml" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/AndroidManifest.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/recoapp/MainActivity.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/recoapp/MainActivity.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/values/strings.xml" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/res/values/strings.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
     </list>
     <list id="bec99eaf-3a58-4741-a0a4-dd14bee4c395" name="ignore" comment="웨어러블 연동을 위한 의존성 업데이트">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
@@ -162,60 +162,59 @@
   <component name="LineStatusTrackerManager">
     <file path="$PROJECT_DIR$/.idea/workspace.xml">
       <ranges>
-        <range start1="6" end1="7" start2="6" end2="123" changelist="9bea4fd7-fbd9-41bf-bc54-2fdc6a7cce6a" />
-        <range start1="11" end1="11" start2="127" end2="134" changelist="9bea4fd7-fbd9-41bf-bc54-2fdc6a7cce6a" />
-        <range start1="32" end1="38" start2="155" end2="222" changelist="9bea4fd7-fbd9-41bf-bc54-2fdc6a7cce6a" />
-        <range start1="39" end1="40" start2="223" end2="224" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="54" end1="54" start2="238" end2="241" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="60" end1="60" start2="247" end2="248" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="62" end1="62" start2="250" end2="251" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="64" end1="66" start2="253" end2="255" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="77" end1="82" start2="266" end2="271" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="88" end1="88" start2="277" end2="278" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="93" end1="94" start2="283" end2="356" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="95" end1="98" start2="357" end2="360" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="99" end1="100" start2="361" end2="362" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="101" end1="102" start2="363" end2="364" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="103" end1="106" start2="365" end2="368" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="107" end1="108" start2="369" end2="370" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="109" end1="110" start2="371" end2="372" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="111" end1="114" start2="373" end2="376" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="115" end1="116" start2="377" end2="378" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="117" end1="118" start2="379" end2="380" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="119" end1="122" start2="381" end2="384" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="123" end1="124" start2="385" end2="386" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="125" end1="126" start2="387" end2="388" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="127" end1="130" start2="389" end2="392" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="131" end1="132" start2="393" end2="394" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="133" end1="134" start2="395" end2="396" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="135" end1="138" start2="397" end2="400" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="139" end1="140" start2="401" end2="402" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="141" end1="142" start2="403" end2="404" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="143" end1="146" start2="405" end2="408" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="147" end1="148" start2="409" end2="410" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="149" end1="150" start2="411" end2="412" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="151" end1="154" start2="413" end2="416" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="155" end1="156" start2="417" end2="418" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="157" end1="158" start2="419" end2="420" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="159" end1="162" start2="421" end2="424" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="163" end1="164" start2="425" end2="426" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="165" end1="166" start2="427" end2="428" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="167" end1="170" start2="429" end2="432" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="171" end1="172" start2="433" end2="434" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="173" end1="174" start2="435" end2="436" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="175" end1="178" start2="437" end2="440" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="179" end1="180" start2="441" end2="442" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="181" end1="182" start2="443" end2="444" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="183" end1="186" start2="445" end2="448" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="187" end1="188" start2="449" end2="450" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="189" end1="190" start2="451" end2="452" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="191" end1="194" start2="453" end2="456" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="195" end1="196" start2="457" end2="458" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="197" end1="198" start2="459" end2="460" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="199" end1="202" start2="461" end2="464" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="203" end1="204" start2="465" end2="466" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="205" end1="206" start2="467" end2="676" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
-        <range start1="256" end1="267" start2="726" end2="752" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="10" end1="15" start2="10" end2="15" changelist="9bea4fd7-fbd9-41bf-bc54-2fdc6a7cce6a" />
+        <range start1="164" end1="218" start2="164" end2="217" changelist="9bea4fd7-fbd9-41bf-bc54-2fdc6a7cce6a" />
+        <range start1="222" end1="223" start2="221" end2="222" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="237" end1="237" start2="236" end2="239" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="243" end1="243" start2="245" end2="246" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="245" end1="245" start2="248" end2="249" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="247" end1="249" start2="251" end2="253" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="260" end1="265" start2="264" end2="269" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="271" end1="271" start2="275" end2="276" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="276" end1="277" start2="281" end2="330" changelist="9bea4fd7-fbd9-41bf-bc54-2fdc6a7cce6a" />
+        <range start1="278" end1="281" start2="331" end2="334" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="282" end1="283" start2="335" end2="336" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="284" end1="285" start2="337" end2="338" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="286" end1="289" start2="339" end2="342" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="290" end1="291" start2="343" end2="344" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="292" end1="293" start2="345" end2="346" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="294" end1="297" start2="347" end2="350" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="298" end1="299" start2="351" end2="352" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="300" end1="301" start2="353" end2="354" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="302" end1="305" start2="355" end2="358" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="306" end1="307" start2="359" end2="360" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="308" end1="309" start2="361" end2="362" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="310" end1="313" start2="363" end2="366" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="314" end1="315" start2="367" end2="368" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="316" end1="317" start2="369" end2="370" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="318" end1="321" start2="371" end2="374" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="322" end1="323" start2="375" end2="376" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="324" end1="325" start2="377" end2="378" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="326" end1="329" start2="379" end2="382" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="330" end1="331" start2="383" end2="384" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="332" end1="333" start2="385" end2="386" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="334" end1="337" start2="387" end2="390" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="338" end1="339" start2="391" end2="392" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="340" end1="341" start2="393" end2="394" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="342" end1="345" start2="395" end2="398" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="346" end1="347" start2="399" end2="400" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="348" end1="349" start2="401" end2="402" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="350" end1="353" start2="403" end2="406" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="354" end1="355" start2="407" end2="408" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="356" end1="357" start2="409" end2="410" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="358" end1="361" start2="411" end2="414" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="362" end1="363" start2="415" end2="416" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="364" end1="365" start2="417" end2="418" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="366" end1="369" start2="419" end2="422" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="370" end1="371" start2="423" end2="424" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="372" end1="373" start2="425" end2="426" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="374" end1="377" start2="427" end2="430" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="378" end1="379" start2="431" end2="432" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="380" end1="381" start2="433" end2="434" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="382" end1="385" start2="435" end2="438" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="386" end1="387" start2="439" end2="440" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
+        <range start1="388" end1="389" start2="441" end2="674" changelist="9bea4fd7-fbd9-41bf-bc54-2fdc6a7cce6a" />
+        <range start1="439" end1="450" start2="724" end2="750" changelist="bec99eaf-3a58-4741-a0a4-dd14bee4c395" />
       </ranges>
     </file>
   </component>
@@ -274,7 +273,55 @@
       <option name="presentableId" value="Default" />
       <updated>1761906441617</updated>
     </task>
-    <task id="LOCAL-00001" summary="초안 생성">
+    <task id="LOCAL-00060" summary="티어 인장 이미지 업데이트">
+      <option name="closed" value="true" />
+      <created>1766666818840</created>
+      <option name="number" value="00060" />
+      <option name="presentableId" value="LOCAL-00060" />
+      <option name="project" value="LOCAL" />
+      <updated>1766666818840</updated>
+    </task>
+    <task id="LOCAL-00061" summary="웨어러블 연동을 위한 의존성 업데이트">
+      <option name="closed" value="true" />
+      <created>1766667480672</created>
+      <option name="number" value="00061" />
+      <option name="presentableId" value="LOCAL-00061" />
+      <option name="project" value="LOCAL" />
+      <updated>1766667480672</updated>
+    </task>
+    <task id="LOCAL-00062" summary="웨어러블 오류 메시지 생성">
+      <option name="closed" value="true" />
+      <created>1766667725273</created>
+      <option name="number" value="00062" />
+      <option name="presentableId" value="LOCAL-00062" />
+      <option name="project" value="LOCAL" />
+      <updated>1766667725274</updated>
+    </task>
+    <task id="LOCAL-00063" summary="경기모드 롤백">
+      <option name="closed" value="true" />
+      <created>1766672861107</created>
+      <option name="number" value="00063" />
+      <option name="presentableId" value="LOCAL-00063" />
+      <option name="project" value="LOCAL" />
+      <updated>1766672861107</updated>
+    </task>
+    <task id="LOCAL-00064" summary="웨어러블 연동 세팅">
+      <option name="closed" value="true" />
+      <created>1766682382489</created>
+      <option name="number" value="00064" />
+      <option name="presentableId" value="LOCAL-00064" />
+      <option name="project" value="LOCAL" />
+      <updated>1766682382489</updated>
+    </task>
+    <task id="LOCAL-00065" summary="웨어러블 경기모드 연동 완료">
+      <option name="closed" value="true" />
+      <created>1766687766495</created>
+      <option name="number" value="00065" />
+      <option name="presentableId" value="LOCAL-00065" />
+      <option name="project" value="LOCAL" />
+      <updated>1766687766495</updated>
+    </task>
+    <task id="LOCAL-00066" summary="장비 추천 로직 구현">
       <option name="closed" value="true" />
       <created>1761926241808</created>
       <option name="number" value="00001" />
@@ -386,7 +433,239 @@
       <option name="project" value="LOCAL" />
       <updated>1763826742285</updated>
     </task>
-    <option name="localTasksCounter" value="15" />
+    <task id="LOCAL-00080" summary="친구 추가">
+      <option name="closed" value="true" />
+      <created>1768823700557</created>
+      <option name="number" value="00080" />
+      <option name="presentableId" value="LOCAL-00080" />
+      <option name="project" value="LOCAL" />
+      <updated>1768823700558</updated>
+    </task>
+    <task id="LOCAL-00081" summary="내비게이션 디벨롭, 게임 종료 후 화면 추가">
+      <option name="closed" value="true" />
+      <created>1768823814391</created>
+      <option name="number" value="00081" />
+      <option name="presentableId" value="LOCAL-00081" />
+      <option name="project" value="LOCAL" />
+      <updated>1768823814391</updated>
+    </task>
+    <task id="LOCAL-00082" summary="튜토리얼 영역 수정">
+      <option name="closed" value="true" />
+      <created>1768824468731</created>
+      <option name="number" value="00082" />
+      <option name="presentableId" value="LOCAL-00082" />
+      <option name="project" value="LOCAL" />
+      <updated>1768824468731</updated>
+    </task>
+    <task id="LOCAL-00083" summary="데이터베이스 연동. 회원가입 및 로그인 모듈 연결">
+      <option name="closed" value="true" />
+      <created>1770694125280</created>
+      <option name="number" value="00083" />
+      <option name="presentableId" value="LOCAL-00083" />
+      <option name="project" value="LOCAL" />
+      <updated>1770694125280</updated>
+    </task>
+    <task id="LOCAL-00084" summary="회원가입 임시 커밋">
+      <option name="closed" value="true" />
+      <created>1770701713892</created>
+      <option name="number" value="00084" />
+      <option name="presentableId" value="LOCAL-00084" />
+      <option name="project" value="LOCAL" />
+      <updated>1770701713892</updated>
+    </task>
+    <task id="LOCAL-00085" summary="아이디 중복 체크, 튜토리얼 오류 해소">
+      <option name="closed" value="true" />
+      <created>1770721782071</created>
+      <option name="number" value="00085" />
+      <option name="presentableId" value="LOCAL-00085" />
+      <option name="project" value="LOCAL" />
+      <updated>1770721782071</updated>
+    </task>
+    <task id="LOCAL-00086" summary="로그인 정보 일치 확인">
+      <option name="closed" value="true" />
+      <created>1770732309092</created>
+      <option name="number" value="00086" />
+      <option name="presentableId" value="LOCAL-00086" />
+      <option name="project" value="LOCAL" />
+      <updated>1770732309092</updated>
+    </task>
+    <task id="LOCAL-00087" summary="임시 커밋">
+      <option name="closed" value="true" />
+      <created>1770737793726</created>
+      <option name="number" value="00087" />
+      <option name="presentableId" value="LOCAL-00087" />
+      <option name="project" value="LOCAL" />
+      <updated>1770737793726</updated>
+    </task>
+    <task id="LOCAL-00088" summary="회원가입 데베 연동 클린 커밋">
+      <option name="closed" value="true" />
+      <created>1771831472720</created>
+      <option name="number" value="00088" />
+      <option name="presentableId" value="LOCAL-00088" />
+      <option name="project" value="LOCAL" />
+      <updated>1771831472720</updated>
+    </task>
+    <task id="LOCAL-00089" summary="회원가입 퀴즈 문제 확장, RD값에 영향">
+      <option name="closed" value="true" />
+      <created>1771835378199</created>
+      <option name="number" value="00089" />
+      <option name="presentableId" value="LOCAL-00089" />
+      <option name="project" value="LOCAL" />
+      <updated>1771835378199</updated>
+    </task>
+    <task id="LOCAL-00090" summary="RD(신뢰도)시스템 재구성">
+      <option name="closed" value="true" />
+      <created>1772212735373</created>
+      <option name="number" value="00090" />
+      <option name="presentableId" value="LOCAL-00090" />
+      <option name="project" value="LOCAL" />
+      <updated>1772212735373</updated>
+    </task>
+    <task id="LOCAL-00091" summary="RD(신뢰도)시스템 재구성">
+      <option name="closed" value="true" />
+      <created>1772212751529</created>
+      <option name="number" value="00091" />
+      <option name="presentableId" value="LOCAL-00091" />
+      <option name="project" value="LOCAL" />
+      <updated>1772212751529</updated>
+    </task>
+    <task id="LOCAL-00092" summary="rmr 데이터베이스 동기화, 경기 기록 및 영상 분석 db 저장">
+      <option name="closed" value="true" />
+      <created>1772212812961</created>
+      <option name="number" value="00092" />
+      <option name="presentableId" value="LOCAL-00092" />
+      <option name="project" value="LOCAL" />
+      <updated>1772212812961</updated>
+    </task>
+    <task id="LOCAL-00093" summary="프로필 화면 디벨롭">
+      <option name="closed" value="true" />
+      <created>1772215979534</created>
+      <option name="number" value="00093" />
+      <option name="presentableId" value="LOCAL-00093" />
+      <option name="project" value="LOCAL" />
+      <updated>1772215979534</updated>
+    </task>
+    <task id="LOCAL-00094" summary="매칭 정보 데이터베이스 연동">
+      <option name="closed" value="true" />
+      <created>1772226088915</created>
+      <option name="number" value="00094" />
+      <option name="presentableId" value="LOCAL-00094" />
+      <option name="project" value="LOCAL" />
+      <updated>1772226088915</updated>
+    </task>
+    <task id="LOCAL-00095" summary="채팅 데이터베이스 연동">
+      <option name="closed" value="true" />
+      <created>1772226103787</created>
+      <option name="number" value="00095" />
+      <option name="presentableId" value="LOCAL-00095" />
+      <option name="project" value="LOCAL" />
+      <updated>1772226103787</updated>
+    </task>
+    <task id="LOCAL-00096" summary="매칭 참가 디벨롭, 친구 데이터 서버 연동">
+      <option name="closed" value="true" />
+      <created>1772291101551</created>
+      <option name="number" value="00096" />
+      <option name="presentableId" value="LOCAL-00096" />
+      <option name="project" value="LOCAL" />
+      <updated>1772291101551</updated>
+    </task>
+    <task id="LOCAL-00097" summary="친구 중복 체크, 채팅 알림">
+      <option name="closed" value="true" />
+      <created>1772291914764</created>
+      <option name="number" value="00097" />
+      <option name="presentableId" value="LOCAL-00097" />
+      <option name="project" value="LOCAL" />
+      <updated>1772291914764</updated>
+    </task>
+    <task id="LOCAL-00098" summary="친구 추가, 매너 점수 통일">
+      <option name="closed" value="true" />
+      <created>1772294209647</created>
+      <option name="number" value="00098" />
+      <option name="presentableId" value="LOCAL-00098" />
+      <option name="project" value="LOCAL" />
+      <updated>1772294209647</updated>
+    </task>
+    <task id="LOCAL-00099" summary="안드로이드 버전 크래쉬 수정 (해결 안 됨)">
+      <option name="closed" value="true" />
+      <created>1772562835197</created>
+      <option name="number" value="00099" />
+      <option name="presentableId" value="LOCAL-00099" />
+      <option name="project" value="LOCAL" />
+      <updated>1772562835197</updated>
+    </task>
+    <task id="LOCAL-00100" summary="매너 점수 데이터베이스 연동">
+      <option name="closed" value="true" />
+      <created>1772563809423</created>
+      <option name="number" value="00100" />
+      <option name="presentableId" value="LOCAL-00100" />
+      <option name="project" value="LOCAL" />
+      <updated>1772563809423</updated>
+    </task>
+    <task id="LOCAL-00101" summary="실시간 쌍방 경기모드">
+      <option name="closed" value="true" />
+      <created>1772566082544</created>
+      <option name="number" value="00101" />
+      <option name="presentableId" value="LOCAL-00101" />
+      <option name="project" value="LOCAL" />
+      <updated>1772566082545</updated>
+    </task>
+    <task id="LOCAL-00102" summary="경기 모드 수정, 상대방 티어 정보 데이터베이스 동기화">
+      <option name="closed" value="true" />
+      <created>1772567328023</created>
+      <option name="number" value="00102" />
+      <option name="presentableId" value="LOCAL-00102" />
+      <option name="project" value="LOCAL" />
+      <updated>1772567328024</updated>
+    </task>
+    <task id="LOCAL-00103" summary="매칭 캘린더 수정">
+      <option name="closed" value="true" />
+      <created>1772567566161</created>
+      <option name="number" value="00103" />
+      <option name="presentableId" value="LOCAL-00103" />
+      <option name="project" value="LOCAL" />
+      <updated>1772567566161</updated>
+    </task>
+    <task id="LOCAL-00104" summary="홈화면 방장 정보, 상대방 정보 티어 수정">
+      <option name="closed" value="true" />
+      <created>1772569281448</created>
+      <option name="number" value="00104" />
+      <option name="presentableId" value="LOCAL-00104" />
+      <option name="project" value="LOCAL" />
+      <updated>1772569281448</updated>
+    </task>
+    <task id="LOCAL-00105" summary="앱 명칭 전면 수정">
+      <option name="closed" value="true" />
+      <created>1777436806292</created>
+      <option name="number" value="00105" />
+      <option name="presentableId" value="LOCAL-00105" />
+      <option name="project" value="LOCAL" />
+      <updated>1777436806292</updated>
+    </task>
+    <task id="LOCAL-00106" summary="앱 명칭 전면 수정">
+      <option name="closed" value="true" />
+      <created>1777454198890</created>
+      <option name="number" value="00106" />
+      <option name="presentableId" value="LOCAL-00106" />
+      <option name="project" value="LOCAL" />
+      <updated>1777454198890</updated>
+    </task>
+    <task id="LOCAL-00107" summary="앱 명칭 전면 수정">
+      <option name="closed" value="true" />
+      <created>1777456065474</created>
+      <option name="number" value="00107" />
+      <option name="presentableId" value="LOCAL-00107" />
+      <option name="project" value="LOCAL" />
+      <updated>1777456065474</updated>
+    </task>
+    <task id="LOCAL-00108" summary="앱 명칭 전면 수정">
+      <option name="closed" value="true" />
+      <created>1777456771289</created>
+      <option name="number" value="00108" />
+      <option name="presentableId" value="LOCAL-00108" />
+      <option name="project" value="LOCAL" />
+      <updated>1777456771289</updated>
+    </task>
+    <option name="localTasksCounter" value="109" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">

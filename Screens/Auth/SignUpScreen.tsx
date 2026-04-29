@@ -16,20 +16,17 @@ import {
   FlatList,
   Pressable,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
 import {
   Mail,
-  Lock,
   User,
-  ShieldCheck,
-  Phone,
   Check,
   X,
   ChevronRight,
   MapPin,
   ChevronLeft,
-  ChevronDown
 } from 'lucide-react-native';
+import { login, getProfile } from '@react-native-seoul/kakao-login';
+
 // RMRCalculator에서 퀴즈 계산 관련 함수 임포트
 import { getInitialRMRAndRD } from '../../utils/rmrCalculator';
 
@@ -37,22 +34,10 @@ const { width } = Dimensions.get('window');
 
 interface SignUpScreenProps {
   onGoToLogin: () => void;
-  // onSignUp의 인터페이스에 rmr, rd 외에 region, gender 추가
   onSignUp: (email: string, password: string, nickname: string, rmr: number, rd: number, region: string, gender: string) => void;
-  checkEmailAvailability: (email: string) => Promise<boolean>;
+  checkEmailAvailability?: (email: string) => Promise<boolean>; // 카카오 연동으로 더 이상 필수는 아니지만 프롭스 유지를 위해 남겨둠
   checkNicknameAvailability: (nickname: string) => Promise<boolean>;
 }
-
-const EMAIL_DOMAINS = [
-  'naver.com',
-  'gmail.com',
-  'daum.net',
-  'kakao.com',
-  'hanmail.net',
-  'icloud.com',
-  'outlook.com',
-  '직접 입력'
-];
 
 const MAIN_REGIONS = [
   { label: '서울', value: '서울' },
@@ -77,51 +62,6 @@ const LEGAL_TEXTS = {
   privacy: `1. 개인정보 수집 항목\n이메일, 비밀번호, 닉네임, 휴대폰 번호, 활동 지역, 성별 등 서비스 제공에 필요한 최소한의 정보를 수집합니다.`,
   location: `1. 위치정보 이용 목적\n사용자의 현재 위치를 기반으로 주변 경기장 및 매칭 정보를 제공하기 위해 위치정보를 이용합니다.`
 };
-
-const MOCK_VERIFICATION_HTML = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: -apple-system, Helvetica, sans-serif; background-color: #f3f4f6; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
-    .card { background: white; padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 90%; max-width: 400px; text-align: center; }
-    .logo { color: #34D399; font-size: 24px; font-weight: bold; margin-bottom: 20px; display: block; }
-    h2 { font-size: 18px; color: #111827; margin-bottom: 10px; }
-    p { color: #6B7280; font-size: 14px; margin-bottom: 24px; }
-    .btn { background-color: #34D399; color: white; border: none; padding: 14px; width: 100%; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 12px; }
-    .btn.cancel { background-color: #E5E7EB; color: #374151; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <span class="logo">PASS / SMS 인증</span>
-    <h2>휴대폰 본인 확인</h2>
-    <p>안전한 서비스 이용을 위해<br>본인 인증을 진행해주세요.</p>
-    <button class="btn" onclick="verify()">인증하기 (통신사 선택)</button>
-    <button class="btn cancel" onclick="cancel()">취소</button>
-  </div>
-  <script>
-    function verify() {
-      setTimeout(() => {
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            success: true,
-            phone: '010-1234-5678',
-            carrier: 'SKT'
-          }));
-        }
-      }, 1000);
-    }
-    function cancel() {
-      if (window.ReactNativeWebView) {
-        window.ReactNativeWebView.postMessage(JSON.stringify({ success: false }));
-      }
-    }
-  </script>
-</body>
-</html>
-`;
 
 const StepIndicator = ({ currentStep }: { currentStep: number }) => (
   <View style={styles.stepIndicatorContainer}>
@@ -242,70 +182,69 @@ const Step1_TOS = ({ onNext }: { onNext: () => void }) => {
   );
 };
 
-const Step2_PhoneVerify = ({ onNext }: { onNext: () => void }) => {
+const Step2_KakaoVerify = ({ onNext }: { onNext: (data: any) => void }) => {
   const [isVerified, setIsVerified] = useState(false);
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [showWebView, setShowWebView] = useState(false);
 
-  const handleWebViewMessage = (event: any) => {
+  const handleKakaoVerification = async () => {
     try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.success) {
-        setIsVerified(true);
-        setPhoneNumber(data.phone || '010-XXXX-XXXX');
-        setShowWebView(false);
-        Alert.alert('인증 성공', '본인인증이 완료되었습니다.');
-      } else {
-        setShowWebView(false);
+      const token = await login();
+      const profile = await getProfile();
+
+      // 핵심 수정: 카카오에서 이메일을 제대로 안 줬을 경우 컷!
+      if (!profile.email) {
+        Alert.alert(
+          '이메일 동의 필요',
+          '회원가입을 위해 카카오 이메일 정보가 필수입니다. 카카오 연동 해제 후 다시 시도하여 이메일 제공에 동의해주세요.'
+        );
+        return; // 여기서 멈추기 때문에 파이어베이스 에러가 안 납니다.
       }
-    } catch (e) {
-      console.log('Verification parse error', e);
+
+      setIsVerified(true);
+      Alert.alert('인증 성공', '카카오 간편인증이 완료되었습니다.');
+
+      setTimeout(() => {
+        onNext({
+          email: profile.email, // 진짜 카카오 이메일을 그대로 넘김!
+          kakaoId: profile.id.toString(),
+          password: profile.id.toString()
+        });
+      }, 800);
+
+    } catch (err: any) {
+      console.error('Kakao Verification Error:', err);
+      if (err.message !== 'Logged out') {
+        Alert.alert('인증 실패', '카카오 인증 중 오류가 발생했습니다.');
+      }
     }
   };
 
   return (
     <>
       <Text style={styles.title}>본인 인증</Text>
-      <Text style={styles.subtitle}>안전한 매칭을 위해 본인인증을 진행합니다.</Text>
-      <View style={[styles.inputContainer, isVerified && styles.inputVerified]}>
-        <Phone size={20} color={isVerified ? "#34D399" : "#9CA3AF"} style={styles.inputIcon} />
-        <TextInput
-          style={[styles.input, isVerified && { color: '#34D399', fontWeight: 'bold' }]}
-          placeholder="인증 후 번호가 표시됩니다"
-          placeholderTextColor="#9CA3AF"
-          value={phoneNumber}
-          editable={false}
-        />
-        {isVerified && <Check size={20} color="#34D399" />}
-      </View>
+      <Text style={styles.subtitle}>안전한 매칭을 위해 카카오 간편인증을 진행합니다.</Text>
+
       {!isVerified ? (
-        <TouchableOpacity style={styles.verifyButton} onPress={() => setShowWebView(true)}>
-          <ShieldCheck size={20} color="#111827" style={{ marginRight: 8 }} />
-          <Text style={styles.verifyButtonText}>휴대폰 본인인증 하기</Text>
+        <TouchableOpacity style={styles.kakaoVerifyButton} onPress={handleKakaoVerification}>
+          <Image
+            source={{ uri: 'https://developers.kakao.com/assets/img/lib/logos/kakaolink/kakaolink_btn_medium.png' }}
+            style={styles.kakaoIcon}
+          />
+          <Text style={styles.kakaoVerifyButtonText}>카카오로 본인인증 하기</Text>
         </TouchableOpacity>
       ) : (
-        <Text style={styles.verifiedText}>인증이 완료되었습니다. 다음으로 넘어가세요.</Text>
+        <View style={styles.verifiedBox}>
+          <Check size={24} color="#34D399" />
+          <Text style={styles.verifiedText}>인증이 완료되었습니다.</Text>
+        </View>
       )}
 
-      <TouchableOpacity style={[styles.button, !isVerified && styles.buttonDisabled]} onPress={onNext} disabled={!isVerified}>
-        <Text style={styles.buttonText}>다음</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.skipButton} onPress={() => { setIsVerified(true); setPhoneNumber('010-0000-0000 (Dev)'); setTimeout(onNext, 500); }}>
+      {/* 개발용 건너뛰기 버튼 (이메일 형식이 정상적이므로 에러 안 남) */}
+      <TouchableOpacity style={styles.skipButton} onPress={() => {
+        setIsVerified(true);
+        setTimeout(() => onNext({ email: 'test1234@kakao.com', kakaoId: 'dev_user', password: 'dev_password' }), 500);
+      }}>
         <Text style={styles.linkText}>[개발용] 본인인증 건너뛰기</Text>
       </TouchableOpacity>
-
-      <Modal visible={showWebView} animationType="slide" onRequestClose={() => setShowWebView(false)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#111827' }}>
-          <View style={styles.webViewHeader}>
-            <Text style={styles.webViewTitle}>본인인증 서비스</Text>
-            <TouchableOpacity onPress={() => setShowWebView(false)}>
-              <X size={24} color="white" />
-            </TouchableOpacity>
-          </View>
-          <WebView source={{ html: MOCK_VERIFICATION_HTML }} style={{ flex: 1 }} onMessage={handleWebViewMessage} javaScriptEnabled={true} />
-        </SafeAreaView>
-      </Modal>
     </>
   );
 };
@@ -313,83 +252,23 @@ const Step2_PhoneVerify = ({ onNext }: { onNext: () => void }) => {
 const Step3_AccountInfo = ({
   onNext,
   initialData,
-  checkEmailAvailability,
   checkNicknameAvailability
 }: {
   onNext: (data: any) => void;
   initialData: any;
-  checkEmailAvailability: (email: string) => Promise<boolean>;
   checkNicknameAvailability: (nickname: string) => Promise<boolean>;
 }) => {
-  const [emailLocal, setEmailLocal] = useState(initialData.email ? initialData.email.split('@')[0] : '');
-  const [emailDomain, setEmailDomain] = useState(initialData.email ? initialData.email.split('@')[1] : EMAIL_DOMAINS[0]);
-  const [isDomainModalVisible, setIsDomainModalVisible] = useState(false);
-
-  const [isCustomDomain, setIsCustomDomain] = useState(() => {
-      const domain = initialData.email ? initialData.email.split('@')[1] : EMAIL_DOMAINS[0];
-      return domain && !EMAIL_DOMAINS.includes(domain);
-  });
-
+  // 비밀번호 관련 상태 제거
   const [nickname, setNickname] = useState(initialData.nickname || '');
-  const [password, setPassword] = useState(initialData.password || '');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [region, setRegion] = useState(initialData.region || '');
   const [gender, setGender] = useState<'남성' | '여성' | null>(initialData.gender || null);
-
-  const [emailMsg, setEmailMsg] = useState('');
-  const [isEmailValid, setIsEmailValid] = useState(false);
-  const [isEmailChecked, setIsEmailChecked] = useState(false);
 
   const [nicknameMsg, setNicknameMsg] = useState('');
   const [isNicknameValid, setIsNicknameValid] = useState(false);
   const [isNicknameChecked, setIsNicknameChecked] = useState(false);
 
-  const [pwMsg, setPwMsg] = useState('');
-  const [pwMatchMsg, setPwMatchMsg] = useState('');
-
   const [isRegionModalVisible, setIsRegionModalVisible] = useState(false);
   const [tempMainRegion, setTempMainRegion] = useState<string | null>(null);
-
-  const handleEmailChange = (text: string) => {
-    setEmailLocal(text.replace(/\s/g, ''));
-    setIsEmailValid(false);
-    setIsEmailChecked(false);
-    setEmailMsg('');
-  };
-
-  const handleCheckEmail = async () => {
-    if (!emailLocal) {
-        setEmailMsg('이메일을 입력해주세요.');
-        return;
-    }
-    if (emailLocal.length < 2) {
-        setEmailMsg('이메일이 너무 짧습니다.');
-        return;
-    }
-    if (!emailDomain) {
-        setEmailMsg('도메인을 입력해주세요.');
-        return;
-    }
-
-    const fullEmail = `${emailLocal}@${emailDomain}`;
-    setEmailMsg('확인 중...');
-
-    try {
-        const isAvail = await checkEmailAvailability(fullEmail);
-        setIsEmailChecked(true);
-        if (isAvail) {
-            setEmailMsg('사용 가능한 이메일입니다.');
-            setIsEmailValid(true);
-        } else {
-            setEmailMsg('이미 사용 중인 이메일입니다.');
-            setIsEmailValid(false);
-        }
-    } catch (e) {
-        setEmailMsg('확인 중 오류가 발생했습니다.');
-        setIsEmailChecked(true);
-        setIsEmailValid(false);
-    }
-  };
 
   const handleNicknameChange = (text: string) => {
     setNickname(text.replace(/\s/g, ''));
@@ -428,52 +307,17 @@ const Step3_AccountInfo = ({
     }
   };
 
-  useEffect(() => {
-    if (!password) { setPwMsg(''); return; }
-    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
-    if (!passwordRegex.test(password)) {
-        setPwMsg('영문, 숫자 포함 8자 이상이어야 합니다.');
-    } else {
-        setPwMsg('');
-    }
-  }, [password]);
-
-  useEffect(() => {
-    if (!confirmPassword) {
-      setPwMatchMsg('');
-      return;
-    }
-    if (password !== confirmPassword) {
-      setPwMatchMsg('비밀번호가 일치하지 않습니다.');
-    } else {
-      setPwMatchMsg('');
-    }
-  }, [password, confirmPassword]);
-
   const handleNext = () => {
-    if (!isEmailChecked || !isEmailValid) {
-        Alert.alert('확인 필요', '이메일 중복 확인 버튼을 눌러주세요.');
-        return;
-    }
     if (!isNicknameChecked || !isNicknameValid) {
         Alert.alert('확인 필요', '닉네임 중복 확인 버튼을 눌러주세요.');
         return;
-    }
-    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
-    if (!passwordRegex.test(password)) {
-        Alert.alert('비밀번호 오류', '비밀번호 규칙을 확인해주세요.');
-        return;
-    }
-    if (password !== confirmPassword) {
-      Alert.alert('비밀번호 오류', '비밀번호가 일치하지 않습니다.');
-      return;
     }
     if (!region || !gender) {
       Alert.alert('입력 누락', '지역과 성별을 선택해주세요.');
       return;
     }
-    const fullEmail = `${emailLocal}@${emailDomain}`;
-    onNext({ email: fullEmail, nickname, password, region, gender });
+    // 이메일과 패키지 데이터는 initialData에서 유지
+    onNext({ nickname, region, gender });
   };
 
   const handleRegionItemPress = (itemValue: string) => {
@@ -524,109 +368,26 @@ const Step3_AccountInfo = ({
     );
   };
 
-  const isButtonDisabled = !isEmailValid || !isNicknameValid || !password || !region || !gender;
+  // 비밀번호 검증이 빠지면서 비활성화 조건 간소화
+  const isButtonDisabled = !isNicknameValid || !region || !gender;
 
   return (
     <>
       <Text style={styles.title}>계정 정보</Text>
       <Text style={styles.subtitle}>로그인 정보와 프로필을 완성해주세요.</Text>
 
-      {/* 이메일 입력 */}
-      <View style={styles.emailRow}>
-        <View style={[styles.inputContainer, { flex: 1.7, marginBottom: 0 }]}>
-          <Mail size={20} color="#9CA3AF" style={styles.inputIcon} />
-          <TextInput
-            style={styles.input}
-            placeholder="이메일 ID"
-            placeholderTextColor="#9CA3AF"
-            value={emailLocal}
-            onChangeText={handleEmailChange}
-            autoCapitalize="none"
-          />
-        </View>
-        <Text style={styles.atSign}>@</Text>
-
-        <View style={[styles.inputContainer, { flex: 1, marginBottom: 0, paddingRight: 10 }]}>
-            {isCustomDomain ? (
-                <TextInput
-                    style={[styles.input, { paddingVertical: 14 }]}
-                    placeholder="직접 입력"
-                    placeholderTextColor="#9CA3AF"
-                    value={emailDomain}
-                    onChangeText={(text) => {
-                        setEmailDomain(text);
-                        setIsEmailChecked(false);
-                        setIsEmailValid(false);
-                        setEmailMsg('');
-                    }}
-                    autoCapitalize="none"
-                />
-            ) : (
-                <TouchableOpacity
-                    style={{ flex: 1 }}
-                    onPress={() => setIsDomainModalVisible(true)}
-                >
-                    <Text style={styles.inputText}>{emailDomain}</Text>
-                </TouchableOpacity>
-            )}
-
-            <TouchableOpacity onPress={() => setIsDomainModalVisible(true)}>
-                <ChevronDown size={16} color="#9CA3AF" />
-            </TouchableOpacity>
-        </View>
+      {/* 카카오 인증된 이메일 자동 삽입 (읽기 전용) */}
+      <View style={[styles.inputContainer, styles.inputVerified]}>
+        <Mail size={20} color="#34D399" style={styles.inputIcon} />
+        <TextInput
+          style={[styles.input, { color: '#34D399', fontWeight: 'bold' }]}
+          value={initialData.email}
+          editable={false}
+        />
       </View>
-
-      <TouchableOpacity
-        style={[styles.checkButton, isEmailChecked && isEmailValid ? styles.checkButtonSuccess : {}]}
-        onPress={handleCheckEmail}
-        disabled={isEmailChecked && isEmailValid}
-      >
-        <Text style={styles.checkButtonText}>
-            {isEmailChecked && isEmailValid ? "확인 완료" : "중복 확인"}
-        </Text>
-      </TouchableOpacity>
-
-      <View style={styles.msgContainer}>
-        {emailMsg ? (
-            <Text style={[styles.helperText, isEmailValid ? styles.successText : styles.errorText]}>
-                {emailMsg}
-            </Text>
-        ) : null}
-      </View>
-
-      <Modal animationType="slide" transparent={true} visible={isDomainModalVisible} onRequestClose={() => setIsDomainModalVisible(false)}>
-        <Pressable style={styles.regionModalOverlay} onPress={() => setIsDomainModalVisible(false)}>
-          <View style={styles.regionModalContent}>
-            <Text style={styles.regionModalTitle}>도메인 선택</Text>
-            <FlatList
-              data={EMAIL_DOMAINS}
-              keyExtractor={(item) => item}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.regionItem}
-                  onPress={() => {
-                      if (item === '직접 입력') {
-                          setIsCustomDomain(true);
-                          setEmailDomain('');
-                      } else {
-                          setIsCustomDomain(false);
-                          setEmailDomain(item);
-                      }
-                      setIsDomainModalVisible(false);
-                      setIsEmailChecked(false);
-                      setIsEmailValid(false);
-                      setEmailMsg('');
-                  }}
-                >
-                  <Text style={[styles.regionItemText, item === emailDomain && !isCustomDomain && { color: '#34D399', fontWeight: 'bold' }]}>
-                    {item}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            />
-          </View>
-        </Pressable>
-      </Modal>
+      <Text style={[styles.helperText, styles.successText, { marginBottom: 16, marginTop: -8, alignSelf: 'flex-start' }]}>
+        카카오 연동으로 이메일이 자동 입력되었습니다.
+      </Text>
 
       {/* 닉네임 입력 */}
       <View style={[styles.inputContainer, { marginTop: 0, marginBottom: 0 }]}>
@@ -678,41 +439,6 @@ const Step3_AccountInfo = ({
         </TouchableOpacity>
       </View>
 
-      <View style={styles.inputContainer}>
-        <Lock size={20} color="#9CA3AF" style={styles.inputIcon} />
-        <TextInput
-          style={styles.input}
-          placeholder="비밀번호 (영문, 숫자 포함 8자 이상)"
-          placeholderTextColor="#9CA3AF"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
-      </View>
-      {pwMsg ? (
-        <Text style={[styles.helperText, styles.errorText, {marginBottom: 8, marginTop: -8, paddingLeft: 4}]}>
-            {pwMsg}
-        </Text>
-      ) : null}
-
-      <View style={styles.inputContainer}>
-        <Lock size={20} color="#9CA3AF" style={styles.inputIcon} />
-        <TextInput
-          style={styles.input}
-          placeholder="비밀번호 확인"
-          placeholderTextColor="#9CA3AF"
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-          secureTextEntry
-        />
-      </View>
-
-      {pwMatchMsg ? (
-        <Text style={[styles.helperText, styles.errorText, {marginBottom: 8, marginTop: -8, paddingLeft: 4}]}>
-            {pwMatchMsg}
-        </Text>
-      ) : null}
-
       <TouchableOpacity
         style={[styles.button, isButtonDisabled && styles.buttonDisabled]}
         onPress={handleNext}
@@ -733,7 +459,6 @@ const Step3_AccountInfo = ({
   );
 };
 
-// 퀴즈 3문항으로 확장 및 처리 핸들러 변경
 const Step4_RMRQuiz = ({ onComplete }: { onComplete: (correctCount: number) => void }) => {
   const [answer1, setAnswer1] = useState<string | null>(null);
   const [answer2, setAnswer2] = useState<string | null>(null);
@@ -807,12 +532,12 @@ export default function SignUpScreen({
     }
   };
 
-  // 퀴즈 결과(정답 수)를 받아 RMR 정보 계산 및 onSignUp에 전달
   const handleComplete = (correctCount: number) => {
     const { email, password, nickname, region, gender } = signUpData as any;
-    if (email && password && nickname) {
+    if (email && nickname) {
         const { rmr, rd } = getInitialRMRAndRD(correctCount);
         console.log("최종 회원가입 데이터:", { email, nickname, rmr, rd, region, gender });
+        // 부모 컴포넌트의 타입 인터페이스 유지를 위해 password 값을 그대로 넘겨줌
         onSignUp(email, password, nickname, rmr, rd, region, gender);
     } else {
         Alert.alert("오류", "회원가입에 필요한 정보가 누락되었습니다.");
@@ -822,13 +547,12 @@ export default function SignUpScreen({
   const renderStep = () => {
     switch (currentStep) {
       case 1: return <Step1_TOS onNext={handleNextStep} />;
-      case 2: return <Step2_PhoneVerify onNext={handleNextStep} />;
+      case 2: return <Step2_KakaoVerify onNext={handleNextStep} />;
       case 3:
         return (
           <Step3_AccountInfo
             onNext={handleNextStep}
             initialData={signUpData}
-            checkEmailAvailability={checkEmailAvailability}
             checkNicknameAvailability={checkNicknameAvailability}
           />
         );
@@ -957,11 +681,12 @@ const styles = StyleSheet.create({
   regionHeaderBack: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB', marginBottom: 8 },
   regionHeaderBackText: { fontSize: 16, fontWeight: 'bold', color: '#374151', marginLeft: 8 },
 
-  verifyButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'white', borderRadius: 8, paddingVertical: 14, width: '100%', marginBottom: 10 },
-  verifyButtonText: { color: '#111827', fontWeight: 'bold', fontSize: 16 },
-  verifiedText: { color: '#34D399', textAlign: 'center', marginBottom: 20 },
-  webViewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#1F2937', borderBottomWidth: 1, borderBottomColor: '#374151' },
-  webViewTitle: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  // 추가된 카카오 인증 버튼 스타일
+  kakaoVerifyButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FEE500', borderRadius: 8, paddingVertical: 14, width: '100%', marginBottom: 10 },
+  kakaoIcon: { width: 24, height: 24, marginRight: 10 },
+  kakaoVerifyButtonText: { color: '#191919', fontWeight: 'bold', fontSize: 16 },
+  verifiedBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, backgroundColor: '#1F2937', borderRadius: 8, borderWidth: 1, borderColor: '#34D399', width: '100%', marginBottom: 10 },
+  verifiedText: { color: '#34D399', fontSize: 16, fontWeight: 'bold', marginLeft: 8 },
 
   quizQuestion: { fontSize: 16, color: 'white', width: '100%', marginBottom: 16, fontWeight: '500' },
   quizOption: { backgroundColor: '#374151', borderRadius: 8, padding: 16, width: '100%', marginBottom: 12 },

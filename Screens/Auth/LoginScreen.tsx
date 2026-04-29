@@ -90,7 +90,7 @@ export default function LoginScreen({ onGoToSignUp, onLogin }: LoginScreenProps)
           resizeMode="contain"
         />
         <Text style={styles.title}>RECO</Text>
-        <Text style={styles.subtitle}>로그인하여 랠리를 시작하세요!</Text>
+        <Text style={styles.subtitle}>로그인하여 레코를 시작하세요!</Text>
 
         {/* 2. 이메일 입력 폼 */}
         <View style={[styles.inputContainer, emailError ? styles.inputErrorBorder : null]}>
