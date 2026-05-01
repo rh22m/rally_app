@@ -1,4 +1,4 @@
-package com.recoapp
+package com.recobystackapp
 
 import android.os.Bundle
 import android.content.pm.PackageManager
@@ -13,7 +13,7 @@ import com.facebook.react.defaults.DefaultReactActivityDelegate
 
 class MainActivity : ReactActivity() {
 
-    override fun getMainComponentName(): String = "RECO"
+    override fun getMainComponentName(): String = "com.recobystackapp"
 
     override fun createReactActivityDelegate(): ReactActivityDelegate =
         DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)
