@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "451873318217",
+    "project_id": "rally-app-14c24",
+    "storage_bucket": "rally-app-14c24.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:451873318217:android:f111dec7e541e391686698",
+        "android_client_info": {
+          "package_name": "com.rally_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCX879PsUdow3MdAlq_alu66VZy9xs9r9k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:451873318217:android:e22aefac1cf00979686698",
+        "android_client_info": {
+          "package_name": "com.recoapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCX879PsUdow3MdAlq_alu66VZy9xs9r9k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:451873318217:android:913856aabd92b1b7686698",
+        "android_client_info": {
+          "package_name": "com.recobystackapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCX879PsUdow3MdAlq_alu66VZy9xs9r9k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
