@@ -1,4 +1,4 @@
-package com.reco_app.wearConnectivity;
+package com.recobystackapp.wearConnectivity;
 
 import android.content.Intent;
 import com.facebook.react.HeadlessJsTaskService;
