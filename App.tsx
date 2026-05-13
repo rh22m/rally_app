@@ -503,7 +503,8 @@ function MainScreen({
         return (
           <GameSummary
             onNext={goToEvaluation}
-            result={showTutorial && TUTORIAL_STEPS[tutorialStep].id === 'summary' ? tutorialDummyResult : gameResult}
+            // 튜토리얼 모드가 켜져 있다면 스텝에 상관없이 무조건 가상 데이터를 전달
+            result={showTutorial ? tutorialDummyResult : gameResult}
             user={user}
             userProfile={userProfile}
           />

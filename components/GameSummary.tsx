@@ -58,6 +58,7 @@ interface GameSummaryProps {
     pointLogs: PointLog[];
     team1Name: string;
     team2Name: string;
+    isTutorial?: boolean;
   };
   user?: any;
   userProfile?: any;
@@ -250,16 +251,12 @@ export function GameSummary({ onNext, result, user, userProfile }: GameSummaryPr
     const appId = 'rally-app-main';
 
     // 💡 [핵심 수정 3] saveInitiated.current가 true이면 어떤 이유에서든 즉시 실행 중단
-    if (saveInitiated.current || !user || !userProfile || result.isForced || result.team1Name === '상대팀') {
-        return;
+    if (saveInitiated.current || !user || !userProfile || result.isForced || result.isTutorial || result.duration === 0) {
+      return;
     }
 
     const saveMatchData = async () => {
-        saveInitiated.current = true; // 비동기(await) 시작 전 동기적으로 즉시 문을 잠급니다.
-
-        if (result.isTutorial) {
-            return;
-        }
+        saveInitiated.current = true;
 
         try {
             // NaN, undefined 방어 처리
