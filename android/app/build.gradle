@@ -71,8 +71,8 @@ android {
         applicationId "com.recobystackapp"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3
-        versionName "1.0.1"
+        versionCode 4
+        versionName "1.0.2"
     }
 
     // [추가] 이미지 리소스 컴파일 오류(AAPT2) 방지를 위한 설정
