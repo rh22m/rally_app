@@ -257,6 +257,10 @@ export function GameSummary({ onNext, result, user, userProfile }: GameSummaryPr
     const saveMatchData = async () => {
         saveInitiated.current = true; // 비동기(await) 시작 전 동기적으로 즉시 문을 잠급니다.
 
+        if (result.isTutorial) {
+            return;
+        }
+
         try {
             // NaN, undefined 방어 처리
             const safeRmrChange = isNaN(rmrChange) ? 0 : Math.round(rmrChange);

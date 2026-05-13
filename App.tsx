@@ -66,7 +66,8 @@ import {
   Bot,
   Flame,
   ChevronDown,
-  X
+  X,
+  Watch
 } from 'lucide-react-native';
 
 import { Home } from './components/Home';
@@ -129,6 +130,7 @@ interface TutorialStep {
   desc: string;
   targetTab: Screen | null;
   highlightTabId?: Screen;
+  Icon?: React.ElementType;
 }
 
 const TUTORIAL_STEPS: TutorialStep[] = [
@@ -155,14 +157,29 @@ const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'home',
     title: '경기 모드',
-    desc: '경기 당일, 점수판 기능을 사용해보세요.\n승패 기록과 플레이 데이터가 자동으로 저장됩니다.',
-    targetTab: 'chat',
-    highlightTabId: 'home',
+    desc: '경기 당일, 점수판 기능을 사용해보세요.\n플레이 데이터가 자동으로 저장됩니다.',
+    targetTab: 'score',
+    highlightTabId: undefined,
+  },
+  {
+    id: 'home_watch',
+    title: '스마트워치 연동',
+    desc: '스마트워치와 연동하여\n더 간편하게 점수를 기록해 보세요!',
+    targetTab: 'score',
+    highlightTabId: undefined,
+    Icon: Watch, // 워치 아이콘 출력
   },
   {
     id: 'summary',
     title: '경기 결과 & RMR',
     desc: '경기가 끝나면 상세 기록과 함께\n나의 실력 지표를 확인할 수 있습니다.',
+    targetTab: 'summary',
+    highlightTabId: undefined,
+  },
+  {
+    id: 'permission',
+    title: 'AI 분석 (Beta)',
+    desc: '레코가 AI 분석을 제공합니다.\n\n원활한 분석을 위해 다음 단계에서\n카메라 및 마이크 권한을 허용해 주세요.',
     targetTab: 'summary',
     highlightTabId: undefined,
   },
@@ -176,7 +193,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'profile',
     title: '내 정보',
-    desc: '나의 티어, 매너 점수, 경기 전적을\n한눈에 관리하고 실력을 증명하세요!',
+    desc: '나의 프로필을 한눈에 관리하고\n장비 추천 기능도 활용해 보세요!',
     targetTab: 'profile',
     highlightTabId: 'profile',
   },
@@ -238,18 +255,18 @@ const TutorialOverlay = ({ visible, stepIndex, onNext, onSkip }: {
       <View style={styles.tutorialContainer}>
         <View style={styles.tutorialBackdrop} />
 
-        <SafeAreaView style={styles.tutorialHeader}>
-          <TouchableOpacity onPress={onSkip} style={styles.skipButton}>
-            <Text style={styles.skipText}>건너뛰기</Text>
-            <X size={20} color="white" />
-          </TouchableOpacity>
-        </SafeAreaView>
-
         <View style={[
           styles.contentWrapper,
           step.id === 'summary' && styles.contentWrapperBottom
         ]}>
           <Animated.View style={[styles.tutorialContent, { opacity: fadeAnim }]}>
+
+          {step.Icon && (
+            <View style={{ marginBottom: 12 }}>
+              <step.Icon size={40} color="#34D399" />
+            </View>
+          )}
+
             <Text style={styles.tutorialTitle}>{step.title}</Text>
             <Text style={styles.tutorialDesc}>{step.desc}</Text>
 
@@ -331,6 +348,7 @@ function MainScreen({
     isForced: false,
     team1Name: '상대팀',
     team2Name: userProfile?.nickname || '본인',
+    isTutorial: true,
     pointLogs: [
         { scorer: 'B', scoreA: 0, scoreB: 1, setIndex: 1, timestamp: Date.now(), duration: 10 },
         { scorer: 'B', scoreA: 0, scoreB: 2, setIndex: 1, timestamp: Date.now(), duration: 4 },
@@ -786,8 +804,6 @@ const styles = StyleSheet.create({
   tutorialContainer: { flex: 1 },
   tutorialBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0, 0, 0, 0.7)' },
   tutorialHeader: { position: 'absolute', top: 0, right: 0, padding: 20, width: '100%', alignItems: 'flex-end', zIndex: 20 },
-  skipButton: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.2)', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
-  skipText: { color: 'white', fontSize: 14, fontWeight: 'bold' },
   contentWrapper: { flex: 1, justifyContent: 'center', alignItems: 'center', zIndex: 22, paddingBottom: 100 },
   contentWrapperBottom: { justifyContent: 'flex-end', paddingBottom: 50 },
   tutorialContent: { width: '80%', backgroundColor: '#1F2937', padding: 24, borderRadius: 20, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 10 },
