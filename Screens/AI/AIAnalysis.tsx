@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
@@ -13,60 +14,36 @@ import {
   ScrollView,
   Modal,
   Image,
-  Dimensions
+  Linking
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import {
-  Bot,
-  Activity,
-  Maximize2,
-  Move,
-  Zap,
-  RefreshCcw,
-  Square,
-  History,
-  Clock,
-  CheckCircle,
-  XCircle,
-  Dumbbell,
-  Play,
-  Trash2,
-  FileText,
-  Smartphone,
-  User,
-  Eye,
-  HelpCircle,
-  Info,
-  X,
-  Footprints,
-  ArrowUpLeft,
-  ArrowUpRight,
-  ArrowDownLeft,
-  ArrowDownRight,
-  Circle
+  Bot, Activity, Move, Zap, RefreshCcw, Square, Clock,
+  CheckCircle, XCircle, Dumbbell, Play, Trash2, FileText,
+  Smartphone, User, Eye, HelpCircle, Info, X,
+  ArrowUpLeft, ArrowUpRight, ArrowDownLeft, ArrowDownRight,
+  Circle, RotateCw, BarChart2, Award, Video
 } from 'lucide-react-native';
+import { htmlContent } from './poseHtml';
 
-// Firebase 연동을 위한 임포트 추가
+// Firebase 연동
 import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { getApp } from 'firebase/app';
 
-import { htmlContent } from './poseHtml';
-
 // ---------------- [설정값] ----------------
 const ANALYSIS_DURATION = 20;
 const FOOTWORK_DURATION = 60;
-const SMOOTHING_FACTOR = 0.5;
 const SPEED_BUFFER_SIZE = 3;
 const USER_HEIGHT_CM = 175;
 const ARM_LENGTH_RATIO = 0.45;
 const PIXEL_TO_REAL_SCALE = (USER_HEIGHT_CM * ARM_LENGTH_RATIO) / 200;
 
-const MIN_SWING_DISTANCE_PX = 0.3;
-const SWING_TRIGGER_SPEED = 40;
-const ESTIMATED_FPS = 30;
+const MIN_SWING_DISTANCE_PX = 0.15;
+const SWING_TRIGGER_SPEED = 25;
 
 export type AnalysisMode = 'SWING' | 'LUNGE' | 'FOOTWORK';
+type Difficulty = 'EASY' | 'NORMAL' | 'HARD';
 type FootworkDirection = 'CENTER' | 'FRONT_LEFT' | 'FRONT_RIGHT' | 'BACK_LEFT' | 'BACK_RIGHT';
 
 interface ResultData {
@@ -89,23 +66,145 @@ export interface AnalysisReport {
   training: string;
   totalCount: number;
   maxRecord: number;
+  difficulty?: Difficulty;
 }
+
+export interface StyleRecord {
+  id: string;
+  date: string;
+  styleId: string;
+  name: string;
+  title: string;
+  image: any;
+}
+
+// ---------------- [플레이어 매칭 데이터] ----------------
+const PLAYER_STYLES = {
+  POWER: {
+    name: '정재성 스타일',
+    title: '코트를 찢는 폭발적인 파워 스매셔',
+    desc: '압도적인 피지컬과 강력한 파워로 후위에서 상대를 억압하는 스타일입니다. 강한 스윙 파워를 바탕으로 공격의 주도권을 쥐는 데 능숙합니다.',
+    stats: { power: 95, agility: 70, defense: 80, tech: 75 },
+    video: { title: '대한민국 배드민턴 스매시의 상징', url: 'https://youtu.be/V8Doavdkz9w' },
+    image: require('../../assets/images/player/chung.png')
+  },
+  SPEED: {
+    name: '이용대 스타일',
+    title: '전위의 지배자 & 철벽 수비',
+    desc: '뛰어난 반사신경과 탄탄한 수비력으로 상대의 공격을 무력화시킵니다. 민첩한 풋워크를 바탕으로 네트 앞 플레이에서 강점을 보입니다.',
+    stats: { power: 75, agility: 95, defense: 90, tech: 85 },
+    video: { title: '전위 플레이의 교과서', url: 'https://youtu.be/LlvsJkdQAXg' },
+    image: require('../../assets/images/player/lee.png')
+  },
+  ALL_ROUND: {
+    name: '빅토르 악셀센 스타일',
+    title: '코트를 지배하는 무결점 올라운더',
+    desc: '공수 밸런스가 완벽하며, 안정적인 자세와 넓은 커버리지로 경기를 압도합니다. 어떤 상황에서도 흔들리지 않는 멘탈과 기본기가 강점입니다.',
+    stats: { power: 85, agility: 85, defense: 85, tech: 90 },
+    video: { title: '빅토르 악셀센 다시 봐야 할 순간들!', url: 'https://youtu.be/PXvJFTW7h5I' },
+    image: require('../../assets/images/player/vic.png')
+  },
+  TECH: {
+    name: '안세영 스타일',
+    title: '지치지 않는 끈기와 강철 체력',
+    desc: '탄탄한 기본기와 강인한 체력, 흔들리지 않는 코어 힘으로 랠리를 길게 가져가며 상대를 지치게 만드는 끈질긴 승부사입니다.',
+    stats: { power: 70, agility: 85, defense: 95, tech: 90 },
+    video: { title: '안세영 배드민턴 여자단식 세계랭킹 1위 선수의 경이로운 랠리 모음', url: 'https://youtu.be/NMevb777YTc' },
+    image: require('../../assets/images/player/an.png')
+  }
+};
+
+const SURVEY_QUESTIONS = [
+  {
+    q: "찬스 상황이 왔을 때 나의 선택은?",
+    options: [
+      { text: "A. 강력하고 시원한 스매시로 끝낸다", type: "POWER" },
+      { text: "B. 상대의 빈 곳을 찌르는 정교한 푸시/드롭", type: "TECH" }
+    ]
+  },
+  {
+    q: "위기 상황일 때 나의 대처법은?",
+    options: [
+      { text: "A. 높고 멀리 클리어를 쳐서 시간을 번다", type: "DEFENSE" },
+      { text: "B. 빠르고 낮게 드라이브로 맞불을 놓는다", type: "SPEED" }
+    ]
+  }
+];
+
+// ---------------- [가이드 데이터] ----------------
+const MODE_DETAILS = {
+  SWING: {
+    title: '스윙 정밀 분석',
+    scoreCriteria: [
+      { label: '속도', pct: '30%', desc: '임팩트 순간의 라켓 헤드 가속도' },
+      { label: '회전력', pct: '20%', desc: '상하체 꼬임(X-Factor) 각도' },
+      { label: '자세', pct: '20%', desc: '팔꿈치 각도 및 폼의 정확성' },
+      { label: '타점', pct: '15%', desc: '신장 대비 타격 높이 효율' },
+      { label: '체중이동', pct: '15%', desc: '타격 시 중심 이동량' },
+    ],
+    analysisElements: ['최고 속도 (km/h)', 'X-Factor', '임팩트 팔꿈치 각도', '타점 높이'],
+    gradeCriteria: [
+      { grade: 'SS', value: '140km/h ↑', desc: '선수급 파워' },
+      { grade: 'S', value: '110km/h ↑', desc: '상급 동호인' },
+      { grade: 'A', value: '90km/h ↑', desc: '중급 동호인' },
+      { grade: 'B', value: '60km/h ↑', desc: '초급 / 입문' },
+    ],
+    tips: ['카메라를 측면(3~4m 거리)에 설치하세요.', '전신이 화면에 모두 들어와야 정확합니다.', '배경이 복잡하지 않은 곳이 좋습니다.']
+  },
+  LUNGE: {
+    title: '준비 자세 안정성',
+    scoreCriteria: [
+      { label: '유지시간', pct: '40%', desc: '자세를 무너뜨리지 않고 버틴 시간' },
+      { label: '자세안정', pct: '30%', desc: '무릎 각도(155~165°) 유지력' },
+      { label: '시선처리', pct: '30%', desc: '머리의 상하좌우 흔들림' },
+    ],
+    analysisElements: ['최대 버티기 시간 (초)', '무릎 각도 변화 추이', '시선 고정 여부'],
+    gradeCriteria: [
+      { grade: 'S', value: '45초 ↑', desc: '철벽 수비' },
+      { grade: 'A', value: '30초 ↑', desc: '안정적' },
+      { grade: 'B', value: '15초 ↑', desc: '기초 체력 필요' },
+    ],
+    tips: ['정면 혹은 45도 측면에서 촬영하세요.', '라켓을 들고 실제 수비 자세를 취하세요.', '무릎이 발끝을 넘지 않도록 주의하세요.']
+  },
+  FOOTWORK: {
+    title: '풋워크 민첩성',
+    scoreCriteria: [
+      { label: '반응속도', pct: '60%', desc: '지시 후 첫 발을 떼는 시간' },
+      { label: '정확도', pct: '40%', desc: '지시된 방향으로 정확히 이동했는지' },
+    ],
+    analysisElements: ['평균 반응 속도 (초)', '스텝 성공 횟수', '콤보(연속 성공)'],
+    gradeCriteria: [
+      { grade: 'PERFECT', value: '0.8초 ↓', desc: '국가대표급 반사신경' },
+      { grade: 'GOOD', value: '1.2초 ↓', desc: '일반적인 반응 속도' },
+    ],
+    tips: ['중앙 원 안에서 시작하세요.', '스텝 후 반드시 중앙으로 복귀해야 합니다.', 'Hard 모드는 스윙 동작까지 해야 인정됩니다.'],
+    difficultyGuide: ['🟢 EASY: 1초 간격 (정확한 스텝 연습)', '🔵 NORMAL: 0.5초 간격 (실전 랠리 속도)', '🔴 HARD: 0.2초 간격 + 스윙 동작 필수']
+  }
+};
+
+const GENERAL_GUIDE_DATA = [
+  { mode: 'SWING', title: '스윙 정밀 분석', icon: <Zap size={24} color="#F472B6" />, desc: ['최고 속도(km/h)와 폼의 정확도를 측정합니다.', '분석 지표: 상하체 회전차, 타점 높이, 체중 이동', '임팩트 시 팔의 각도와 허리 회전을 중점적으로 봅니다.'] },
+  { mode: 'LUNGE', title: '준비 자세 안정성', icon: <Activity size={24} color="#60A5FA" />, desc: ['수비 리시브 자세의 유지 시간을 측정합니다.', '분석 지표: 시선 흔들림, 무릎 각도 유지력', '버티는 동안 머리가 기울어지지 않도록 주의하세요.'] },
+  { mode: 'FOOTWORK', title: '민첩성 훈련', icon: <Move size={24} color="#FCD34D" />, desc: ['화면에 표시되는 방향으로 빠르게 이동하세요.', '중앙 복귀 후 다음 지시를 기다려야 합니다.', '반응 속도(초)와 스텝의 정확도를 평가합니다.'] }
+];
 
 export default function AIAnalysis() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);
   const [mode, setMode] = useState<AnalysisMode>('SWING');
+  const [difficulty, setDifficulty] = useState<Difficulty>('EASY');
 
   const [swingSpeed, setSwingSpeed] = useState(0);
   const [currentElbowAngle, setCurrentElbowAngle] = useState(0);
   const [currentKneeAngle, setCurrentKneeAngle] = useState(0);
-
+  const [currentXFactor, setCurrentXFactor] = useState(0);
+  const [currentCOG, setCurrentCOG] = useState(0);
+  const [heightEfficiency, setHeightEfficiency] = useState(0);
+  const [headTilt, setHeadTilt] = useState(0);
   const [swingScore, setSwingScore] = useState(0);
-
   const [currentLungeHoldTime, setCurrentLungeHoldTime] = useState(0);
   const [maxLungeHoldTime, setMaxLungeHoldTime] = useState(0);
   const [lungeStability, setLungeStability] = useState(0);
-
   const [targetDirection, setTargetDirection] = useState<FootworkDirection>('CENTER');
   const [currentFootworkPose, setCurrentFootworkPose] = useState<FootworkDirection>('CENTER');
   const [footworkScore, setFootworkScore] = useState(0);
@@ -115,28 +214,38 @@ export default function AIAnalysis() {
   const [timeLeft, setTimeLeft] = useState(ANALYSIS_DURATION);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
+
   const [showReport, setShowReport] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
 
+  const [showSurvey, setShowSurvey] = useState(false);
+  const [surveyStep, setSurveyStep] = useState(0);
+  const [surveyAnswers, setSurveyAnswers] = useState<string[]>([]);
+  const [showMatchResult, setShowMatchResult] = useState(false);
+  const [matchedStyle, setMatchedStyle] = useState<any>(null);
+
+  const [styleHistory, setStyleHistory] = useState<StyleRecord[]>([]);
+
   const [selectedReport, setSelectedReport] = useState<AnalysisReport | null>(null);
   const [history, setHistory] = useState<AnalysisReport[]>([]);
-
   const [lastResult, setLastResult] = useState<ResultData | null>(null);
+
+  const hasSwing = history.some(h => h.mode === 'SWING');
+  const hasLunge = history.some(h => h.mode === 'LUNGE');
+  const hasFootwork = history.some(h => h.mode === 'FOOTWORK');
+  const canMatchStyle = hasSwing && hasLunge && hasFootwork;
+
   const popAnim = useRef(new Animated.Value(0)).current;
   const flashAnim = useRef(new Animated.Value(0)).current;
   const arrowAnim = useRef(new Animated.Value(1)).current;
   const countdownAnim = useRef(new Animated.Value(0)).current;
 
   const sessionDataRef = useRef({
-    swingSpeeds: [] as number[],
-    swingAngles: [] as number[],
-    swingKnnScores: [] as number[],
-    lungeHoldTimes: [] as number[],
-    lungeKnnScores: [] as number[],
-    footworkReactionTimes: [] as number[],
-    footworkSuccessCount: 0,
-    count: 0
+    swingSpeeds: [] as number[], swingAngles: [] as number[], swingKnnScores: [] as number[],
+    swingXFactors: [] as number[], swingCOGDeltas: [] as number[], swingHeights: [] as number[],
+    lungeHoldTimes: [] as number[], lungeKnnScores: [] as number[], lungeHeadTilts: [] as number[],
+    footworkReactionTimes: [] as number[], footworkSuccessCount: 0, count: 0
   });
 
   const prevPos = useRef<{ x: number; y: number; time: number; speed: number } | null>(null);
@@ -147,8 +256,10 @@ export default function AIAnalysis() {
   const tempMaxSpeedRef = useRef(0);
   const angleAtMaxRef = useRef(0);
   const knnAtMaxRef = useRef(0);
+  const xFactorAtMaxRef = useRef(0);
   const swingDistanceRef = useRef(0);
-
+  const startCOGRef = useRef(0);
+  const hasSwungInStep = useRef(false);
   const isLungingRef = useRef(false);
   const lungeStartTimeRef = useRef(0);
 
@@ -163,12 +274,8 @@ export default function AIAnalysis() {
           if (granted['android.permission.CAMERA'] === PermissionsAndroid.RESULTS.GRANTED) {
             setHasPermission(true);
           }
-        } catch (err) {
-          console.warn(err);
-        }
-      } else {
-        setHasPermission(true);
-      }
+        } catch (err) { console.warn(err); }
+      } else { setHasPermission(true); }
     };
     requestPermission();
   }, []);
@@ -176,18 +283,12 @@ export default function AIAnalysis() {
   useEffect(() => {
     if (countdown !== null) {
       countdownAnim.setValue(1.5);
-      Animated.spring(countdownAnim, {
-        toValue: 1,
-        friction: 4,
-        useNativeDriver: true
-      }).start();
-
+      Animated.spring(countdownAnim, { toValue: 1, friction: 4, useNativeDriver: true }).start();
       if (countdown > 0) {
         const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
         return () => clearTimeout(timer);
       } else if (countdown === 0) {
-        setCountdown(null);
-        startActualTimer();
+        setCountdown(null); startActualTimer();
       }
     }
   }, [countdown]);
@@ -195,9 +296,7 @@ export default function AIAnalysis() {
   useEffect(() => {
     let interval: any;
     if (isAnalyzing && isTimerRunning && mode !== 'LUNGE' && timeLeft > 0) {
-      interval = setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
-      }, 1000);
+      interval = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
     } else if (isAnalyzing && isTimerRunning && mode !== 'LUNGE' && timeLeft === 0) {
       finishAnalysis();
     }
@@ -212,9 +311,7 @@ export default function AIAnalysis() {
           Animated.timing(arrowAnim, { toValue: 1, duration: 500, useNativeDriver: true })
         ])
       ).start();
-    } else {
-      arrowAnim.setValue(1);
-    }
+    } else { arrowAnim.setValue(1); }
   }, [mode, isTimerRunning, targetDirection]);
 
   useEffect(() => {
@@ -224,95 +321,79 @@ export default function AIAnalysis() {
       const directions: FootworkDirection[] = ['FRONT_LEFT', 'FRONT_RIGHT', 'BACK_LEFT', 'BACK_RIGHT'];
       const nextDir = directions[Math.floor(Math.random() * directions.length)];
 
+      let delay = 1000;
+      if (difficulty === 'NORMAL') delay = 500;
+      if (difficulty === 'HARD') delay = 200;
+
       setTimeout(() => {
-        setTargetDirection(nextDir);
-        setLastActionTime(Date.now());
-        Vibration.vibrate(50);
-      }, 500);
+        setTargetDirection(nextDir); setLastActionTime(Date.now());
+        hasSwungInStep.current = false; Vibration.vibrate(50);
+      }, delay);
     }
-    else if (targetDirection !== 'CENTER' && currentFootworkPose === targetDirection) {
-      const reactionTime = (Date.now() - lastActionTime) / 1000;
-      sessionDataRef.current.footworkReactionTimes.push(reactionTime);
-      sessionDataRef.current.footworkSuccessCount += 1;
+    else if (targetDirection !== 'CENTER') {
+      const isPositionMatch = currentFootworkPose === targetDirection;
+      let isSuccess = false;
 
-      const points = Math.max(10, Math.floor(100 - reactionTime * 30));
-      setFootworkScore(prev => prev + points);
-      setFootworkCombo(prev => prev + 1);
+      if (difficulty === 'HARD') {
+        if (isPositionMatch && hasSwungInStep.current) isSuccess = true;
+      } else {
+        if (isPositionMatch) isSuccess = true;
+      }
 
-      triggerResultAnimation();
-      setLastResult({
-        value: points,
-        isGood: true,
-        type: 'FOOTWORK',
-        grade: reactionTime < 1.0 ? 'PERFECT' : 'GOOD',
-        score: points,
-        unit: '점'
-      });
+      if (isSuccess) {
+        const reactionTime = (Date.now() - lastActionTime) / 1000;
+        sessionDataRef.current.footworkReactionTimes.push(reactionTime);
+        sessionDataRef.current.footworkSuccessCount += 1;
 
-      setTargetDirection('CENTER');
+        let points = Math.max(10, Math.floor(100 - reactionTime * 30));
+        if (difficulty === 'NORMAL') points += 10;
+        if (difficulty === 'HARD') points += 30;
+
+        setFootworkScore(prev => prev + points); setFootworkCombo(prev => prev + 1);
+        triggerResultAnimation();
+
+        let gradeText = reactionTime < 1.0 ? 'PERFECT' : 'GOOD';
+        if (difficulty === 'HARD') gradeText = 'NICE SMASH!';
+
+        setLastResult({ value: points, isGood: true, type: 'FOOTWORK', grade: gradeText, score: points, unit: '점' });
+        setTargetDirection('CENTER');
+      }
     }
-  }, [currentFootworkPose, targetDirection, isTimerRunning, mode]);
+  }, [currentFootworkPose, targetDirection, isTimerRunning, mode, difficulty]);
 
   const enterAnalysisMode = () => {
     if (hasPermission) {
       const duration = mode === 'FOOTWORK' ? FOOTWORK_DURATION : ANALYSIS_DURATION;
-      setTimeLeft(duration);
-      setIsTimerRunning(false);
-      setCountdown(null);
-
-      setSwingSpeed(0);
-      setSwingScore(0);
-      setCurrentElbowAngle(0);
-      setCurrentKneeAngle(0);
-
-      setCurrentLungeHoldTime(0);
-      setMaxLungeHoldTime(0);
-      setLungeStability(0);
-
-      setFootworkScore(0);
-      setFootworkCombo(0);
-      setTargetDirection('CENTER');
-
-      setLastResult(null);
+      setTimeLeft(duration); setIsTimerRunning(false); setCountdown(null);
+      setSwingSpeed(0); setSwingScore(0); setCurrentElbowAngle(0); setCurrentKneeAngle(0);
+      setCurrentXFactor(0); setCurrentCOG(0); setHeightEfficiency(0); setHeadTilt(0);
+      setCurrentLungeHoldTime(0); setMaxLungeHoldTime(0); setLungeStability(0);
+      setFootworkScore(0); setFootworkCombo(0); setTargetDirection('CENTER'); setLastResult(null);
 
       sessionDataRef.current = {
-        swingSpeeds: [], swingAngles: [], swingKnnScores: [],
-        lungeHoldTimes: [], lungeKnnScores: [],
-        footworkReactionTimes: [], footworkSuccessCount: 0,
-        count: 0
+        swingSpeeds: [], swingAngles: [], swingKnnScores: [], swingXFactors: [], swingCOGDeltas: [], swingHeights: [],
+        lungeHoldTimes: [], lungeKnnScores: [], lungeHeadTilts: [], footworkReactionTimes: [], footworkSuccessCount: 0, count: 0
       };
 
-      setIsAnalyzing(true);
-      setShowHelp(true);
-
-      setTimeout(() => {
-        webviewRef.current?.postMessage(JSON.stringify({ type: 'setMode', mode: mode }));
-      }, 500);
-    } else {
-      Alert.alert('알림', '카메라 권한이 필요합니다.');
-    }
+      setIsAnalyzing(true); setShowHelp(true);
+      setTimeout(() => webviewRef.current?.postMessage(JSON.stringify({ type: 'setMode', mode: mode })), 500);
+    } else { Alert.alert('알림', '카메라 권한이 필요합니다.'); }
   };
 
-  const onPlayPress = () => {
-    setCountdown(3);
-    setShowHelp(false);
-  };
+  const onPlayPress = () => { setCountdown(3); setShowHelp(false); };
+  const startActualTimer = () => { setIsTimerRunning(true); Vibration.vibrate(100); if (mode === 'FOOTWORK') setTargetDirection('CENTER'); };
 
-  const startActualTimer = () => {
-    setIsTimerRunning(true);
-    Vibration.vibrate(100);
-    if (mode === 'FOOTWORK') setTargetDirection('CENTER');
-  };
-
-  // 분석 종료 시 Firestore 연동 추가
+  // 🔥 Firestore 저장을 위한 로직 복구
   const finishAnalysis = async () => {
     setIsAnalyzing(false);
     setIsTimerRunning(false);
     setCountdown(null);
+
     const newReport = createReport();
     setHistory((prev) => [newReport, ...prev]);
     setSelectedReport(newReport);
-    setShowReport(true);
+
+    setTimeout(() => setShowReport(true), 500);
 
     try {
         const auth = getAuth(getApp());
@@ -320,8 +401,17 @@ export default function AIAnalysis() {
         if (user) {
             const db = getFirestore(getApp());
             const appId = 'rally-app-main';
+
+            // 🔥 undefined 값이 포함되어 있으면 Firestore 저장이 에러를 뱉으므로 객체를 정제합니다.
+            const reportToSave = { ...newReport };
+            Object.keys(reportToSave).forEach(key => {
+                if (reportToSave[key as keyof AnalysisReport] === undefined) {
+                    delete reportToSave[key as keyof AnalysisReport];
+                }
+            });
+
             await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'videoHistory'), {
-                ...newReport,
+                ...reportToSave,
                 createdAt: serverTimestamp()
             });
         }
@@ -330,211 +420,201 @@ export default function AIAnalysis() {
     }
   };
 
+  const toggleDifficulty = () => {
+    if (isTimerRunning) { Alert.alert('알림', '게임 중에는 난이도를 변경할 수 없습니다.'); return; }
+    setDifficulty(prev => { if (prev === 'EASY') return 'NORMAL'; if (prev === 'NORMAL') return 'HARD'; return 'EASY'; });
+  };
+
+  const startStyleMatch = () => {
+    setSurveyStep(0); setSurveyAnswers([]); setShowSurvey(true);
+  };
+
+  const handleSurveyAnswer = (type: string) => {
+    const newAnswers = [...surveyAnswers, type];
+    setSurveyAnswers(newAnswers);
+
+    if (surveyStep < SURVEY_QUESTIONS.length - 1) {
+      setSurveyStep(prev => prev + 1);
+    } else {
+      setShowSurvey(false);
+      calculatePlayerMatch(newAnswers);
+    }
+  };
+
+  const calculatePlayerMatch = (answers: string[]) => {
+    const swingData = history.filter(h => h.mode === 'SWING');
+    const lungeData = history.filter(h => h.mode === 'LUNGE');
+    const footworkData = history.filter(h => h.mode === 'FOOTWORK');
+
+    const maxSwing = swingData.length > 0 ? Math.max(...swingData.map(h => h.maxRecord)) : 0;
+    const maxLunge = lungeData.length > 0 ? Math.max(...lungeData.map(h => h.maxRecord)) : 0;
+    const avgFootwork = footworkData.length > 0 ? footworkData[0].maxRecord : 1.5;
+
+    let styleId = 'ALL_ROUND';
+    if (answers.includes('POWER') || maxSwing >= 100) styleId = 'POWER';
+    else if (answers.includes('SPEED') && avgFootwork <= 1.0) styleId = 'SPEED';
+    else if (answers.includes('DEFENSE') || maxLunge >= 30) styleId = 'TECH';
+
+    const finalStyle = PLAYER_STYLES[styleId as keyof typeof PLAYER_STYLES];
+    setMatchedStyle(finalStyle);
+
+    const newStyleRecord: StyleRecord = {
+      id: Date.now().toString(),
+      date: new Date().toLocaleString(),
+      styleId: styleId,
+      name: finalStyle.name,
+      title: finalStyle.title,
+      image: finalStyle.image
+    };
+    setStyleHistory(prev => [newStyleRecord, ...prev]);
+
+    setTimeout(() => setShowMatchResult(true), 500);
+  };
+
+  const getBadgeColor = (grade: string) => {
+    if (grade === 'SS' || grade === 'PERFECT') return '#F59E0B';
+    if (grade === 'S' || grade === 'GOOD') return '#8B5CF6';
+    if (grade === 'A') return '#3B82F6';
+    if (grade === 'B') return '#10B981';
+    return '#6B7280';
+  };
+
   const getGradeColor = (grade?: string) => {
-    if (grade === 'PERFECT') return '#FFD700';
+    if (grade === 'PERFECT' || grade === 'NICE SMASH!') return '#FFD700';
     switch (grade) {
-      case 'SS': return '#FFD700';
-      case 'S': return '#A78BFA';
-      case 'A': return '#60A5FA';
-      case 'B': return '#34D399';
-      default: return '#9CA3AF';
+      case 'SS': return '#FFD700'; case 'S': return '#A78BFA'; case 'A': return '#60A5FA'; case 'B': return '#34D399'; default: return '#9CA3AF';
     }
   };
 
   const createReport = (): AnalysisReport => {
     const data = sessionDataRef.current;
-
     let report: AnalysisReport = {
-      id: Date.now().toString(),
-      date: new Date().toLocaleString(),
-      mode: mode,
-      avgScore: 0,
-      pros: [],
-      cons: [],
-      training: '',
-      totalCount: 0,
-      maxRecord: 0
+      id: Date.now().toString(), date: new Date().toLocaleString(), mode: mode,
+      avgScore: 0, pros: [], cons: [], training: '', totalCount: 0, maxRecord: 0
     };
 
-    if (mode === 'SWING') {
-      if (data.count === 0) {
-        report.training = '측정된 데이터가 없습니다. 동작을 다시 수행해주세요.';
-        return report;
-      }
-      const maxSpeed = Math.floor(Math.max(...data.swingSpeeds));
-      const avgKnn = data.swingKnnScores.length > 0
-        ? data.swingKnnScores.reduce((a, b) => a + b, 0) / data.swingKnnScores.length
-        : 0;
-      const avgAngle = data.swingAngles.reduce((a,b)=>a+b,0) / data.swingAngles.length;
-      const avgSpeed = data.swingSpeeds.reduce((a,b)=>a+b,0) / data.swingSpeeds.length;
-
-      report.totalCount = data.count;
-      report.maxRecord = maxSpeed;
-
-      const speedScore = Math.min(100, avgSpeed * 0.8);
-      const formScore = avgKnn;
-      const angleScore = avgAngle >= 160 ? 100 : (avgAngle / 180) * 100;
-
-      report.avgScore = Math.floor(speedScore * 0.5 + formScore * 0.3 + angleScore * 0.2);
-
-      if (maxSpeed >= 130) report.pros.push('국가대표급 파워 스매시입니다! 코트를 찢을 듯한 속도네요.');
-      else if (maxSpeed >= 110) report.pros.push('상급자 수준의 강력한 스매시 파워를 보유하고 계십니다.');
-      else if (maxSpeed >= 90) report.pros.push('동호인 평균 이상의 준수한 스윙 스피드입니다.');
-      else if (maxSpeed >= 70) report.pros.push('평균적인 스윙 속도입니다. 조금 더 자신감을 가지세요!');
-
-      if (avgKnn >= 85) report.pros.push('프로 선수와 폼이 99% 일치합니다. 교과서적인 자세입니다.');
-      else if (avgKnn >= 70) report.pros.push('전반적인 자세가 안정적입니다. 중심 이동이 훌륭합니다.');
-      else if (avgKnn >= 60) report.pros.push('스윙 궤적이 부드럽습니다. 폼이 점점 좋아지고 있어요.');
-
-      if (avgAngle >= 160) report.pros.push('높은 타점에서 임팩트가 이루어져 공격 각도가 날카롭습니다.');
-
-      if (maxSpeed < 70) report.cons.push('아직 스윙이 조심스럽습니다. 손목 스냅을 더 과감하게 사용해보세요.');
-      if (avgSpeed < 60) report.cons.push('임팩트 순간에 힘이 실리지 않습니다. 허리 회전을 더 활용하세요.');
-      if (avgKnn < 50) report.cons.push('임팩트 순간의 자세가 무너집니다. 코어에 힘을 주세요.');
-      if (avgAngle < 140) report.cons.push('팔이 다 펴지지 않은 상태로 타격합니다. 타점을 머리 위로 더 높이세요.');
-
-      if (avgKnn < 60) report.training = '💡 [자세 교정] 거울을 보며 쉐도우 스윙을 하루 50회씩 반복하세요. 백스윙 시 팔꿈치를 더 높게 드는 것이 핵심입니다.';
-      else if (avgSpeed < 90) report.training = '💡 [파워 강화] 악력기를 이용한 전완근 강화 훈련과 라켓 커버를 씌운 빈 스윙 연습이 스매시 파워를 높여줍니다.';
-      else report.training = '💡 [실전 감각] 폼과 파워가 완벽합니다. 이제 점프 스매시와 풋워크를 결합하여 실전 경기에서의 득점력을 높여보세요.';
-
-    } else if (mode === 'LUNGE') {
-      const maxHold = maxLungeHoldTime;
-      const totalAttempts = data.lungeHoldTimes.length;
-      report.maxRecord = maxHold;
-      report.totalCount = totalAttempts;
-
-      report.avgScore = Math.min(100, Math.floor((maxHold / 60) * 100));
-
-      if (maxHold >= 60) report.pros.push('강철 같은 하체입니다. 지치지 않는 체력이 돋보입니다.');
-      else if (maxHold >= 45) report.pros.push('매우 안정적인 하체 밸런스를 유지하고 있습니다.');
-      else if (maxHold >= 30) report.pros.push('평균 이상의 지구력입니다. 수비 범위가 넓어지겠네요.');
-      else if (maxHold >= 15) report.pros.push('기본적인 근력은 갖췄으나, 장기전에는 불리할 수 있습니다.');
-
-      if (maxHold < 15) report.cons.push('하체 근력이 부족하여 자세가 금방 무너집니다. 스쿼트가 필요해요.');
-      if (data.lungeKnnScores.length > 0) {
-          const avgStab = data.lungeKnnScores.reduce((a,b)=>a+b,0) / data.lungeKnnScores.length;
-          if (avgStab < 60) report.cons.push('버티는 동안 상체가 흔들립니다. 시선을 정면에 고정하세요.');
-      }
-
-      report.training = maxHold < 30
-        ? '💡 [지구력] 벽에 등을 기대고 투명의자 자세로 버티는 훈련을 매일 1분씩 3세트 수행하세요.'
-        : '💡 [순발력] 버티기 자세에서 호각 소리에 맞춰 즉시 점프하거나 튀어나가는 플라이오메트릭 훈련을 추가하세요.';
-
-    } else if (mode === 'FOOTWORK') {
-      const totalSuccess = data.footworkSuccessCount;
-      if (totalSuccess === 0) {
-        report.training = '성공한 스텝이 없습니다. 화면의 화살표를 보고 천천히 다시 시도하세요.';
-        return report;
-      }
-      const avgReaction = data.footworkReactionTimes.reduce((a,b)=>a+b,0) / totalSuccess;
-
-      report.totalCount = totalSuccess;
-      report.maxRecord = avgReaction;
-      report.avgScore = footworkScore;
-
-      if (avgReaction < 0.6) report.pros.push('반사 신경이 신의 경지입니다! 상대가 예측할 수 없는 속도네요.');
-      else if (avgReaction < 0.9) report.pros.push('매우 민첩합니다. 빈 곳을 찌르는 공격에 완벽히 대응할 수 있습니다.');
-      else if (avgReaction < 1.2) report.pros.push('준수한 반응 속도입니다. 스텝 리듬이 좋습니다.');
-      else if (avgReaction < 1.5) report.pros.push('반응이 조금 늦습니다. 준비 자세에서 뒤꿈치를 살짝 들어보세요.');
-
-      if (avgReaction > 1.5) report.cons.push('반응 후 첫 발을 떼는 속도가 느립니다. 스플릿 스텝 연습을 추천합니다.');
-
-      report.training = '💡 [민첩성] 줄넘기 2단 뛰기와 사이드 스텝 왕복 달리기가 순발력 향상에 큰 도움이 됩니다.';
+    // 🔥 undefined 에러를 원천 차단하기 위해 조건부로 속성 추가
+    if (mode === 'FOOTWORK') {
+      report.difficulty = difficulty;
     }
 
-    if (report.pros.length === 0) report.pros.push('꾸준한 연습이 가장 큰 무기입니다! 조금만 더 노력해보세요.');
-    if (report.cons.length === 0) report.cons.push('특별한 단점이 발견되지 않았습니다. 정말 훌륭합니다!');
+    if (mode === 'SWING') {
+      if (data.count === 0) { report.training = '측정된 데이터가 없습니다.'; return report; }
+      const maxSpeed = Math.floor(Math.max(...data.swingSpeeds));
+      const avgKnn = data.swingKnnScores.reduce((a, b) => a + b, 0) / (data.swingKnnScores.length || 1);
+      const avgSpeed = data.swingSpeeds.reduce((a,b)=>a+b,0) / (data.swingSpeeds.length || 1);
+      const avgXFactor = data.swingXFactors.reduce((a,b)=>a+b,0) / (data.swingXFactors.length || 1);
+      const avgHeight = data.swingHeights.reduce((a,b)=>a+b,0) / (data.swingHeights.length || 1);
+      const avgCOGDelta = data.swingCOGDeltas.reduce((a,b)=>a+b,0) / (data.swingCOGDeltas.length || 1);
 
+      report.totalCount = data.count; report.maxRecord = maxSpeed;
+      const speedScore = Math.min(100, avgSpeed * 0.8) * 0.3;
+      const formScore = avgKnn * 0.2;
+      const powerScore = Math.min(100, avgXFactor * 2.5) * 0.2;
+      const heightScore = Math.min(100, avgHeight) * 0.15;
+      const weightScore = Math.min(100, avgCOGDelta * 1000) * 0.15;
+
+      report.avgScore = Math.floor(speedScore + formScore + powerScore + heightScore + weightScore);
+
+      if (maxSpeed >= 110) report.pros.push('상급자 수준의 강력한 스매시 파워를 보유하고 계십니다.');
+      if (avgXFactor >= 35) report.pros.push('상하체 꼬임(X-Factor)이 완벽합니다.');
+      if (avgHeight >= 90) report.pros.push('타점이 매우 높습니다.');
+
+      if (avgXFactor < 20) { report.cons.push('몸통 회전이 부족합니다.'); report.training = '백스윙 시 어깨를 더 깊이 넣어주세요.'; }
+      else if (avgHeight < 75) { report.cons.push('타점이 낮아 네트에 걸릴 확률이 높습니다.'); report.training = '점프하여 가장 높은 지점에서 타격하는 연습을 하세요.'; }
+      else { report.training = '폼과 파워가 완벽합니다. 풋워크와 결합하여 실전 능력을 높여보세요.'; }
+    } else if (mode === 'LUNGE') {
+      const maxHold = maxLungeHoldTime;
+      const avgHeadTilt = data.lungeHeadTilts.reduce((a,b)=>a+b,0) / (data.lungeHeadTilts.length || 1);
+
+      report.maxRecord = maxHold; report.totalCount = data.lungeHoldTimes.length;
+      const holdScore = Math.min(100, (maxHold / 60) * 100) * 0.4;
+      const stabilityScore = lungeStability * 0.3;
+      const headScore = Math.max(0, 100 - (avgHeadTilt * 10)) * 0.3;
+
+      report.avgScore = Math.floor(holdScore + stabilityScore + headScore);
+
+      if (maxHold >= 45) report.pros.push('매우 안정적인 하체 밸런스를 유지하고 있습니다.');
+      if (avgHeadTilt < 3) report.pros.push('시선 처리가 매우 안정적입니다.');
+      if (avgHeadTilt > 10) report.cons.push('버티는 동안 머리가 한쪽으로 기울어집니다.');
+      if (maxHold < 15) report.cons.push('하체 근력이 부족하여 자세가 금방 무너집니다.');
+
+      report.training = maxHold < 30 ? '투명의자 자세로 버티는 훈련을 매일 수행하세요.' : '날아오는 셔틀콕을 식별하는 훈련을 추가하세요.';
+    } else if (mode === 'FOOTWORK') {
+      const totalSuccess = data.footworkSuccessCount;
+      if (totalSuccess === 0) { report.training = '성공한 스텝이 없습니다. 천천히 다시 시도하세요.'; return report; }
+      const avgReaction = data.footworkReactionTimes.reduce((a,b)=>a+b,0) / totalSuccess;
+
+      report.totalCount = totalSuccess; report.maxRecord = avgReaction; report.avgScore = footworkScore;
+
+      if (avgReaction < 0.8) report.pros.push('반사 신경이 매우 빠릅니다.');
+      else if (avgReaction < 1.2) report.pros.push('준수한 반응 속도입니다.');
+      if (avgReaction > 1.5) report.cons.push('반응 후 첫 발을 떼는 속도가 느립니다.');
+
+      report.training = difficulty === 'HARD' ? '스윙 후 즉시 센터로 복귀하는 리커버리 동작을 더 빠르게 연습하세요.' : '줄넘기 2단 뛰기와 사이드 스텝 왕복 달리기가 도움이 됩니다.';
+    }
+
+    if (report.pros.length === 0) report.pros.push('꾸준한 연습이 답입니다!');
+    if (report.cons.length === 0) report.cons.push('완벽합니다!');
     return report;
   };
 
   const deleteHistory = (id: string) => {
-    Alert.alert('삭제', '이 기록을 삭제하시겠습니까?', [
+    Alert.alert('기록 삭제', '이 기록을 정말 삭제하시겠습니까?', [
       { text: '취소', style: 'cancel' },
       { text: '삭제', style: 'destructive', onPress: () => setHistory((prev) => prev.filter((item) => item.id !== id)) },
     ]);
   };
 
-  const toggleCamera = () => {
-    webviewRef.current?.postMessage(JSON.stringify({ type: 'switchCamera' }));
+  const deleteStyleHistory = (id: string) => {
+    Alert.alert('기록 삭제', '이 스타일 매칭 기록을 삭제하시겠습니까?', [
+      { text: '취소', style: 'cancel' },
+      { text: '삭제', style: 'destructive', onPress: () => setStyleHistory((prev) => prev.filter((item) => item.id !== id)) },
+    ]);
   };
 
+  const toggleCamera = () => webviewRef.current?.postMessage(JSON.stringify({ type: 'switchCamera' }));
   const toggleMode = () => {
-    if (isTimerRunning) {
-      Alert.alert('알림', '분석 중에는 모드를 변경할 수 없습니다.\n먼저 종료해 주세요.');
-      return;
-    }
+    if (isTimerRunning) { Alert.alert('알림', '분석 중에는 모드를 변경할 수 없습니다.'); return; }
     let newMode: AnalysisMode = 'SWING';
     if (mode === 'SWING') newMode = 'LUNGE';
     else if (mode === 'LUNGE') newMode = 'FOOTWORK';
     else newMode = 'SWING';
-
-    setMode(newMode);
-
-    const duration = newMode === 'FOOTWORK' ? FOOTWORK_DURATION : ANALYSIS_DURATION;
-    setTimeLeft(duration);
-    setLastResult(null);
-    popAnim.setValue(0);
-    setSwingScore(0);
-    setCurrentLungeHoldTime(0);
-    setMaxLungeHoldTime(0);
-    setFootworkScore(0);
-
+    setMode(newMode); setTimeLeft(newMode === 'FOOTWORK' ? FOOTWORK_DURATION : ANALYSIS_DURATION);
+    setLastResult(null); popAnim.setValue(0); setSwingScore(0); setCurrentLungeHoldTime(0);
+    setMaxLungeHoldTime(0); setFootworkScore(0); setDifficulty('EASY');
     webviewRef.current?.postMessage(JSON.stringify({ type: 'setMode', mode: newMode }));
   };
 
-  const triggerResultAnimation = () => {
-    popAnim.setValue(0);
-    Animated.spring(popAnim, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }).start();
-  };
-
-  const triggerSmashEffect = () => {
-    Vibration.vibrate(100);
-    flashAnim.setValue(1);
-    Animated.timing(flashAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start();
-  };
+  const triggerResultAnimation = () => { popAnim.setValue(0); Animated.spring(popAnim, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }).start(); };
+  const triggerSmashEffect = () => { Vibration.vibrate(100); flashAnim.setValue(1); Animated.timing(flashAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start(); };
 
   const handleMessage = (event: any) => {
     try {
       const parsed = JSON.parse(event.nativeEvent.data);
       if (parsed.type === 'log') return;
-
       if (parsed.type === 'poseData') {
         if (countdown !== null) return;
-
-        const rawX = parsed.x;
-        const rawY = parsed.y;
-        const currentTime = parsed.timestamp;
-        const elbowAngle = Number(parsed.elbowAngle || 0);
-        const kneeAngle = Number(parsed.kneeAngle || 0);
-        const swingKnnScore = Number(parsed.swingKnnScore || 0);
-        const readyKnnScore = Number(parsed.readyKnnScore || 0);
-
+        const rawX = parsed.x; const rawY = parsed.y; const currentTime = parsed.timestamp;
+        const elbowAngle = Number(parsed.elbowAngle || 0); const kneeAngle = Number(parsed.kneeAngle || 0);
+        const swingKnnScore = Number(parsed.swingKnnScore || 0); const readyKnnScore = Number(parsed.readyKnnScore || 0);
+        const xFactor = Number(parsed.xFactor || 0); const cogX = Number(parsed.cogX || 0);
+        const hEff = Number(parsed.heightEfficiency || 0); const hTilt = Number(parsed.headTilt || 0);
         const footworkPoseRaw = parsed.footworkPose;
         const footworkPose = (footworkPoseRaw === 'UNKNOWN') ? 'CENTER' : (footworkPoseRaw as FootworkDirection);
 
-        setCurrentElbowAngle(elbowAngle);
-        setCurrentKneeAngle(kneeAngle);
+        setCurrentElbowAngle(elbowAngle); setCurrentKneeAngle(kneeAngle);
+        setCurrentXFactor(xFactor); setCurrentCOG(cogX);
+        setHeightEfficiency(hEff); setHeadTilt(hTilt);
 
-        if (mode === 'FOOTWORK') {
-            if(footworkPoseRaw !== 'UNKNOWN') {
-                setCurrentFootworkPose(footworkPose);
-            }
-        }
+        if (mode === 'FOOTWORK' && footworkPoseRaw !== 'UNKNOWN') setCurrentFootworkPose(footworkPose);
 
-        if (mode === 'SWING') {
-          if (!prevPos.current) {
-            prevPos.current = { x: rawX, y: rawY, time: currentTime, speed: 0 };
-            return;
-          }
-          const dx = rawX - prevPos.current.x;
-          const dy = rawY - prevPos.current.y;
+        if (mode === 'SWING' || (mode === 'FOOTWORK' && difficulty === 'HARD')) {
+          if (!prevPos.current) { prevPos.current = { x: rawX, y: rawY, time: currentTime, speed: 0 }; return; }
+          const dx = rawX - prevPos.current.x; const dy = rawY - prevPos.current.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
-
           let dynamicSmoothing = 0.7;
-          if (distance > 0.05) dynamicSmoothing = 0.1;
-          else if (distance > 0.02) dynamicSmoothing = 0.4;
-
+          if (distance > 0.05) dynamicSmoothing = 0.1; else if (distance > 0.02) dynamicSmoothing = 0.4;
           const smoothX = prevPos.current.x * dynamicSmoothing + rawX * (1 - dynamicSmoothing);
           const smoothY = prevPos.current.y * dynamicSmoothing + rawY * (1 - dynamicSmoothing);
           let timeDiff = (currentTime - prevPos.current.time) / 1000;
@@ -551,94 +631,66 @@ export default function AIAnalysis() {
           const avgSpeed = speedBuffer.current.reduce((a, b) => a + b, 0) / speedBuffer.current.length;
           setSwingSpeed(Math.floor(avgSpeed));
 
-          let tempScore = avgSpeed * 0.5 + (elbowAngle > 160 ? 20 : (elbowAngle / 180) * 10) + swingKnnScore * 0.3;
-          if (tempScore > 100) tempScore = 100;
-          setSwingScore(Math.floor(tempScore));
+          if (mode === 'FOOTWORK' && difficulty === 'HARD' && avgSpeed > SWING_TRIGGER_SPEED) hasSwungInStep.current = true;
 
-          if (avgSpeed > SWING_TRIGGER_SPEED && isTimerRunning) {
-            if (!isSwingingRef.current) {
-              isSwingingRef.current = true;
-              tempMaxSpeedRef.current = 0;
-              swingDistanceRef.current = 0;
-              knnAtMaxRef.current = 0;
-            }
-            if (avgSpeed > tempMaxSpeedRef.current) {
-              tempMaxSpeedRef.current = avgSpeed;
-              angleAtMaxRef.current = elbowAngle;
-              knnAtMaxRef.current = swingKnnScore;
-            }
-            swingDistanceRef.current += distance;
-          } else {
-            if (isSwingingRef.current) {
-              isSwingingRef.current = false;
-              if (tempMaxSpeedRef.current > 30 && swingDistanceRef.current > MIN_SWING_DISTANCE_PX) {
-                const maxSpeed = tempMaxSpeedRef.current;
-                sessionDataRef.current.swingSpeeds.push(maxSpeed);
-                sessionDataRef.current.swingAngles.push(angleAtMaxRef.current);
-                sessionDataRef.current.swingKnnScores.push(knnAtMaxRef.current);
-                sessionDataRef.current.count += 1;
+          if (mode === 'SWING') {
+              let tempScore = (avgSpeed * 0.3) + (swingKnnScore * 0.2) + (elbowAngle > 160 ? 10 : 0) + (xFactor > 30 ? 20 : xFactor * 0.5) + (hEff > 80 ? 20 : hEff * 0.2);
+              if (tempScore > 100) tempScore = 100;
+              setSwingScore(Math.floor(tempScore));
 
-                if (maxSpeed >= 90) triggerSmashEffect();
+              if (avgSpeed > SWING_TRIGGER_SPEED && isTimerRunning) {
+                if (!isSwingingRef.current) {
+                  isSwingingRef.current = true; tempMaxSpeedRef.current = 0; knnAtMaxRef.current = 0;
+                  xFactorAtMaxRef.current = 0; startCOGRef.current = cogX; swingDistanceRef.current = 0;
+                }
+                if (avgSpeed > tempMaxSpeedRef.current) {
+                  tempMaxSpeedRef.current = avgSpeed; angleAtMaxRef.current = elbowAngle;
+                  knnAtMaxRef.current = swingKnnScore; xFactorAtMaxRef.current = xFactor;
+                }
+                swingDistanceRef.current += distance;
+              } else {
+                if (isSwingingRef.current) {
+                  isSwingingRef.current = false;
+                  if (tempMaxSpeedRef.current > 30 && swingDistanceRef.current > MIN_SWING_DISTANCE_PX) {
+                    const maxSpeed = tempMaxSpeedRef.current; const bestXFactor = xFactorAtMaxRef.current;
+                    const cogDelta = Math.abs(startCOGRef.current - cogX);
+                    sessionDataRef.current.swingSpeeds.push(maxSpeed); sessionDataRef.current.swingAngles.push(angleAtMaxRef.current);
+                    sessionDataRef.current.swingKnnScores.push(knnAtMaxRef.current); sessionDataRef.current.swingXFactors.push(bestXFactor);
+                    sessionDataRef.current.swingHeights.push(hEff); sessionDataRef.current.swingCOGDeltas.push(cogDelta);
+                    sessionDataRef.current.count += 1;
 
-                let grade = 'C';
-                if (maxSpeed >= 140) grade = 'SS';
-                else if (maxSpeed >= 110) grade = 'S';
-                else if (maxSpeed >= 90) grade = 'A';
-                else if (maxSpeed >= 60) grade = 'B';
+                    if (maxSpeed >= 90) triggerSmashEffect();
+                    let grade = 'C';
+                    if (maxSpeed >= 140) grade = 'SS'; else if (maxSpeed >= 110) grade = 'S';
+                    else if (maxSpeed >= 90) grade = 'A'; else if (maxSpeed >= 60) grade = 'B';
+                    const finalScore = Math.min(100, Math.floor((maxSpeed * 0.3) + (knnAtMaxRef.current * 0.2) + (bestXFactor * 0.3) + (hEff * 0.2)));
 
-                const finalScore = Math.min(
-                  100,
-                  Math.floor(maxSpeed * 0.5 + (angleAtMaxRef.current >= 165 ? 20 : 10) + knnAtMaxRef.current * 0.3)
-                );
-
-                setLastResult({
-                  value: Math.floor(maxSpeed),
-                  subValue: angleAtMaxRef.current,
-                  isGood: angleAtMaxRef.current >= 165,
-                  type: 'SWING',
-                  grade: grade,
-                  score: finalScore,
-                  unit: 'km/h'
-                });
-                triggerResultAnimation();
+                    setLastResult({ value: Math.floor(maxSpeed), subValue: angleAtMaxRef.current, isGood: angleAtMaxRef.current >= 165, type: 'SWING', grade: grade, score: finalScore, unit: 'km/h' });
+                    triggerResultAnimation();
+                  }
+                }
               }
-            }
           }
           prevPos.current = { x: smoothX, y: smoothY, time: currentTime, speed: currentSpeed };
         }
 
         if (mode === 'LUNGE') {
-          const READY_START_THRESHOLD = 155;
-          const READY_END_THRESHOLD = 165;
-          setLungeStability(readyKnnScore);
-
+          const READY_START_THRESHOLD = 155; const READY_END_THRESHOLD = 165; setLungeStability(readyKnnScore);
           if (kneeAngle < READY_START_THRESHOLD) {
-            if (!isLungingRef.current) {
-              isLungingRef.current = true;
-              lungeStartTimeRef.current = currentTime;
-            }
+            if (!isLungingRef.current) { isLungingRef.current = true; lungeStartTimeRef.current = currentTime; }
             const duration = (currentTime - lungeStartTimeRef.current) / 1000;
             const currentHold = Number(duration.toFixed(1));
             setCurrentLungeHoldTime(currentHold);
-
             if (isTimerRunning) {
                 if (currentHold > maxLungeHoldTime) setMaxLungeHoldTime(currentHold);
-                sessionDataRef.current.lungeKnnScores.push(readyKnnScore);
+                sessionDataRef.current.lungeKnnScores.push(readyKnnScore); sessionDataRef.current.lungeHeadTilts.push(hTilt);
             }
-
           } else if (kneeAngle > READY_END_THRESHOLD) {
             if (isLungingRef.current) {
               isLungingRef.current = false;
               if (currentLungeHoldTime > 1.0 && isTimerRunning) {
                 sessionDataRef.current.lungeHoldTimes.push(currentLungeHoldTime);
-                setLastResult({
-                  value: Math.floor(currentLungeHoldTime),
-                  subValue: readyKnnScore,
-                  isGood: currentLungeHoldTime >= 30,
-                  type: 'LUNGE',
-                  score: readyKnnScore,
-                  unit: '초'
-                });
+                setLastResult({ value: Math.floor(currentLungeHoldTime), subValue: readyKnnScore, isGood: currentLungeHoldTime >= 30, type: 'LUNGE', score: readyKnnScore, unit: '초' });
                 triggerResultAnimation();
               }
               setCurrentLungeHoldTime(0);
@@ -649,126 +701,72 @@ export default function AIAnalysis() {
     } catch (e) {}
   };
 
-  const renderFootworkOverlay = () => {
-    if (mode !== 'FOOTWORK') return null;
-    const getArrowColor = (dir: FootworkDirection) => targetDirection === dir ? '#FCD34D' : 'rgba(255,255,255,0.2)';
-    const getArrowScale = (dir: FootworkDirection) => targetDirection === dir ? arrowAnim : 1;
+  const renderStatsOverlay = () => {
+    if (mode === 'FOOTWORK') return renderFootworkOverlay();
+    return (
+        <View style={styles.statsOverlay}>
+            {mode === 'SWING' ? (
+              <>
+                <View style={styles.statBox}>
+                    <Activity size={20} color="#F472B6" />
+                    <View style={styles.statContent}><Text style={styles.statLabel} numberOfLines={1}>속도</Text><Text style={styles.statValue} numberOfLines={1}>{swingSpeed}</Text></View>
+                </View>
+                <View style={styles.divider} />
+                <View style={styles.statBox}>
+                    <RotateCw size={20} color="#60A5FA" />
+                    <View style={styles.statContent}><Text style={styles.statLabel} numberOfLines={1}>회전(X-F)</Text><Text style={styles.statValue} numberOfLines={1}>{Math.floor(currentXFactor)}°</Text></View>
+                </View>
+                <View style={styles.divider} />
+                <View style={styles.statBox}>
+                    <Circle size={20} color="#34D399" />
+                    <View style={styles.statContent}><Text style={styles.statLabel} numberOfLines={1}>타점</Text><Text style={styles.statValue} numberOfLines={1}>{Math.floor(heightEfficiency)}%</Text></View>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={styles.statBox}>
+                    <Move size={20} color="#60A5FA" />
+                    <View style={styles.statContent}><Text style={styles.statLabel} numberOfLines={1}>무릎각도</Text><Text style={styles.statValue} numberOfLines={1}>{Math.floor(currentKneeAngle)}°</Text></View>
+                </View>
+                <View style={styles.divider} />
+                <View style={styles.statBox}>
+                    <User size={20} color="#FCD34D" />
+                    <View style={styles.statContent}><Text style={styles.statLabel} numberOfLines={1}>시선</Text><Text style={styles.statValue} numberOfLines={1}>{headTilt < 5 ? '좋음' : '주의'}</Text></View>
+                </View>
+                <View style={styles.divider} />
+                <View style={styles.statBox}>
+                    <Clock size={20} color="#34D399" />
+                    <View style={styles.statContent}><Text style={styles.statLabel} numberOfLines={1}>버티기</Text><Text style={styles.statValue} numberOfLines={1}>{currentLungeHoldTime}s</Text></View>
+                </View>
+              </>
+            )}
+        </View>
+    );
+  };
 
+  const renderFootworkOverlay = () => {
+    const getArrowScale = (dir: FootworkDirection) => targetDirection === dir ? arrowAnim : 1;
+    const getArrowColor = (dir: FootworkDirection) => targetDirection === dir ? '#FCD34D' : 'rgba(255,255,255,0.2)';
     return (
         <View style={styles.footworkOverlay}>
             <View style={styles.arrowRow}>
-                <Animated.View style={{ transform: [{ scale: getArrowScale('FRONT_LEFT') }] }}>
-                    <ArrowUpLeft size={80} color={getArrowColor('FRONT_LEFT')} />
-                </Animated.View>
-                <Animated.View style={{ transform: [{ scale: getArrowScale('FRONT_RIGHT') }] }}>
-                    <ArrowUpRight size={80} color={getArrowColor('FRONT_RIGHT')} />
-                </Animated.View>
+                <Animated.View style={{ transform: [{ scale: getArrowScale('FRONT_LEFT') }] }}><ArrowUpLeft size={80} color={getArrowColor('FRONT_LEFT')} /></Animated.View>
+                <Animated.View style={{ transform: [{ scale: getArrowScale('FRONT_RIGHT') }] }}><ArrowUpRight size={80} color={getArrowColor('FRONT_RIGHT')} /></Animated.View>
             </View>
             <View style={styles.centerIndicator}>
-                <Animated.View style={{ transform: [{ scale: getArrowScale('CENTER') }] }}>
-                    <Circle size={60} color={getArrowColor('CENTER')} fill={targetDirection === 'CENTER' ? '#FCD34D' : 'transparent'} weight="fill"/>
-                </Animated.View>
-                <Text style={styles.commandText}>
-                    {targetDirection === 'CENTER' ? '중앙 복귀!' : targetDirection === 'FRONT_RIGHT' ? '전방 우측!' : targetDirection === 'FRONT_LEFT' ? '전방 좌측!' : targetDirection === 'BACK_RIGHT' ? '후방 우측!' : '후방 좌측!'}
-                </Text>
+                <Animated.View style={{ transform: [{ scale: getArrowScale('CENTER') }] }}><Circle size={60} color={getArrowColor('CENTER')} /></Animated.View>
+                <Text style={styles.commandText}>{targetDirection === 'CENTER' ? '중앙 복귀!' : targetDirection === 'FRONT_RIGHT' ? '전방 우측!' : targetDirection === 'FRONT_LEFT' ? '전방 좌측!' : targetDirection === 'BACK_RIGHT' ? '후방 우측!' : '후방 좌측!'}</Text>
+                {difficulty === 'HARD' && targetDirection !== 'CENTER' && (<Text style={{color:'#EF4444', fontWeight:'bold', marginTop:4, textShadowColor:'black', textShadowRadius:5}}>+ SMASH 필수!</Text>)}
             </View>
             <View style={styles.arrowRow}>
-                <Animated.View style={{ transform: [{ scale: getArrowScale('BACK_LEFT') }] }}>
-                    <ArrowDownLeft size={80} color={getArrowColor('BACK_LEFT')} />
-                </Animated.View>
-                <Animated.View style={{ transform: [{ scale: getArrowScale('BACK_RIGHT') }] }}>
-                    <ArrowDownRight size={80} color={getArrowColor('BACK_RIGHT')} />
-                </Animated.View>
+                <Animated.View style={{ transform: [{ scale: getArrowScale('BACK_LEFT') }] }}><ArrowDownLeft size={80} color={getArrowColor('BACK_LEFT')} /></Animated.View>
+                <Animated.View style={{ transform: [{ scale: getArrowScale('BACK_RIGHT') }] }}><ArrowDownRight size={80} color={getArrowColor('BACK_RIGHT')} /></Animated.View>
             </View>
         </View>
     );
   };
 
-  if (showReport && selectedReport) {
-    return (
-      <Modal animationType="slide" transparent={false} visible={showReport}>
-        <View style={styles.reportContainer}>
-          <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-            <View style={styles.reportHeader}>
-              <Text style={styles.reportTitle}>AI 분석 리포트</Text>
-              <Text style={styles.reportDate}>
-                {selectedReport.date} ({selectedReport.mode === 'SWING' ? '스윙' : '준비자세'})
-              </Text>
-            </View>
-            <View style={styles.scoreCard}>
-              <Text style={styles.scoreLabel}>종합 점수</Text>
-              <Text style={styles.scoreValue}>
-                {selectedReport.avgScore}
-                <Text style={{ fontSize: 30 }}>점</Text>
-              </Text>
-              <View style={styles.countBadge}>
-                <Text style={{ color: '#111827', fontWeight: 'bold' }}>
-                  {selectedReport.mode === 'SWING'
-                    ? `${selectedReport.totalCount}회 수행`
-                    : `평균 안정성 ${selectedReport.avgScore}점`
-                  }
-                  {' | '}
-                  최고기록: {Math.floor(selectedReport.maxRecord)}
-                  {selectedReport.mode === 'SWING' ? 'km/h' : '점'}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.sectionContainer}>
-              <Text style={styles.sectionTitle}>🔥 장점 (Pros)</Text>
-              {selectedReport.pros.length > 0 ? (
-                selectedReport.pros.map((item, idx) => (
-                  <View key={idx} style={styles.listItem}>
-                    <CheckCircle size={20} color="#34D399" />
-                    <Text style={styles.listText}>{item}</Text>
-                  </View>
-                ))
-              ) : (
-                <Text style={styles.emptyText}>노력이 필요합니다.</Text>
-              )}
-            </View>
-            <View style={styles.sectionContainer}>
-              <Text style={styles.sectionTitle}>⚠️ 보완점 (Cons)</Text>
-              {selectedReport.cons.length > 0 ? (
-                selectedReport.cons.map((item, idx) => (
-                  <View key={idx} style={styles.listItem}>
-                    <XCircle size={20} color="#EF4444" />
-                    <Text style={styles.listText}>{item}</Text>
-                  </View>
-                ))
-              ) : (
-                <Text style={styles.emptyText}>완벽합니다.</Text>
-              )}
-            </View>
-            <View
-              style={[
-                styles.sectionContainer,
-                { backgroundColor: '#1F2937', borderColor: '#FCD34D', borderWidth: 1 }
-              ]}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-                <Dumbbell size={24} color="#FCD34D" />
-                <Text
-                  style={[
-                    styles.sectionTitle,
-                    { color: '#FCD34D', marginBottom: 0, marginLeft: 8 }
-                  ]}
-                >
-                  추천 트레이닝
-                </Text>
-              </View>
-              <Text style={styles.trainingText}>{selectedReport.training}</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.closeReportButton}
-              onPress={() => setShowReport(false)}
-            >
-              <Text style={styles.closeReportText}>닫기</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-      </Modal>
-    );
-  }
+  const currentModeInfo = MODE_DETAILS[mode];
 
   if (isAnalyzing) {
     return (
@@ -776,63 +774,38 @@ export default function AIAnalysis() {
         <StatusBar barStyle="light-content" />
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'white', opacity: flashAnim, zIndex: 5 }]} pointerEvents="none" />
         <WebView
-          ref={webviewRef}
-          style={styles.webview}
+          ref={webviewRef} style={styles.webview}
           source={{ html: htmlContent, baseUrl: 'https://localhost' }}
-          originWhitelist={['*']}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          mediaPlaybackRequiresUserAction={false}
-          allowsInlineMediaPlayback={true}
-          onMessage={handleMessage}
+          originWhitelist={['*']} javaScriptEnabled={true} domStorageEnabled={true}
+          mediaPlaybackRequiresUserAction={false} allowsInlineMediaPlayback={true} onMessage={handleMessage}
         />
-
         {countdown !== null && (
           <View style={styles.countdownOverlay}>
-             <Animated.Text style={[styles.countdownText, { transform: [{ scale: countdownAnim }] }]}>
-               {countdown === 0 ? 'START!' : countdown}
-             </Animated.Text>
+             <Animated.Text style={[styles.countdownText, { transform: [{ scale: countdownAnim }] }]}>{countdown === 0 ? 'START!' : countdown}</Animated.Text>
              <Text style={styles.countdownSubText}>준비하세요!</Text>
           </View>
         )}
-
         <View style={styles.topControlContainer}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <TouchableOpacity onPress={toggleMode} style={styles.modeBadge}>
-              {mode === 'SWING' ? <Zap size={14} color="#F472B6" /> : mode === 'LUNGE' ? <Move size={14} color="#60A5FA" /> : <Footprints size={14} color="#FCD34D" />}
+              {mode === 'SWING' ? <Zap size={14} color="#F472B6" /> : mode === 'LUNGE' ? <Activity size={14} color="#60A5FA" /> : <Move size={14} color="#FCD34D" />}
               <Text style={styles.modeText}>{mode === 'SWING' ? '스윙 모드' : mode === 'LUNGE' ? '준비 자세' : '풋워크 게임'}</Text>
             </TouchableOpacity>
+            {mode === 'FOOTWORK' && (
+                <TouchableOpacity onPress={toggleDifficulty} style={[styles.difficultyButton, { backgroundColor: difficulty === 'EASY' ? '#34D399' : difficulty === 'NORMAL' ? '#60A5FA' : '#EF4444' }]}>
+                    <BarChart2 size={16} color="#111827" />
+                    <Text style={styles.difficultyButtonText}>{difficulty}</Text>
+                </TouchableOpacity>
+            )}
             <TouchableOpacity onPress={() => setShowHelp(true)} style={styles.helpButton}><HelpCircle size={20} color="white" /></TouchableOpacity>
           </View>
           <View style={styles.timerBadge}>
             <Clock size={14} color={isTimerRunning ? '#FCD34D' : '#9CA3AF'} />
-            <Text style={[styles.timerText, { color: isTimerRunning ? '#FCD34D' : '#9CA3AF' }]}>
-              {mode === 'LUNGE' ? (isTimerRunning ? '기록 측정 중' : '대기') : `${timeLeft}초 ${isTimerRunning ? '진행중' : '대기'}`}
-            </Text>
+            <Text style={[styles.timerText, { color: isTimerRunning ? '#FCD34D' : '#9CA3AF' }]}>{mode === 'LUNGE' ? (isTimerRunning ? '기록 측정 중' : '대기') : `${timeLeft}초 ${isTimerRunning ? '진행중' : '대기'}`}</Text>
           </View>
         </View>
 
-        {mode === 'FOOTWORK' ? renderFootworkOverlay() : (
-          <View style={styles.statsOverlay}>
-            {mode === 'SWING' ? (
-              <>
-                <View style={styles.statBox}><Activity size={20} color="#F472B6" /><View style={styles.statContent}><Text style={styles.statLabel}>속도</Text><Text style={styles.statValue}>{swingSpeed}</Text></View></View>
-                <View style={styles.divider} />
-                <View style={styles.statBox}><Maximize2 size={20} color="#A78BFA" /><View style={styles.statContent}><Text style={styles.statLabel}>각도</Text><Text style={styles.statValue}>{Math.floor(currentElbowAngle)}°</Text></View></View>
-                <View style={styles.divider} />
-                <View style={styles.statBox}><History size={20} color="#FCD34D" /><View style={styles.statContent}><Text style={styles.statLabel}>점수</Text><Text style={styles.statValue}>{swingScore}</Text></View></View>
-              </>
-            ) : (
-              <>
-                <View style={styles.statBox}><Move size={20} color="#60A5FA" /><View style={styles.statContent}><Text style={styles.statLabel}>각도</Text><Text style={styles.statValue}>{Math.floor(currentKneeAngle)}°</Text></View></View>
-                <View style={styles.divider} />
-                <View style={styles.statBox}><Clock size={20} color="#FCD34D" /><View style={styles.statContent}><Text style={styles.statLabel}>현재 버티기</Text><Text style={styles.statValue}>{currentLungeHoldTime}s</Text></View></View>
-                <View style={styles.divider} />
-                <View style={styles.statBox}><History size={20} color="#34D399" /><View style={styles.statContent}><Text style={styles.statLabel}>최고 기록</Text><Text style={styles.statValue}>{maxLungeHoldTime}s</Text></View></View>
-              </>
-            )}
-          </View>
-        )}
+        {renderStatsOverlay()}
 
         {mode === 'FOOTWORK' && (
             <View style={{ position: 'absolute', top: 120, right: 20, alignItems:'flex-end' }}>
@@ -844,100 +817,82 @@ export default function AIAnalysis() {
         {lastResult && (
           <Animated.View style={[styles.feedbackCard, { borderColor: mode === 'SWING' ? getGradeColor(lastResult.grade) : lastResult.isGood ? '#34D399' : '#EF4444', transform: [{ scale: popAnim }], opacity: popAnim }]}>
             <View style={styles.feedbackHeader}>
-              <Text style={[styles.feedbackTitle, { color: mode === 'SWING' ? getGradeColor(lastResult.grade) : 'white' }]}>
-                {lastResult.grade ? `${lastResult.grade} CLASS` : lastResult.isGood ? 'GOOD!' : 'BAD'}
-              </Text>
-              <Text style={{ color: 'white', fontSize: 16 }}>
-                {mode === 'SWING' ? `최고속도: ${lastResult.value}km/h` : mode === 'LUNGE' ? `기록: ${lastResult.value}초` : `+${lastResult.score}점`}
-              </Text>
+              <Text style={[styles.feedbackTitle, { color: mode === 'SWING' ? getGradeColor(lastResult.grade) : 'white' }]}>{lastResult.grade ? `${lastResult.grade} CLASS` : lastResult.isGood ? 'GOOD!' : 'BAD'}</Text>
+              <Text style={{ color: 'white', fontSize: 16 }}>{mode === 'SWING' ? `최고속도: ${lastResult.value}km/h` : mode === 'LUNGE' ? `기록: ${lastResult.value}초` : `+${lastResult.score}점`}</Text>
             </View>
           </Animated.View>
         )}
 
         <View style={styles.bottomControlContainer}>
           <TouchableOpacity style={styles.controlButton} onPress={toggleCamera}><RefreshCcw size={24} color="white" /></TouchableOpacity>
-          <TouchableOpacity style={[styles.controlButton, { backgroundColor: '#EF4444', paddingHorizontal: 20 }]} onPress={finishAnalysis}>
-            <Square size={20} color="white" fill="white" /><Text style={styles.controlButtonText}>종료</Text>
-          </TouchableOpacity>
-          {!isTimerRunning && countdown === null && (
-            <TouchableOpacity style={[styles.controlButton, { backgroundColor: '#FCD34D' }]} onPress={onPlayPress}><Play size={24} color="black" fill="black" /></TouchableOpacity>
-          )}
+          <TouchableOpacity style={[styles.controlButton, { backgroundColor: '#EF4444', paddingHorizontal: 20 }]} onPress={finishAnalysis}><Square size={20} color="white" fill="white" /><Text style={styles.controlButtonText}>종료</Text></TouchableOpacity>
+          {!isTimerRunning && countdown === null && (<TouchableOpacity style={[styles.controlButton, { backgroundColor: '#FCD34D' }]} onPress={onPlayPress}><Play size={24} color="black" fill="black" /></TouchableOpacity>)}
         </View>
 
         <Modal animationType="fade" transparent visible={showHelp} onRequestClose={() => setShowHelp(false)}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                <Text style={styles.modalTitle}>
-                    {mode === 'SWING' ? '💥 스윙 모드 가이드' : mode === 'LUNGE' ? '🛡️ 준비 자세 모드 가이드' : '👣 풋워크 게임 가이드'}
-                </Text>
-                <TouchableOpacity onPress={() => setShowHelp(false)}><X size={24} color="white" /></TouchableOpacity>
+              <View style={styles.modalHeader}>
+                <View><Text style={styles.modalTitle}>{currentModeInfo.title}</Text></View>
+                <TouchableOpacity onPress={() => setShowHelp(false)} style={styles.closeButton}><X size={24} color="#9CA3AF" /></TouchableOpacity>
               </View>
-
-              <ScrollView contentContainerStyle={styles.modalScrollViewContent}>
-                {mode === 'SWING' ? (
-                  <View>
-                    <Text style={styles.helpSectionTitle}>📊 점수 산정 기준</Text>
-                    <Text style={styles.helpText}>
-                      • <Text style={styles.boldWhite}>속도 (50%)</Text>: 임팩트 순간의 손목 가속도
-                    </Text>
-                    <Text style={styles.helpText}>
-                      • <Text style={styles.boldWhite}>폼 유사도 (30%)</Text>: 프로 선수의 폼과 비교
-                    </Text>
-                    <Text style={styles.helpText}>
-                      • <Text style={styles.boldWhite}>타점 각도 (20%)</Text>: 팔꿈치 펴짐 확인
-                    </Text>
-
-                    <Image source={require('../../assets/images/smash_perfect.png')} style={styles.referenceImage} />
-                    <Text style={styles.imageCaption}>▲ 올바른 스매시 자세 참고</Text>
-
-                    <View style={{height:1, backgroundColor:'rgba(255,255,255,0.1)', marginVertical:16}} />
-
-                    <Text style={styles.helpSectionTitle}>🏆 등급 기준 (속도)</Text>
-                    <Text style={styles.helpText}>
-                      • <Text style={{ color: '#FFD700' }}>SS</Text>: 140km/h 이상 (선수급)
-                    </Text>
-                    <Text style={styles.helpText}>
-                      • <Text style={{ color: '#A78BFA' }}>S</Text>: 110km/h 이상 (상급자)
-                    </Text>
-                    <Text style={styles.helpText}>
-                      • <Text style={{ color: '#60A5FA' }}>A</Text>: 90km/h 이상 (중급자)
-                    </Text>
-                    <Text style={styles.helpText}>
-                      • <Text style={{ color: '#34D399' }}>B</Text>: 60km/h 이상 (초급자)
-                    </Text>
-
-                    <View style={{height:1, backgroundColor:'rgba(255,255,255,0.1)', marginVertical:16}} />
-                    <Text style={styles.helpSectionTitle}>💡 측정 팁</Text>
-                    <Text style={styles.helpText}>• 전신이 나오도록 2~3m 뒤에서 촬영하세요.</Text>
-                    <Text style={styles.helpText}>• <Text style={styles.boldWhite}>측면</Text>에서 촬영해야 정확합니다.</Text>
+              <ScrollView contentContainerStyle={styles.modalScrollViewContent} showsVerticalScrollIndicator={false}>
+                <View style={styles.cardSection}>
+                  <View style={styles.cardHeader}><CheckCircle size={20} color="#FCD34D" /><Text style={styles.cardTitle}>점수 산정 기준</Text></View>
+                  <View style={styles.criteriaList}>
+                    {currentModeInfo.scoreCriteria.map((item, idx) => (
+                      <View key={idx} style={styles.criteriaRow}>
+                         <View style={styles.criteriaLabelBox}><Text style={styles.criteriaLabel}>{item.label}</Text></View>
+                         <View style={styles.progressBarContainer}><View style={[styles.progressBarFill, { width: item.pct }]} /></View>
+                         <Text style={styles.criteriaPct}>{item.pct}</Text>
+                      </View>
+                    ))}
                   </View>
-                ) : mode === 'LUNGE' ? (
-                  <View>
-                    <Text style={styles.helpSectionTitle}>🎯 분석 요소</Text>
-                    <Text style={styles.helpText}>• <Text style={styles.boldWhite}>최대 버티기 시간</Text>: 자세가 무너지지 않고 유지한 시간</Text>
-                    <Text style={styles.helpText}>• <Text style={styles.boldWhite}>무릎 각도</Text>: 120°~160° 유지</Text>
-
-                    <Image source={require('../../assets/images/ready_perfect.png')} style={styles.referenceImage} />
-                    <Text style={styles.imageCaption}>▲ 올바른 준비 자세 참고</Text>
-
-                    <View style={{height:1, backgroundColor:'rgba(255,255,255,0.1)', marginVertical:16}} />
-                    <Text style={styles.helpSectionTitle}>⚖️ 판정 기준</Text>
-                    <Text style={styles.helpText}>• <Text style={{color:'#34D399', fontWeight:'bold'}}>GOOD</Text>: 30초 이상 유지 시</Text>
-                    <Text style={styles.helpText}>• <Text style={{color:'#EF4444', fontWeight:'bold'}}>BAD</Text>: 무릎이 펴지거나 자세가 무너질 때</Text>
-                  </View>
-                ) : (
-                  <View>
-                    <Text style={styles.helpSectionTitle}>🎮 게임 규칙</Text>
-                    <Text style={styles.helpText}>1. 중앙(●)에서 시작합니다.</Text>
-                    <Text style={styles.helpText}>2. 노란색 화살표가 켜지면 해당 방향으로 스텝을 밟으세요.</Text>
-                    <Text style={styles.helpText}>3. 다시 중앙으로 복귀해야 다음 지시가 나옵니다.</Text>
-                    <View style={{height:1, backgroundColor:'rgba(255,255,255,0.1)', marginVertical:16}} />
-                    <Text style={styles.helpSectionTitle}>🏆 팁</Text>
-                    <Text style={styles.helpText}>• 카메라 거리에 따라 인식이 달라질 수 있습니다. 전신이 잘 나오도록 서주세요.</Text>
-                  </View>
-                )}
+                </View>
+                <View style={styles.cardSection}>
+                    <View style={styles.cardHeader}><Activity size={20} color="#60A5FA" /><Text style={styles.cardTitle}>핵심 분석 요소</Text></View>
+                    <View style={styles.elementsGrid}>
+                        {currentModeInfo.analysisElements.map((el, idx)=>(<View key={idx} style={styles.elementItem}><CheckCircle size={14} color="#60A5FA" style={{marginTop:2}} /><Text style={styles.elementText}>{el}</Text></View>))}
+                    </View>
+                </View>
+                <View style={styles.cardSection}>
+                    <View style={styles.cardHeader}><Circle size={20} color="#F472B6" /><Text style={styles.cardTitle}>등급 기준</Text></View>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap: 10, paddingRight: 20}}>
+                        {currentModeInfo.gradeCriteria.map((grade, idx)=>{
+                          const badgeColor = getBadgeColor(grade.grade);
+                          return (
+                            <View key={idx} style={[styles.rankBadge, { borderColor: badgeColor }]}>
+                                <View style={[styles.rankBadgeHeader, { backgroundColor: badgeColor }]}><Text style={styles.rankGradeText}>{grade.grade}</Text></View>
+                                <View style={styles.rankBadgeContent}><Text style={[styles.rankValueText, { color: badgeColor }]}>{grade.value}</Text><Text style={styles.rankDescText}>{grade.desc}</Text></View>
+                            </View>
+                          );
+                        })}
+                    </ScrollView>
+                </View>
+                <View style={styles.cardSection}>
+                    <View style={styles.cardHeader}><Play size={20} color="#34D399" /><Text style={styles.cardTitle}>측정 꿀팁 & 자세</Text></View>
+                    {currentModeInfo.tips.map((tip, idx)=>(<Text key={idx} style={styles.bulletText}>• {tip}</Text>))}
+                    {currentModeInfo.difficultyGuide && (
+                        <View style={{marginTop: 15, backgroundColor:'rgba(0,0,0,0.2)', padding:10, borderRadius:8}}>
+                            <View style={{flexDirection:'row', alignItems:'center', marginBottom:8}}><BarChart2 size={16} color="#FCD34D" style={{marginRight:6}}/><Text style={{color:'white', fontWeight:'bold', fontSize:14}}>난이도 안내</Text></View>
+                            {currentModeInfo.difficultyGuide.map((guide, i)=>(<Text key={i} style={{color:'#D1D5DB', fontSize: 13, marginBottom: 4, lineHeight: 18}}>{guide}</Text>))}
+                        </View>
+                    )}
+                    {mode === 'SWING' && (
+                        <View style={styles.imageContainer}>
+                            <Image source={require('../../assets/images/smash_perfect.png')} style={styles.referenceImage} />
+                            <View style={styles.captionBox}><Info size={14} color="#FCD34D" /><Text style={styles.captionText}>▲ 팔꿈치 160° 이상, 타점은 머리 위에서!</Text></View>
+                        </View>
+                    )}
+                    {mode === 'LUNGE' && (
+                        <View style={styles.imageContainer}>
+                            <Image source={require('../../assets/images/ready_perfect.png')} style={styles.referenceImage} />
+                            <View style={styles.captionBox}><Info size={14} color="#FCD34D" /><Text style={styles.captionText}>▲ 상체는 세우고 시선은 정면 유지!</Text></View>
+                        </View>
+                    )}
+                </View>
               </ScrollView>
+              <TouchableOpacity style={styles.confirmButton} onPress={() => { setShowHelp(false); if(countdown === null && !isTimerRunning) setCountdown(3); }}><Text style={styles.confirmButtonText}>{isTimerRunning ? '닫기' : '완벽하게 이해했습니다'}</Text></TouchableOpacity>
             </View>
           </View>
         </Modal>
@@ -962,60 +917,222 @@ export default function AIAnalysis() {
           <Text style={styles.mainStartButtonText}>분석 시작</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={[styles.matchBanner, !canMatchStyle && styles.matchBannerDisabled]}
+          onPress={() => canMatchStyle ? startStyleMatch() : Alert.alert('알림', '스윙, 준비자세, 풋워크 기록을 1개 이상씩 모아주세요!')}
+          activeOpacity={0.9}
+        >
+          <View style={styles.matchBannerContent}>
+            <View>
+              <Text style={styles.matchBannerSub}>내 스탯으로 보는</Text>
+              <Text style={styles.matchBannerTitle}>배드민턴 플레이 스타일 분석</Text>
+            </View>
+            {canMatchStyle ? <Play size={24} color="white" fill="white" /> : <Square size={24} color="rgba(255,255,255,0.5)" />}
+          </View>
+          {!canMatchStyle && (<Text style={styles.matchBannerReqText}>* 모든 모드(스윙, 준비, 풋워크) 기록 1회 이상 필요</Text>)}
+        </TouchableOpacity>
+
         <View style={styles.tipCard}>
           <Text style={styles.tipTitle}>📌 정확한 분석을 위한 가이드</Text>
-          <View style={styles.stepItem}><View style={styles.iconBox}><Smartphone size={24} color="#34D399" /></View><Text style={styles.stepText}>삼각대를 이용해 휴대폰을 <Text style={styles.boldWhite}>고정</Text>해 주세요.</Text></View>
-          <View style={styles.stepItem}><View style={styles.iconBox}><User size={24} color="#60A5FA" /></View><Text style={styles.stepText}>머리부터 발끝까지 <Text style={styles.boldWhite}>전신</Text>이 화면에 나와야 합니다.</Text></View>
-          <View style={styles.stepItem}><View style={styles.iconBox}><Eye size={24} color="#A78BFA" /></View><Text style={styles.stepText}>정면보다는 <Text style={styles.boldWhite}>측면</Text>에서 촬영할 때 가장 정확합니다.</Text></View>
-          <View style={styles.stepItem}><View style={styles.iconBox}><Clock size={24} color="#FCD34D" /></View><Text style={styles.stepText}><Text style={styles.boldWhite}>시작 후 3초간</Text> 준비 자세를 취해주세요.</Text></View>
+          <View style={styles.stepItem}><View style={styles.iconBox}><Smartphone size={24} color="#34D399" /></View><Text style={styles.stepText}>삼각대를 이용해 휴대폰을 고정해 주세요.</Text></View>
+          <View style={styles.stepItem}><View style={styles.iconBox}><User size={24} color="#60A5FA" /></View><Text style={styles.stepText}>머리부터 발끝까지 전신이 화면에 나와야 합니다.</Text></View>
+          <View style={styles.stepItem}><View style={styles.iconBox}><Eye size={24} color="#A78BFA" /></View><Text style={styles.stepText}>정면보다는 측면에서 촬영할 때 가장 정확합니다.</Text></View>
+          <View style={styles.stepItem}><View style={styles.iconBox}><Clock size={24} color="#FCD34D" /></View><Text style={styles.stepText}>시작 후 3초간 준비 자세를 취해주세요.</Text></View>
         </View>
 
         <View style={styles.historySection}>
-          <Text style={styles.historyTitle}>📜 최근 분석 내역</Text>
+          <Text style={styles.historyTitle}>🏸 플레이 스타일 기록</Text>
+          {styleHistory.length > 0 ? (
+            styleHistory.map((item) => (
+              <View key={item.id} style={styles.styleHistoryCard}>
+                <TouchableOpacity
+                  style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+                  onPress={() => {
+                    setMatchedStyle(PLAYER_STYLES[item.styleId as keyof typeof PLAYER_STYLES]);
+                    setShowMatchResult(true);
+                  }}
+                >
+                  <Image source={item.image} style={styles.styleHistoryImg} />
+                  <View>
+                    <Text style={styles.styleHistoryDate}>{item.date}</Text>
+                    <Text style={styles.styleHistoryName}>{item.name}</Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.deleteButton} onPress={() => deleteStyleHistory(item.id)}>
+                  <Trash2 size={18} color="#EF4444" />
+                </TouchableOpacity>
+              </View>
+            ))
+          ) : (
+            <View style={styles.historyPlaceholder}>
+              <User size={24} color="#4B5563" style={{ marginBottom: 8 }} />
+              <Text style={{ color: '#6B7280' }}>아직 매칭된 스타일이 없습니다.</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.historySection}>
+          <Text style={styles.historyTitle}>📜 최근 분석 기록</Text>
           {history.length > 0 ? (
             history.map((item) => (
               <View key={item.id} style={styles.historyItemCard}>
                 <TouchableOpacity style={{ flex: 1 }} onPress={() => { setSelectedReport(item); setShowReport(true); }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    {item.mode === 'SWING' ? <Zap size={16} color="#F472B6" /> : item.mode === 'LUNGE' ? <Move size={16} color="#60A5FA" /> : <Footprints size={16} color="#FCD34D" />}
+                    {item.mode === 'SWING' ? <Zap size={16} color="#F472B6" /> : item.mode === 'LUNGE' ? <Activity size={16} color="#60A5FA" /> : <Move size={16} color="#FCD34D" />}
                     <Text style={styles.historyDate}>{item.date}</Text>
+                    {item.difficulty && <Text style={{color:'#6B7280', fontSize:10, backgroundColor:'rgba(255,255,255,0.1)', paddingHorizontal:4, borderRadius:4}}>{item.difficulty}</Text>}
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 12 }}>
                     <Text style={styles.historyScore}>{item.avgScore}점</Text>
-                    <Text style={styles.historyCount}>
-                        {item.mode === 'SWING' ? `${item.maxRecord}km/h` : item.mode === 'LUNGE' ? `${item.maxRecord}초` : `${item.totalCount}회`}
-                    </Text>
+                    <Text style={styles.historyCount}>{item.mode === 'SWING' ? `${item.maxRecord}km/h` : item.mode === 'LUNGE' ? `${item.maxRecord}초` : `${item.totalCount}회`}</Text>
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.deleteButton} onPress={() => deleteHistory(item.id)}><Trash2 size={18} color="#EF4444" /></TouchableOpacity>
               </View>
             ))
           ) : (
-            <View style={styles.historyPlaceholder}><FileText size={24} color="#4B5563" style={{ marginBottom: 8 }} /><Text style={{ color: '#6B7280' }}>아직 저장된 기록이 없습니다.</Text></View>
+            <View style={styles.historyPlaceholder}>
+              <FileText size={24} color="#4B5563" style={{ marginBottom: 8 }} />
+              <Text style={{ color: '#6B7280' }}>아직 저장된 기록이 없습니다.</Text>
+            </View>
           )}
         </View>
       </ScrollView>
 
+      <Modal animationType="slide" transparent={false} visible={showReport} onRequestClose={() => setShowReport(false)}>
+        {selectedReport && (
+          <View style={styles.reportContainer}>
+            <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+              <View style={styles.reportHeader}>
+                <Text style={styles.reportTitle}>AI 분석 리포트</Text>
+                <Text style={styles.reportDate}>
+                  {selectedReport.date} ({selectedReport.mode === 'SWING' ? '스윙' : selectedReport.mode === 'LUNGE' ? '준비자세' : '풋워크'})
+                </Text>
+                {selectedReport.mode === 'FOOTWORK' && (<View style={styles.difficultyBadge}><Text style={styles.difficultyText}>{selectedReport.difficulty} MODE</Text></View>)}
+              </View>
+              <View style={styles.scoreCard}>
+                <Text style={styles.scoreLabel}>종합 점수</Text>
+                <Text style={styles.scoreValue}>{selectedReport.avgScore}<Text style={{ fontSize: 30 }}>점</Text></Text>
+                <View style={styles.countBadge}>
+                  <Text style={{ color: '#111827', fontWeight: 'bold' }}>
+                    {selectedReport.mode === 'SWING' ? `${selectedReport.totalCount}회 수행` : `평균 안정성 ${selectedReport.avgScore}점`}
+                    {' | '}최고기록: {Math.floor(selectedReport.maxRecord)}{selectedReport.mode === 'SWING' ? 'km/h' : '초'}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.sectionContainer}>
+                <Text style={styles.sectionTitle}>🔥 장점 (Pros)</Text>
+                {selectedReport.pros.length > 0 ? (
+                  selectedReport.pros.map((item, idx) => (<View key={idx} style={styles.listItem}><CheckCircle size={20} color="#34D399" /><Text style={styles.listText}>{item}</Text></View>))
+                ) : (<Text style={styles.emptyText}>노력이 필요합니다.</Text>)}
+              </View>
+              <View style={styles.sectionContainer}>
+                <Text style={styles.sectionTitle}>⚠️ 보완점 (Cons)</Text>
+                {selectedReport.cons.length > 0 ? (
+                  selectedReport.cons.map((item, idx) => (<View key={idx} style={styles.listItem}><XCircle size={20} color="#EF4444" /><Text style={styles.listText}>{item}</Text></View>))
+                ) : (<Text style={styles.emptyText}>완벽합니다.</Text>)}
+              </View>
+              <View style={[styles.sectionContainer, { backgroundColor: '#1F2937', borderColor: '#FCD34D', borderWidth: 1 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                  <Dumbbell size={24} color="#FCD34D" /><Text style={[styles.sectionTitle, { color: '#FCD34D', marginBottom: 0, marginLeft: 8 }]}>추천 트레이닝</Text>
+                </View>
+                <Text style={styles.trainingText}>{selectedReport.training}</Text>
+              </View>
+              <TouchableOpacity style={styles.closeReportButton} onPress={() => setShowReport(false)}><Text style={styles.closeReportText}>닫기</Text></TouchableOpacity>
+            </ScrollView>
+          </View>
+        )}
+      </Modal>
+
+      <Modal animationType="fade" transparent visible={showSurvey} onRequestClose={() => setShowSurvey(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.surveyModalContent}>
+            {SURVEY_QUESTIONS[surveyStep] && (
+              <>
+                <Text style={styles.surveyProgressText}>질문 {surveyStep + 1} / {SURVEY_QUESTIONS.length}</Text>
+                <Text style={styles.surveyQuestion}>{SURVEY_QUESTIONS[surveyStep].q}</Text>
+                {SURVEY_QUESTIONS[surveyStep].options.map((opt, idx) => (
+                  <TouchableOpacity key={idx} style={styles.surveyOptionBtn} onPress={() => handleSurveyAnswer(opt.type)}><Text style={styles.surveyOptionText}>{opt.text}</Text></TouchableOpacity>
+                ))}
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal animationType="slide" transparent={false} visible={showMatchResult} onRequestClose={() => setShowMatchResult(false)}>
+        {matchedStyle && (
+          <View style={styles.resultContainer}>
+            <ScrollView contentContainerStyle={{ paddingBottom: 40, alignItems: 'center' }}>
+              <View style={styles.resultHeader}>
+                <Text style={styles.resultPreTitle}>당신 안에 잠든 배드민턴 DNA는...</Text>
+                <Text style={styles.resultMainTitle}>{matchedStyle.name}</Text>
+              </View>
+
+              <View style={styles.photoCard}>
+                <View style={styles.photoIconBox}>
+                  <Image source={matchedStyle.image} style={{ width: 100, height: 100, borderRadius: 50 }} />
+              </View>
+                <Text style={styles.photoCardTitle}>{matchedStyle.title}</Text>
+                <Text style={styles.photoCardDesc}>{matchedStyle.desc}</Text>
+              </View>
+
+              <View style={styles.statsCard}>
+                <Text style={styles.statsTitle}>📊 나의 종합 스탯</Text>
+                {[
+                  { label: '파워 (Power)', value: matchedStyle.stats?.power, color: '#F59E0B' },
+                  { label: '민첩 (Agility)', value: matchedStyle.stats?.agility, color: '#3B82F6' },
+                  { label: '수비 (Defense)', value: matchedStyle.stats?.defense, color: '#10B981' },
+                  { label: '기술 (Tech)', value: matchedStyle.stats?.tech, color: '#F472B6' }
+                ].map((stat, idx) => (
+                  <View key={idx} style={styles.statBarRow}>
+                    <Text style={styles.statBarLabel}>{stat.label}</Text>
+                    <View style={styles.statBarBg}><View style={[styles.statBarFill, { width: `${stat.value}%`, backgroundColor: stat.color }]} /></View>
+                    <Text style={styles.statBarValue}>{stat.value}</Text>
+                  </View>
+                ))}
+                <Text style={styles.statHintText}>* 3가지 모드 최고 기록 갱신 시 스탯이 변동됩니다.</Text>
+              </View>
+
+              <View style={styles.youtubeCard}>
+                <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 6}}>
+                  <Video size={20} color="#EF4444" /><Text style={{color: 'white', fontWeight: 'bold', fontSize: 16}}>추천 레전드 영상</Text>
+                </View>
+                <TouchableOpacity style={styles.youtubeLinkBtn} onPress={() => Linking.openURL(matchedStyle.video?.url)}>
+                  <Text style={styles.youtubeLinkText} numberOfLines={2}>{matchedStyle.video?.title}</Text>
+                  <Text style={{color: '#60A5FA', fontSize: 12, marginTop: 4}}>유튜브에서 보기 ↗</Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity style={styles.closeResultBtn} onPress={() => setShowMatchResult(false)}>
+                <Text style={{color: 'white', fontWeight: 'bold', fontSize: 16}}>결과 닫기</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        )}
+      </Modal>
+
       <Modal animationType="fade" transparent visible={showInfoModal} onRequestClose={() => setShowInfoModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>AI 분석 가이드</Text>
-              <TouchableOpacity onPress={() => setShowInfoModal(false)}><X size={24} color="white" /></TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowInfoModal(false)} style={styles.closeButton}><X size={24} color="#9CA3AF" /></TouchableOpacity>
             </View>
-            <ScrollView style={{ maxHeight: 400 }}>
-              <Text style={styles.helpSectionTitle}>⚡ 스윙 모드</Text>
-              <Text style={styles.helpText}>스매시 동작의 속도와 타점을 분석합니다.</Text>
-              <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 16 }} />
-              <Text style={styles.helpSectionTitle}>🛡️ 준비 자세 모드</Text>
-              <Text style={styles.helpText}>수비 및 리시브 준비 자세의 안정성을 분석합니다.</Text>
-              <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 16 }} />
-              <Text style={styles.helpSectionTitle}>👣 풋워크 모드</Text>
-              <Text style={styles.helpText}>지시 방향으로 움직이는 게임형 훈련입니다.</Text>
+            <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+              {GENERAL_GUIDE_DATA.map((item, idx) => (
+                <View key={idx} style={styles.guideCard}>
+                  <View style={styles.guideCardHeader}><View style={styles.guideIconBox}>{item.icon}</View><Text style={styles.guideCardTitle}>{item.title}</Text></View>
+                  <View style={styles.guideDivider} />
+                  {item.desc.map((d, i) => (<View key={i} style={styles.guideDescRow}><View style={styles.bulletPoint} /><Text style={styles.guideDescText}>{d}</Text></View>))}
+                </View>
+              ))}
+              <TouchableOpacity style={styles.confirmButton} onPress={() => setShowInfoModal(false)}><Text style={styles.confirmButtonText}>확인했습니다</Text></TouchableOpacity>
             </ScrollView>
           </View>
         </View>
       </Modal>
+
     </View>
   );
 }
@@ -1025,55 +1142,162 @@ const styles = StyleSheet.create({
   logoSection: { alignItems: 'center', marginBottom: 30 },
   mainTitle: { fontSize: 24, fontWeight: 'bold', color: 'white' },
   mainSubTitle: { fontSize: 14, color: '#9CA3AF', textAlign: 'center', paddingHorizontal: 20, lineHeight: 22 },
-  mainStartButton: { backgroundColor: '#34D399', width: '100%', paddingVertical: 18, borderRadius: 16, alignItems: 'center', marginBottom: 30 },
+  mainStartButton: { backgroundColor: '#34D399', width: '100%', paddingVertical: 18, borderRadius: 16, alignItems: 'center', marginBottom: 20 },
   mainStartButtonText: { color: '#111827', fontSize: 18, fontWeight: 'bold' },
+
+  matchBanner: { backgroundColor: 'rgba(59, 130, 246, 0.15)', borderRadius: 16, padding: 20, marginBottom: 30, borderWidth: 1, borderColor: 'rgba(59, 130, 246, 0.3)' },
+  matchBannerDisabled: { backgroundColor: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)' },
+  matchBannerContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  matchBannerSub: { color: '#9CA3AF', fontSize: 12, marginBottom: 4 },
+  matchBannerTitle: { color: '#60A5FA', fontSize: 18, fontWeight: 'bold' },
+  matchBannerReqText: { color: '#EF4444', fontSize: 11, marginTop: 10 },
+
+  surveyModalContent: { width: '85%', backgroundColor: '#1F2937', borderRadius: 24, padding: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  surveyProgressText: { color: '#60A5FA', fontSize: 14, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' },
+  surveyQuestion: { color: 'white', fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 24, lineHeight: 28 },
+  surveyOptionBtn: { backgroundColor: 'rgba(255,255,255,0.05)', padding: 16, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  surveyOptionText: { color: '#D1D5DB', fontSize: 16, textAlign: 'center' },
+
+  resultContainer: { flex: 1, backgroundColor: '#111827', paddingTop: 60, paddingHorizontal: 20 },
+  resultHeader: { alignItems: 'center', marginBottom: 24 },
+  resultPreTitle: { color: '#9CA3AF', fontSize: 14, marginBottom: 8 },
+  resultMainTitle: { color: '#FCD34D', fontSize: 28, fontWeight: 'bold' },
+  photoCard: { width: '100%', backgroundColor: '#1F2937', borderRadius: 20, padding: 24, alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  photoIconBox: { width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.05)', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  photoCardTitle: { color: 'white', fontSize: 18, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' },
+  photoCardDesc: { color: '#D1D5DB', fontSize: 14, lineHeight: 22, textAlign: 'center' },
+
+  statsCard: { width: '100%', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 20, padding: 20, marginBottom: 20 },
+  statsTitle: { color: 'white', fontWeight: 'bold', fontSize: 16, marginBottom: 16 },
+  statBarRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  statBarLabel: { width: 100, color: '#9CA3AF', fontSize: 13 },
+  statBarBg: { flex: 1, height: 10, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 5, marginRight: 10 },
+  statBarFill: { height: '100%', borderRadius: 5 },
+  statBarValue: { width: 30, color: 'white', fontWeight: 'bold', fontSize: 14, textAlign: 'right' },
+  statHintText: { color: '#6B7280', fontSize: 11, textAlign: 'center', marginTop: 10 },
+
+  youtubeCard: { width: '100%', backgroundColor: '#1F2937', borderRadius: 20, padding: 20, marginBottom: 30, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  youtubeLinkBtn: { backgroundColor: 'rgba(0,0,0,0.3)', padding: 16, borderRadius: 12 },
+  youtubeLinkText: { color: '#D1D5DB', fontSize: 14, lineHeight: 20 },
+  closeResultBtn: { backgroundColor: '#34D399', paddingVertical: 16, paddingHorizontal: 40, borderRadius: 30, marginBottom: 40 },
+
   tipCard: { backgroundColor: '#1F2937', padding: 20, borderRadius: 20, marginBottom: 30 },
   tipTitle: { color: 'white', fontWeight: 'bold', fontSize: 18, marginBottom: 20 },
   stepItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
   iconBox: { width: 40, height: 40, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
   stepTextBox: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   stepText: { color: '#D1D5DB', fontSize: 14, flex: 1, lineHeight: 20 },
-  boldWhite: { fontWeight: 'bold', color: 'white' },
+
   historySection: { marginBottom: 40 },
   historyTitle: { color: 'white', fontWeight: 'bold', fontSize: 18, marginBottom: 12 },
   historyPlaceholder: { backgroundColor: '#1F2937', height: 100, borderRadius: 16, justifyContent: 'center', alignItems: 'center', borderStyle: 'dashed', borderWidth: 1, borderColor: '#374151' },
-  historyItemCard: { backgroundColor: '#1F2937', padding: 16, borderRadius: 12, marginBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+
+  styleHistoryCard: { backgroundColor: '#1F2937', padding: 16, borderRadius: 12, marginBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: 'rgba(59, 130, 246, 0.3)' },
+  styleHistoryImg: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.1)' },
+  styleHistoryDate: { color: '#9CA3AF', fontSize: 12, marginBottom: 4 },
+  styleHistoryName: { color: '#60A5FA', fontSize: 16, fontWeight: 'bold' },
+
+  historyItemCard: { backgroundColor: '#1F2937', padding: 16, borderRadius: 12, marginBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
   historyDate: { color: '#D1D5DB', fontSize: 14, fontWeight: 'bold' },
   historyScore: { color: '#34D399', fontSize: 18, fontWeight: 'bold' },
   historyCount: { color: '#9CA3AF', fontSize: 14 },
-  deleteButton: { padding: 8 },
+  deleteButton: { padding: 8, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 8 },
+
   cameraContainer: { flex: 1, backgroundColor: 'black' },
   webview: { flex: 1, backgroundColor: 'transparent' },
   topControlContainer: { position: 'absolute', top: 50, alignSelf: 'center', alignItems: 'center', gap: 12, zIndex: 10 },
   modeBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(31, 41, 55, 0.9)', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', gap: 8 },
   modeText: { color: 'white', fontWeight: 'bold', fontSize: 14 },
   helpButton: { padding: 8, backgroundColor: 'rgba(255, 255, 255, 0.2)', borderRadius: 20 },
+
+  difficultyButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20, gap: 6 },
+  difficultyButtonText: { color: '#111827', fontWeight: 'bold', fontSize: 12 },
+
   timerBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, gap: 6 },
   timerText: { color: '#9CA3AF', fontWeight: 'bold', fontSize: 14 },
-  statsOverlay: { position: 'absolute', top: 150, left: 10, right: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(31, 41, 55, 0.85)', borderRadius: 16, paddingVertical: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  statBox: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  statContent: { alignItems: 'center' },
-  statLabel: { color: '#9CA3AF', fontSize: 11, marginBottom: 4 },
-  statValue: { color: 'white', fontSize: 22, fontWeight: 'bold' },
-  divider: { width: 1, height: '60%', backgroundColor: 'rgba(255,255,255,0.2)' },
+
+  statsOverlay: {
+    position: 'absolute', top: 150, left: 10, right: 10, height: 90,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    backgroundColor: 'rgba(31, 41, 55, 0.9)', borderRadius: 16, paddingHorizontal: 10,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)'
+  },
+  statBox: { flex: 1, alignItems: 'center', justifyContent: 'center', height: '100%' },
+  statContent: { alignItems: 'center', width: '100%' },
+  statLabel: { color: '#9CA3AF', fontSize: 11, marginBottom: 4, textAlign: 'center' },
+  statValue: { color: 'white', fontSize: 20, fontWeight: 'bold', textAlign: 'center' },
+  divider: { width: 1, height: '60%', backgroundColor: 'rgba(255,255,255,0.2)', marginHorizontal: 5 },
+
   feedbackCard: { position: 'absolute', bottom: 150, alignSelf: 'center', width: '70%', backgroundColor: 'rgba(17, 24, 39, 0.95)', borderRadius: 20, padding: 20, borderWidth: 3, alignItems: 'center' },
   feedbackHeader: { alignItems: 'center', gap: 5 },
   feedbackTitle: { fontSize: 24, fontWeight: 'bold', color: 'white' },
   bottomControlContainer: { position: 'absolute', bottom: 40, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 20, zIndex: 20 },
   controlButton: { backgroundColor: 'rgba(255, 255, 255, 0.2)', padding: 14, borderRadius: 30, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
   controlButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { width: '85%', backgroundColor: '#1F2937', borderRadius: 20, padding: 24, maxHeight: '80%' },
-  modalTitle: { fontSize: 20, fontWeight: 'bold', color: 'white', marginTop: 10 },
-  helpSectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#FCD34D', marginBottom: 8 },
-  helpText: { color: '#D1D5DB', fontSize: 14, marginBottom: 4, lineHeight: 20 },
-  helpSubText: { color: '#9CA3AF', fontSize: 13, marginBottom: 2, paddingLeft: 10 },
-  closeReportButton: { backgroundColor: '#3B82F6', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 10 },
-  closeReportText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { width: '90%', backgroundColor: '#1F2937', borderRadius: 24, padding: 24, maxHeight: '85%', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)', paddingBottom: 15 },
+  modalTitle: { fontSize: 22, fontWeight: 'bold', color: 'white' },
+  closeButton: { padding: 4 },
+
+  cardSection: { backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 16, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 8 },
+  cardTitle: { color: 'white', fontWeight: 'bold', fontSize: 16 },
+
+  criteriaList: { gap: 10 },
+  criteriaRow: { flexDirection: 'row', alignItems: 'center' },
+  criteriaLabelBox: { width: 60, marginRight: 10 },
+  criteriaLabel: { color: '#D1D5DB', fontSize: 13, fontWeight: 'bold' },
+  progressBarContainer: { flex: 1, height: 6, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 3, marginRight: 10 },
+  progressBarFill: { height: '100%', backgroundColor: '#34D399', borderRadius: 3 },
+  criteriaPct: { color: '#FCD34D', fontWeight: 'bold', fontSize: 13, width: 35, textAlign: 'right' },
+
+  elementsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  elementItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.2)', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, gap: 6 },
+  elementText: { color: '#D1D5DB', fontSize: 13 },
+
+  rankBadge: { minWidth: 120, height: 80, borderRadius: 12, borderWidth: 1, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.3)' },
+  rankBadgeHeader: { paddingVertical: 4, alignItems: 'center', justifyContent: 'center' },
+  rankGradeText: { color: 'white', fontWeight: 'bold', fontSize: 14 },
+  rankBadgeContent: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 4 },
+  rankValueText: { fontWeight: 'bold', fontSize: 13, marginBottom: 2 },
+  rankDescText: { color: '#9CA3AF', fontSize: 10, textAlign: 'center' },
+
+  imageContainer: { marginTop: 12, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 16, padding: 12 },
+  referenceImage: { width: '100%', height: 200, resizeMode: 'contain', borderRadius: 8, marginBottom: 10 },
+  captionBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(252, 211, 77, 0.1)', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, width: '100%', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(252, 211, 77, 0.3)' },
+  captionText: { color: '#FCD34D', fontSize: 12, fontWeight: 'bold', marginLeft: 6, flexShrink: 1 },
+
+  bulletText: { color: '#D1D5DB', fontSize: 14, marginBottom: 6, lineHeight: 22, paddingLeft: 4 },
+
+  confirmButton: { backgroundColor: '#3B82F6', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 10 },
+  confirmButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
+
+  guideCard: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  guideCardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
+  guideIconBox: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  guideCardTitle: { fontSize: 18, fontWeight: 'bold', color: '#F3F4F6' },
+  guideDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginBottom: 12 },
+  guideDescRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 6 },
+  bulletPoint: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#9CA3AF', marginTop: 8, marginRight: 8 },
+  guideDescText: { color: '#D1D5DB', fontSize: 14, lineHeight: 20, flex: 1 },
+
+  modalScrollViewContent: { paddingBottom: 20 },
+  footworkOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, justifyContent: 'center', alignItems: 'center', zIndex: 2 },
+  arrowRow: { flexDirection: 'row', justifyContent: 'space-between', width: '80%', marginVertical: 40 },
+  centerIndicator: { alignItems: 'center', justifyContent: 'center', height: 100 },
+  commandText: { color: 'white', fontSize: 24, fontWeight: 'bold', marginTop: 10, textShadowColor: 'black', textShadowRadius: 10 },
+  countdownOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', zIndex: 50 },
+  countdownText: { color: '#FCD34D', fontSize: 100, fontWeight: 'bold', textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 10 },
+  countdownSubText: { color: 'white', fontSize: 24, marginTop: 20, fontWeight: 'bold' },
+
   reportContainer: { flex: 1, backgroundColor: '#111827', padding: 24 },
   reportHeader: { marginTop: 40, marginBottom: 30 },
   reportTitle: { fontSize: 28, fontWeight: 'bold', color: 'white' },
   reportDate: { fontSize: 14, color: '#9CA3AF', marginTop: 4 },
+  difficultyBadge: { alignSelf:'flex-start', backgroundColor: 'rgba(59, 130, 246, 0.2)', paddingVertical:4, paddingHorizontal:8, borderRadius:8, marginTop:8 },
+  difficultyText: { color: '#60A5FA', fontWeight:'bold', fontSize:12 },
   scoreCard: { backgroundColor: '#34D399', borderRadius: 20, padding: 24, alignItems: 'center', marginBottom: 24 },
   scoreLabel: { color: '#064E3B', fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
   scoreValue: { color: '#064E3B', fontSize: 48, fontWeight: 'bold' },
@@ -1084,14 +1308,6 @@ const styles = StyleSheet.create({
   listText: { color: '#D1D5DB', fontSize: 15, flex: 1, lineHeight: 22 },
   emptyText: { color: '#6B7280', fontStyle: 'italic' },
   trainingText: { color: '#D1D5DB', fontSize: 15, lineHeight: 22 },
-  referenceImage: { width: '100%', height: 250, resizeMode: 'contain', marginTop: 15, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.05)' },
-  imageCaption: { color: '#aaaaaa', fontSize: 12, textAlign: 'center', marginTop: 8, marginBottom: 16 },
-  modalScrollViewContent: { paddingBottom: 20 },
-  footworkOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, justifyContent: 'center', alignItems: 'center', zIndex: 2 },
-  arrowRow: { flexDirection: 'row', justifyContent: 'space-between', width: '80%', marginVertical: 40 },
-  centerIndicator: { alignItems: 'center', justifyContent: 'center', height: 100 },
-  commandText: { color: 'white', fontSize: 24, fontWeight: 'bold', marginTop: 10, textShadowColor: 'black', textShadowRadius: 10 },
-  countdownOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', zIndex: 50 },
-  countdownText: { color: '#FCD34D', fontSize: 100, fontWeight: 'bold', textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 10 },
-  countdownSubText: { color: 'white', fontSize: 24, marginTop: 20, fontWeight: 'bold' },
+  closeReportButton: { backgroundColor: '#3B82F6', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 10 },
+  closeReportText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
 });

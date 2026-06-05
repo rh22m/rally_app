@@ -1,3 +1,4 @@
+// Screens/Profile/ProfileScreen.tsx
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
@@ -16,7 +17,7 @@ import {
 } from 'react-native';
 import {
   Settings, Shield, LogOut, ChevronRight, PencilRuler, History, Dumbbell,
-  Wallet, Scale, Gem, ShoppingBag, X, CheckCircle2, Camera, Edit2, Trash2, FileText, MapPin
+  Wallet, Scale, Gem, ShoppingBag, X, CheckCircle2, Camera, Edit2, Trash2, FileText, MapPin, ChevronDown
 } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path, Defs, LinearGradient, Stop, G, Text as SvgText, TSpan } from 'react-native-svg';
@@ -79,6 +80,9 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
   const [latestFlow, setLatestFlow] = useState({ tempo: 0.5, endurance: 0.5 });
   const [allRacketsData, setAllRacketsData] = useState<RacketDetail[]>([]);
   const [isLoadingDB, setIsLoadingDB] = useState(true);
+
+  // --- 라켓 추천 상세 분석 토글 상태 ---
+  const [showDetailedAnalysis, setShowDetailedAnalysis] = useState(false);
 
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [selectedRacket, setSelectedRacket] = useState<RacketDetail | null>(null);
@@ -436,15 +440,43 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
                   <Text style={{color: '#9CA3AF', textAlign: 'center', marginTop: 40}}>라켓 데이터가 없습니다. Home에서 DB셋업을 실행해주세요.</Text>
               ) : racketResult ? (
                 <>
-                  <View style={styles.racketHeaderCard}>
-                    <Dumbbell size={28} color="#34D399" />
-                    <View style={{marginLeft: 12}}>
-                      <Text style={styles.racketMainStyle}>플레이 스타일: {racketResult.balance}</Text>
-                      <Text style={styles.racketSubStyle}>추천 샤프트: {racketResult.shaft}</Text>
+                  <TouchableOpacity
+                    style={styles.racketHeaderCard}
+                    onPress={() => setShowDetailedAnalysis(!showDetailedAnalysis)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.racketHeaderContent}>
+                      <Dumbbell size={28} color="#34D399" />
+                      <View style={{marginLeft: 12, flex: 1}}>
+                        <Text style={styles.racketMainStyle}>플레이 스타일: {racketResult.balance}</Text>
+                        <Text style={styles.racketSubStyle}>추천 샤프트: {racketResult.shaft}</Text>
+                      </View>
+                      <ChevronRight
+                        size={20}
+                        color="#9CA3AF"
+                        style={{ transform: [{ rotate: showDetailedAnalysis ? '90deg' : '0deg' }] }}
+                      />
                     </View>
-                  </View>
+                  </TouchableOpacity>
 
                   <Text style={styles.analysisDesc}>{racketResult.description}</Text>
+
+                  {/* 상세 분석 아코디언 토글 뷰 */}
+                  {showDetailedAnalysis && racketResult.detailedReasons && (
+                    <View style={styles.detailedReasonsContainer}>
+                      <Text style={styles.detailedReasonTitle}>AI 스윙 & 피지컬 분석 리포트</Text>
+                      {racketResult.detailedReasons.map((reason: string, index: number) => (
+                        <Text key={index} style={styles.detailedReasonText}>{reason}</Text>
+                      ))}
+
+                      {(racketResult.suggestedWeight || racketResult.suggestedTension) && (
+                        <View style={styles.suggestedSpecsContainer}>
+                          <Text style={styles.suggestedSpecText}>• 가이드 무게: {racketResult.suggestedWeight}</Text>
+                          <Text style={styles.suggestedSpecText}>• 적정 텐션: {racketResult.suggestedTension}</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
 
                   <View style={styles.racketGrid}>
                     <View style={styles.productCard}>
@@ -496,8 +528,6 @@ export default function ProfileScreen({ onLogout, userProfile }: ProfileScreenPr
               <View style={styles.racketImagePlaceholder}>
                 {selectedRacket?.imageUrl ? (
                     <Image source={{ uri: selectedRacket.imageUrl }} style={{ width: 200, height: 200, borderRadius: 20, resizeMode: 'contain' }} />
-                ) : selectedRacket?.id && RACKET_IMAGES[selectedRacket.id] ? (
-                  <Image source={RACKET_IMAGES[selectedRacket.id]} style={{ width: 200, height: 200, borderRadius: 20, resizeMode: 'contain' }} />
                 ) : (
                   <Text style={{ color: '#4B5563' }}>이미지 없음</Text>
                 )}
@@ -678,10 +708,19 @@ const styles = StyleSheet.create({
   pyramidSubtitle: { color: '#6B7280', fontSize: 11, marginBottom: 20, },
   svgContainer: { alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 10, elevation: 10, },
   racketSection: { paddingHorizontal: 16 },
-  racketHeaderCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1F2937', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#34D399' },
+  racketHeaderCard: { backgroundColor: '#1F2937', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#34D399' },
+  racketHeaderContent: { flexDirection: 'row', alignItems: 'center' },
   racketMainStyle: { color: 'white', fontSize: 18, fontWeight: 'bold' },
-  racketSubStyle: { color: '#34D399', fontSize: 14 },
+  racketSubStyle: { color: '#34D399', fontSize: 14, marginTop: 2 },
   analysisDesc: { color: '#9CA3AF', fontSize: 13, marginVertical: 16, lineHeight: 20, textAlign: 'center' },
+
+  // 상세 분석 리포트 스타일
+  detailedReasonsContainer: { backgroundColor: '#1F2937', padding: 16, borderRadius: 16, marginBottom: 16, borderWidth: 1, borderColor: '#374151' },
+  detailedReasonTitle: { color: 'white', fontSize: 14, fontWeight: 'bold', marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#374151', paddingBottom: 8 },
+  detailedReasonText: { color: '#D1D5DB', fontSize: 13, marginBottom: 8, lineHeight: 20 },
+  suggestedSpecsContainer: { marginTop: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#374151' },
+  suggestedSpecText: { color: '#34D399', fontSize: 13, fontWeight: 'bold', marginBottom: 4 },
+
   racketGrid: { flexDirection: 'row', gap: 12 },
   productCard: { flex: 1, backgroundColor: '#1F2937', borderRadius: 16, padding: 12, alignItems: 'center' },
   productBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(253, 185, 49, 0.15)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, marginTop: 2, marginBottom: 8 },
