@@ -71,8 +71,8 @@ android {
         applicationId "com.recobystackapp"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 10
-        versionName "1.3"
+        versionCode 7000016
+        versionName "0.1.6"
     }
 
     // [추가] 이미지 리소스 컴파일 오류(AAPT2) 방지를 위한 설정
@@ -123,4 +123,5 @@ dependencies {
     // Wear OS 관련 설정 유지
     implementation project(':react-native-wear-connectivity')
     implementation 'com.google.android.gms:play-services-wearable:18.1.0'
+    implementation("androidx.wear:wear-ongoing:1.1.0")
 }

@@ -9,19 +9,22 @@ import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 
 class MainApplication : Application(), ReactApplication {
 
-  override val reactHost: ReactHost by lazy {
-    getDefaultReactHost(
-      context = applicationContext,
-      packageList =
-        PackageList(this).packages.apply {
-          // Packages that cannot be autolinked yet can be added manually here, for example:
-          // add(MyReactNativePackage())
-        },
-    )
-  }
+    override val reactHost: ReactHost by lazy {
+        getDefaultReactHost(
+            context = applicationContext,
+            packageList =
+                PackageList(this).packages.apply {
+                    // Packages that cannot be autolinked yet can be added manually here, for example:
+                    // add(MyReactNativePackage())
 
-  override fun onCreate() {
-    super.onCreate()
-    loadReactNative(this)
-  }
+                    // [추가] JS와 Native를 연결하는 커스텀 패키지 등록
+                    add(OngoingActivityPackage())
+                },
+        )
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        loadReactNative(this)
+    }
 }
