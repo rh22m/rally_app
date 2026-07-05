@@ -24,6 +24,15 @@ export const htmlContent = `
     var THROTTLE_RATE = 1; // 성능 최적화: 스윙 인식을 위해 매 프레임 전송
     var currentMode = 'SWING';
 
+    // 전면 카메라(셀카 모드) 기본 설정 적용
+    let isBackCamera = false;
+
+    // [RHYTHM 모드] 리듬 섀도우 랠리 상태 변수 추가
+    var isPlayingRhythm = false;
+    var rhythmStartTime = 0;
+    var currentBeatmap = [];
+    var hitEffects = [];
+
     // 에러 핸들링: RN으로 로그 전송
     window.onerror = function(message, source, lineno, colno, error) {
       if(window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'log', message: 'JS ERROR: ' + message }));
@@ -33,7 +42,6 @@ export const htmlContent = `
         const videoElement = document.getElementsByClassName('input_video')[0];
         const canvasElement = document.getElementsByClassName('output_canvas')[0];
         const canvasCtx = canvasElement.getContext('2d');
-        let isBackCamera = true;
 
         // [스윙] 프로 선수 스매시 임팩트 자세
         const PRO_SMASH_LANDMARKS = [
@@ -70,7 +78,6 @@ export const htmlContent = `
             });
         }
 
-        // [관절 데이터 추출 범위 확장 및 고도화]
         function calculateSimilarity(userLandmarks, proLandmarks, mode) {
             const normUser = normalizePose(userLandmarks);
             const normPro = normalizePose(proLandmarks);
@@ -138,6 +145,23 @@ export const htmlContent = `
             }
         }
 
+        // [RHYTHM 모드] 이펙트 그리기 함수 추가
+        function drawEffects() {
+            for (let i = hitEffects.length - 1; i >= 0; i--) {
+                let effect = hitEffects[i];
+                effect.life -= 0.05;
+                if (effect.life <= 0) {
+                    hitEffects.splice(i, 1);
+                    continue;
+                }
+                canvasCtx.beginPath();
+                canvasCtx.arc(effect.x, effect.y, effect.radius + (1 - effect.life) * 30, 0, 2 * Math.PI);
+                canvasCtx.strokeStyle = \`rgba(\${effect.colorRGB}, \${effect.life})\`;
+                canvasCtx.lineWidth = effect.life * 5;
+                canvasCtx.stroke();
+            }
+        }
+
         // RN 메시지 수신 (카메라 전환, 모드 변경)
         document.addEventListener("message", handleRNMessage);
         window.addEventListener("message", handleRNMessage);
@@ -148,6 +172,18 @@ export const htmlContent = `
             if (data.type === 'switchCamera') toggleCamera();
             if (data.type === 'setMode') {
                 currentMode = data.mode;
+                isPlayingRhythm = false;
+            }
+            // [RHYTHM 모드] 시작 및 정지 통신 로직 추가
+            if (data.type === 'startRhythm') {
+                currentMode = 'RHYTHM';
+                currentBeatmap = data.beatmap;
+                rhythmStartTime = Date.now();
+                isPlayingRhythm = true;
+                hitEffects = [];
+            }
+            if (data.type === 'stopRhythm') {
+                isPlayingRhythm = false;
             }
           } catch (e) {}
         }
@@ -188,8 +224,101 @@ export const htmlContent = `
 
             frameCounter++;
 
-            if (frameCounter % THROTTLE_RATE === 0) {
+            const lShoulder = results.poseLandmarks[11];
+            const rShoulder = results.poseLandmarks[12];
+            const lElbow = results.poseLandmarks[13];
+            const rElbow = results.poseLandmarks[14];
+            const lWrist = results.poseLandmarks[15];
+            const rWrist = results.poseLandmarks[16];
+            const lHip = results.poseLandmarks[23];
+            const rHip = results.poseLandmarks[24];
+            const lKnee = results.poseLandmarks[25];
+            const rKnee = results.poseLandmarks[26];
+            const lAnkle = results.poseLandmarks[27];
+            const rAnkle = results.poseLandmarks[28];
+            const nose = results.poseLandmarks[0];
+            const lEar = results.poseLandmarks[7];
+            const rEar = results.poseLandmarks[8];
 
+            const elbowAngle = calculateAngle(rShoulder, rElbow, rWrist);
+            const kneeAngle = calculateAngle(rHip, rKnee, rAnkle);
+            const shoulderRot = Math.atan2((rShoulder?.z || 0) - (lShoulder?.z || 0), (rShoulder?.x || 0) - (lShoulder?.x || 0)) * (180 / Math.PI);
+            const hipRot = Math.atan2((rHip?.z || 0) - (lHip?.z || 0), (rHip?.x || 0) - (lHip?.x || 0)) * (180 / Math.PI);
+            const xFactor = Math.abs(shoulderRot - hipRot);
+
+            // [RHYTHM 모드] 네이티브 캔버스 렌더링 및 타격 판정 로직 추가
+            if (currentMode === 'RHYTHM' && isPlayingRhythm) {
+                const gameTime = Date.now() - rhythmStartTime;
+
+                currentBeatmap.forEach((note) => {
+                    if (note.hit) return;
+                    const dt = note.time - gameTime;
+
+                    if (dt > 0 && dt < 2000) {
+                        const cx = isBackCamera ? note.targetX * drawWidth + offsetX : (1 - note.targetX) * drawWidth + offsetX;
+                        const cy = note.targetY * drawHeight + offsetY;
+
+                        const hitZoneRadius = 40;
+                        const approachRadius = hitZoneRadius + (dt / 2000) * 150;
+
+                        canvasCtx.beginPath();
+                        canvasCtx.arc(cx, cy, hitZoneRadius, 0, 2 * Math.PI);
+                        canvasCtx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+                        canvasCtx.fill();
+                        canvasCtx.lineWidth = 2;
+                        canvasCtx.strokeStyle = note.color;
+                        canvasCtx.stroke();
+
+                        canvasCtx.beginPath();
+                        canvasCtx.arc(cx, cy, approachRadius, 0, 2 * Math.PI);
+                        canvasCtx.shadowBlur = 15;
+                        canvasCtx.shadowColor = note.color;
+                        canvasCtx.strokeStyle = note.color;
+                        canvasCtx.lineWidth = 4;
+                        canvasCtx.stroke();
+                        canvasCtx.shadowBlur = 0;
+
+                    } else if (dt <= 0 && dt > -400) {
+                        let isHit = false;
+                        let timing = 'MISS';
+
+                        if (rWrist && rWrist.visibility > 0.5) {
+                            const wx = rWrist.x * drawWidth + offsetX;
+                            const wy = rWrist.y * drawHeight + offsetY;
+                            const cx = isBackCamera ? note.targetX * drawWidth + offsetX : (1 - note.targetX) * drawWidth + offsetX;
+                            const cy = note.targetY * drawHeight + offsetY;
+
+                            const dist = Math.sqrt(Math.pow(wx - cx, 2) + Math.pow(wy - cy, 2));
+                            if (dist < 80) {
+                                isHit = true;
+                                timing = Math.abs(dt) < 150 ? 'PERFECT' : 'GREAT';
+                                note.hit = true;
+
+                                let colorRGB = note.color === '#EF4444' ? '239,68,68' : note.color === '#3B82F6' ? '59,130,246' : '16,185,129';
+                                hitEffects.push({ x: cx, y: cy, radius: 40, life: 1.0, colorRGB: colorRGB });
+                            }
+                        }
+
+                        if (isHit || dt < -350) {
+                            if (!note.hit) timing = 'MISS';
+                            note.hit = true;
+
+                            window.ReactNativeWebView.postMessage(JSON.stringify({
+                                type: 'rhythmHit',
+                                noteId: note.id,
+                                noteType: note.type,
+                                timing: timing,
+                                elbowAngle: elbowAngle,
+                                kneeAngle: kneeAngle,
+                                xFactor: xFactor
+                            }));
+                        }
+                    }
+                });
+                drawEffects();
+            }
+
+            if (frameCounter % THROTTLE_RATE === 0 && currentMode !== 'RHYTHM') {
                 const swingKnnScore = calculateSimilarity(results.poseLandmarks, PRO_SMASH_LANDMARKS, 'SWING');
                 const readyKnnScore = calculateSimilarity(results.poseLandmarks, PRO_READY_LANDMARKS, 'LUNGE');
 
@@ -197,18 +326,6 @@ export const htmlContent = `
                 if (currentMode === 'FOOTWORK') {
                     footworkPose = classifyFootworkPose(results.poseLandmarks, isBackCamera);
                 }
-
-                const nose = results.poseLandmarks[0];
-                const lEar = results.poseLandmarks[7];
-                const rEar = results.poseLandmarks[8];
-                const lShoulder = results.poseLandmarks[11];
-                const rShoulder = results.poseLandmarks[12];
-                const rElbow = results.poseLandmarks[14];
-                const rWrist = results.poseLandmarks[16];
-                const lHip = results.poseLandmarks[23];
-                const rHip = results.poseLandmarks[24];
-                const rKnee = results.poseLandmarks[26];
-                const rAnkle = results.poseLandmarks[28];
 
                 let isPoseVisible = false;
 
@@ -221,13 +338,6 @@ export const htmlContent = `
                 }
 
                 if(isPoseVisible && window.ReactNativeWebView) {
-                    const elbowAngle = calculateAngle(rShoulder, rElbow, rWrist);
-                    const kneeAngle = calculateAngle(rHip, rKnee, rAnkle);
-
-                    const shoulderRot = Math.atan2(rShoulder.z - lShoulder.z, rShoulder.x - lShoulder.x) * (180 / Math.PI);
-                    const hipRot = Math.atan2(rHip.z - lHip.z, rHip.x - lHip.x) * (180 / Math.PI);
-                    const xFactor = Math.abs(shoulderRot - hipRot);
-
                     const cogX = (lHip.x + rHip.x) / 2;
 
                     let heightEfficiency = 0;
@@ -300,4 +410,4 @@ export const htmlContent = `
   </script>
 </body>
 </html>
-`
+`;

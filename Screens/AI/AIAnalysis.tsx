@@ -22,18 +22,19 @@ import {
   CheckCircle, XCircle, Dumbbell, Play, Trash2, FileText,
   Smartphone, User, Eye, HelpCircle, Info, X,
   ArrowUpLeft, ArrowUpRight, ArrowDownLeft, ArrowDownRight,
-  Circle, RotateCw, BarChart2, Award, Video
+  Circle, RotateCw, BarChart2, Award, Video, Music
 } from 'lucide-react-native';
 import { htmlContent } from './poseHtml';
 
-// Firebase 연동
-import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+// Firebase 연동 (데이터 저장 및 불러오기 모듈 추가)
+import { getFirestore, collection, addDoc, serverTimestamp, query, orderBy, getDocs, limit } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { getApp } from 'firebase/app';
 
 // ---------------- [설정값] ----------------
 const ANALYSIS_DURATION = 20;
 const FOOTWORK_DURATION = 60;
+const RHYTHM_DURATION = 30; // RHYTHM 훈련 모드 길이 추가
 const SPEED_BUFFER_SIZE = 3;
 const USER_HEIGHT_CM = 175;
 const ARM_LENGTH_RATIO = 0.45;
@@ -42,7 +43,7 @@ const PIXEL_TO_REAL_SCALE = (USER_HEIGHT_CM * ARM_LENGTH_RATIO) / 200;
 const MIN_SWING_DISTANCE_PX = 0.15;
 const SWING_TRIGGER_SPEED = 25;
 
-export type AnalysisMode = 'SWING' | 'LUNGE' | 'FOOTWORK';
+export type AnalysisMode = 'SWING' | 'LUNGE' | 'FOOTWORK' | 'RHYTHM'; // RHYTHM 모드 통합
 type Difficulty = 'EASY' | 'NORMAL' | 'HARD';
 type FootworkDirection = 'CENTER' | 'FRONT_LEFT' | 'FRONT_RIGHT' | 'BACK_LEFT' | 'BACK_RIGHT';
 
@@ -77,6 +78,20 @@ export interface StyleRecord {
   title: string;
   image: any;
 }
+
+// ---------------- [리듬 섀도우 랠리 비트맵 데이터] ----------------
+const RHYTHM_BEATMAP = [
+  { id: 1, time: 2000, type: 'SMASH', color: '#EF4444', targetX: 0.8, targetY: 0.2 },
+  { id: 2, time: 4500, type: 'UNDER', color: '#3B82F6', targetX: 0.2, targetY: 0.8 },
+  { id: 3, time: 6000, type: 'UNDER', color: '#3B82F6', targetX: 0.8, targetY: 0.8 },
+  { id: 4, time: 8500, type: 'CLEAR', color: '#10B981', targetX: 0.5, targetY: 0.1 },
+  { id: 5, time: 11000, type: 'SMASH', color: '#EF4444', targetX: 0.2, targetY: 0.2 },
+  { id: 6, time: 13000, type: 'DRIVE', color: '#3B82F6', targetX: 0.8, targetY: 0.5 },
+  { id: 7, time: 15500, type: 'CLEAR', color: '#10B981', targetX: 0.2, targetY: 0.3 },
+  { id: 8, time: 18000, type: 'SMASH', color: '#EF4444', targetX: 0.7, targetY: 0.2 },
+  { id: 9, time: 20500, type: 'UNDER', color: '#3B82F6', targetX: 0.3, targetY: 0.8 },
+  { id: 10, time: 23000, type: 'SMASH', color: '#EF4444', targetX: 0.5, targetY: 0.2 },
+];
 
 // ---------------- [플레이어 매칭 데이터] ----------------
 const PLAYER_STYLES = {
@@ -137,12 +152,12 @@ const MODE_DETAILS = {
     title: '스윙 정밀 분석',
     scoreCriteria: [
       { label: '속도', pct: '30%', desc: '임팩트 순간의 라켓 헤드 가속도' },
-      { label: '회전력', pct: '20%', desc: '상하체 꼬임(X-Factor) 각도' },
+      { label: '회전력', pct: '20%', desc: '상하체 꼬임 각도' },
       { label: '자세', pct: '20%', desc: '팔꿈치 각도 및 폼의 정확성' },
       { label: '타점', pct: '15%', desc: '신장 대비 타격 높이 효율' },
       { label: '체중이동', pct: '15%', desc: '타격 시 중심 이동량' },
     ],
-    analysisElements: ['최고 속도 (km/h)', 'X-Factor', '임팩트 팔꿈치 각도', '타점 높이'],
+    analysisElements: ['최고 속도 (km/h)', '코어 회전', '임팩트 팔꿈치 각도', '타점 높이'],
     gradeCriteria: [
       { grade: 'SS', value: '140km/h ↑', desc: '선수급 파워' },
       { grade: 'S', value: '110km/h ↑', desc: '상급 동호인' },
@@ -155,7 +170,7 @@ const MODE_DETAILS = {
     title: '준비 자세 안정성',
     scoreCriteria: [
       { label: '유지시간', pct: '40%', desc: '자세를 무너뜨리지 않고 버틴 시간' },
-      { label: '자세안정', pct: '30%', desc: '무릎 각도(155~165°) 유지력' },
+      { label: '자세안정', pct: '30%', desc: '무릎 굽힘 유지력' },
       { label: '시선처리', pct: '30%', desc: '머리의 상하좌우 흔들림' },
     ],
     analysisElements: ['최대 버티기 시간 (초)', '무릎 각도 변화 추이', '시선 고정 여부'],
@@ -179,13 +194,24 @@ const MODE_DETAILS = {
     ],
     tips: ['중앙 원 안에서 시작하세요.', '스텝 후 반드시 중앙으로 복귀해야 합니다.', 'Hard 모드는 스윙 동작까지 해야 인정됩니다.'],
     difficultyGuide: ['🟢 EASY: 1초 간격 (정확한 스텝 연습)', '🔵 NORMAL: 0.5초 간격 (실전 랠리 속도)', '🔴 HARD: 0.2초 간격 + 스윙 동작 필수']
+  },
+  RHYTHM: {
+    title: '나와의 랠리',
+    scoreCriteria: [
+      { label: '타이밍', pct: '50%', desc: '음악(궤적)에 맞춘 정확한 임팩트' },
+      { label: '상황별 자세', pct: '50%', desc: '스매시, 언더 등 상황에 맞는 관절 폼 유지' }
+    ],
+    analysisElements: ['노트별 타이밍 정확도', '공수 전환시 폼 붕괴 여부', '원인 기반 AI 진단'],
+    gradeCriteria: [{ grade: 'S', value: 'All Perfect', desc: '완벽한 폼과 반응 속도' }],
+    tips: ['화면에 표시되는 네온 서클의 타이밍에 맞춰 자세를 취하세요.', '빨간색은 스매시(공격), 파란색은 언더(수비) 동작을 요구합니다.', '종료 후 폼 붕괴의 원인을 AI가 분석해 드립니다.']
   }
 };
 
 const GENERAL_GUIDE_DATA = [
   { mode: 'SWING', title: '스윙 정밀 분석', icon: <Zap size={24} color="#F472B6" />, desc: ['최고 속도(km/h)와 폼의 정확도를 측정합니다.', '분석 지표: 상하체 회전차, 타점 높이, 체중 이동', '임팩트 시 팔의 각도와 허리 회전을 중점적으로 봅니다.'] },
   { mode: 'LUNGE', title: '준비 자세 안정성', icon: <Activity size={24} color="#60A5FA" />, desc: ['수비 리시브 자세의 유지 시간을 측정합니다.', '분석 지표: 시선 흔들림, 무릎 각도 유지력', '버티는 동안 머리가 기울어지지 않도록 주의하세요.'] },
-  { mode: 'FOOTWORK', title: '민첩성 훈련', icon: <Move size={24} color="#FCD34D" />, desc: ['화면에 표시되는 방향으로 빠르게 이동하세요.', '중앙 복귀 후 다음 지시를 기다려야 합니다.', '반응 속도(초)와 스텝의 정확도를 평가합니다.'] }
+  { mode: 'FOOTWORK', title: '민첩성 훈련', icon: <Move size={24} color="#FCD34D" />, desc: ['화면에 표시되는 방향으로 빠르게 이동하세요.', '중앙 복귀 후 다음 지시를 기다려야 합니다.', '반응 속도(초)와 스텝의 정확도를 평가합니다.'] },
+  { mode: 'RHYTHM', title: '나와의 랠리', icon: <Music size={24} color="#10B981" />, desc: ['타인의 시선 부담 없이 혼자서 훈련하는 랠리 모드입니다.', '날아오는 궤적의 리듬에 맞춰 올바른 폼을 구사하세요.', '분석 후 폼이 붕괴된 근본적인 원인을 짚어줍니다.'] }
 ];
 
 export default function AIAnalysis() {
@@ -210,6 +236,10 @@ export default function AIAnalysis() {
   const [footworkScore, setFootworkScore] = useState(0);
   const [footworkCombo, setFootworkCombo] = useState(0);
   const [lastActionTime, setLastActionTime] = useState(0);
+
+  // 리듬 게임 상태 추가
+  const [rhythmCombo, setRhythmCombo] = useState(0);
+  const [rhythmScore, setRhythmScore] = useState(0);
 
   const [timeLeft, setTimeLeft] = useState(ANALYSIS_DURATION);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
@@ -245,7 +275,9 @@ export default function AIAnalysis() {
     swingSpeeds: [] as number[], swingAngles: [] as number[], swingKnnScores: [] as number[],
     swingXFactors: [] as number[], swingCOGDeltas: [] as number[], swingHeights: [] as number[],
     lungeHoldTimes: [] as number[], lungeKnnScores: [] as number[], lungeHeadTilts: [] as number[],
-    footworkReactionTimes: [] as number[], footworkSuccessCount: 0, count: 0
+    footworkReactionTimes: [] as number[], footworkSuccessCount: 0,
+    rhythmResults: [] as any[], // 리듬 모드 XAI 분석용
+    count: 0
   });
 
   const prevPos = useRef<{ x: number; y: number; time: number; speed: number } | null>(null);
@@ -263,6 +295,7 @@ export default function AIAnalysis() {
   const isLungingRef = useRef(false);
   const lungeStartTimeRef = useRef(0);
 
+  // 권한 요청
   useEffect(() => {
     const requestPermission = async () => {
       if (Platform.OS === 'android') {
@@ -278,6 +311,50 @@ export default function AIAnalysis() {
       } else { setHasPermission(true); }
     };
     requestPermission();
+  }, []);
+
+  // 🔥 데이터베이스 기록 불러오기 (초기 마운트 시)
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const auth = getAuth(getApp());
+        const user = auth.currentUser;
+
+        if (user) {
+          const db = getFirestore(getApp());
+          const appId = 'rally-app-main';
+          const historyRef = collection(db, 'artifacts', appId, 'users', user.uid, 'videoHistory');
+
+          // 최신순으로 정렬하여 최대 20개의 기록을 불러옴
+          const q = query(historyRef, orderBy('createdAt', 'desc'), limit(20));
+          const querySnapshot = await getDocs(q);
+
+          const loadedHistory: AnalysisReport[] = [];
+          querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            loadedHistory.push({
+              id: doc.id,
+              date: data.date,
+              mode: data.mode,
+              avgScore: data.avgScore,
+              pros: data.pros || [],
+              cons: data.cons || [],
+              training: data.training || '',
+              totalCount: data.totalCount,
+              maxRecord: data.maxRecord,
+              difficulty: data.difficulty
+            } as AnalysisReport);
+          });
+
+          // 가져온 데이터를 history 상태에 업데이트
+          setHistory(loadedHistory);
+        }
+      } catch (error) {
+        console.error("기록 불러오기 실패:", error);
+      }
+    };
+
+    fetchHistory();
   }, []);
 
   useEffect(() => {
@@ -363,16 +440,20 @@ export default function AIAnalysis() {
 
   const enterAnalysisMode = () => {
     if (hasPermission) {
-      const duration = mode === 'FOOTWORK' ? FOOTWORK_DURATION : ANALYSIS_DURATION;
+      let duration = ANALYSIS_DURATION;
+      if (mode === 'FOOTWORK') duration = FOOTWORK_DURATION;
+      if (mode === 'RHYTHM') duration = RHYTHM_DURATION;
+
       setTimeLeft(duration); setIsTimerRunning(false); setCountdown(null);
       setSwingSpeed(0); setSwingScore(0); setCurrentElbowAngle(0); setCurrentKneeAngle(0);
       setCurrentXFactor(0); setCurrentCOG(0); setHeightEfficiency(0); setHeadTilt(0);
       setCurrentLungeHoldTime(0); setMaxLungeHoldTime(0); setLungeStability(0);
       setFootworkScore(0); setFootworkCombo(0); setTargetDirection('CENTER'); setLastResult(null);
+      setRhythmCombo(0); setRhythmScore(0);
 
       sessionDataRef.current = {
         swingSpeeds: [], swingAngles: [], swingKnnScores: [], swingXFactors: [], swingCOGDeltas: [], swingHeights: [],
-        lungeHoldTimes: [], lungeKnnScores: [], lungeHeadTilts: [], footworkReactionTimes: [], footworkSuccessCount: 0, count: 0
+        lungeHoldTimes: [], lungeKnnScores: [], lungeHeadTilts: [], footworkReactionTimes: [], footworkSuccessCount: 0, count: 0, rhythmResults: []
       };
 
       setIsAnalyzing(true); setShowHelp(true);
@@ -381,13 +462,21 @@ export default function AIAnalysis() {
   };
 
   const onPlayPress = () => { setCountdown(3); setShowHelp(false); };
-  const startActualTimer = () => { setIsTimerRunning(true); Vibration.vibrate(100); if (mode === 'FOOTWORK') setTargetDirection('CENTER'); };
 
-  // 🔥 Firestore 저장을 위한 로직 복구
+  const startActualTimer = () => {
+    setIsTimerRunning(true); Vibration.vibrate(100);
+    if (mode === 'FOOTWORK') setTargetDirection('CENTER');
+    if (mode === 'RHYTHM') {
+      webviewRef.current?.postMessage(JSON.stringify({ type: 'startRhythm', beatmap: RHYTHM_BEATMAP }));
+    }
+  };
+
+  // 🔥 원본 데이터베이스 저장 로직
   const finishAnalysis = async () => {
     setIsAnalyzing(false);
     setIsTimerRunning(false);
     setCountdown(null);
+    if(mode === 'RHYTHM') webviewRef.current?.postMessage(JSON.stringify({ type: 'stopRhythm' }));
 
     const newReport = createReport();
     setHistory((prev) => [newReport, ...prev]);
@@ -402,7 +491,6 @@ export default function AIAnalysis() {
             const db = getFirestore(getApp());
             const appId = 'rally-app-main';
 
-            // 🔥 undefined 값이 포함되어 있으면 Firestore 저장이 에러를 뱉으므로 객체를 정제합니다.
             const reportToSave = { ...newReport };
             Object.keys(reportToSave).forEach(key => {
                 if (reportToSave[key as keyof AnalysisReport] === undefined) {
@@ -486,6 +574,9 @@ export default function AIAnalysis() {
     }
   };
 
+  // ==========================================
+  // XAI 피드백 생성 엔진 (장/단점 분리 및 일상 언어 순화 완료)
+  // ==========================================
   const createReport = (): AnalysisReport => {
     const data = sessionDataRef.current;
     let report: AnalysisReport = {
@@ -493,12 +584,47 @@ export default function AIAnalysis() {
       avgScore: 0, pros: [], cons: [], training: '', totalCount: 0, maxRecord: 0
     };
 
-    // 🔥 undefined 에러를 원천 차단하기 위해 조건부로 속성 추가
-    if (mode === 'FOOTWORK') {
+    if (mode === 'FOOTWORK' || mode === 'RHYTHM') {
       report.difficulty = difficulty;
     }
 
-    if (mode === 'SWING') {
+    if (mode === 'RHYTHM') {
+      const results = data.rhythmResults;
+      report.totalCount = RHYTHM_BEATMAP.length;
+      report.maxRecord = rhythmCombo;
+      report.avgScore = rhythmScore;
+
+      if (results.length === 0) { report.training = '측정된 판정이 없습니다.'; return report; }
+
+      const smashMisses = results.filter(r => r.noteType === 'SMASH' && (r.timing === 'MISS' || r.elbowAngle < 150));
+      const underMisses = results.filter(r => r.noteType === 'UNDER' && (r.timing === 'MISS' || r.kneeAngle > 160));
+      const clearMisses = results.filter(r => r.noteType === 'CLEAR' && r.xFactor < 20);
+      const perfectCount = results.filter(r => r.timing === 'PERFECT').length;
+
+      // 장점(Pros) 무조건 독립 평가
+      if (perfectCount >= RHYTHM_BEATMAP.length * 0.7) {
+          report.pros.push('모든 궤적에 대한 반응 속도와 템포가 완벽합니다!');
+      } else if (perfectCount >= RHYTHM_BEATMAP.length * 0.4) {
+          report.pros.push('셔틀콕의 궤적을 읽고 반응하는 기본 리듬감이 좋습니다.');
+      } else {
+          report.pros.push('포기하지 않고 랠리를 끝까지 따라가는 집중력이 돋보입니다.');
+      }
+
+      // 단점(Cons) 및 훈련법 전문 용어 배제
+      if (smashMisses.length > 0) {
+          report.cons.push("스매시(Red) 타이밍에 타점이 무너지고 있습니다. 임팩트 순간 팔이 완전히 펴지지 않아 네트에 걸릴 확률이 높습니다.");
+          report.training = '▶ 벽 짚고 스윙 연습: 벽을 마주 보고 서서 손이 벽에 닿을 만큼 팔을 뻗은 상태에서 타격하는 훈련을 권장합니다.';
+      } else if (underMisses.length > 0) {
+          report.cons.push("수비(Blue) 동작 시 하체 고정이 부족합니다. 무릎을 충분히 굽히지 않고 서서 치고 있어 무게 중심이 쉽게 흔들립니다.");
+          report.training = '▶ 고무줄(밴드)을 허벅지에 걸고 투명의자 자세를 유지하며 훈련하는 하체 안정화 코스가 필요합니다.';
+      } else if (clearMisses.length > 0) {
+          report.cons.push("클리어(Green) 타격 시 상체 회전이 거의 없습니다. 골반과 어깨가 충분히 비틀어지지 않아 팔로만 스윙하고 있습니다.");
+          report.training = '▶ 수건 던지기 훈련: 왼쪽 골반을 먼저 틀면서 수건을 채찍처럼 앞으로 던지는 체중 이동 연습을 하세요.';
+      } else {
+          report.training = '▶ 모든 궤적에서 완벽한 폼과 타이밍을 보여주었습니다. 현재의 감각을 유지하며 오프라인 매칭을 시작해 보세요!';
+      }
+
+    } else if (mode === 'SWING') {
       if (data.count === 0) { report.training = '측정된 데이터가 없습니다.'; return report; }
       const maxSpeed = Math.floor(Math.max(...data.swingSpeeds));
       const avgKnn = data.swingKnnScores.reduce((a, b) => a + b, 0) / (data.swingKnnScores.length || 1);
@@ -516,13 +642,27 @@ export default function AIAnalysis() {
 
       report.avgScore = Math.floor(speedScore + formScore + powerScore + heightScore + weightScore);
 
+      // 장점(Pros)
       if (maxSpeed >= 110) report.pros.push('상급자 수준의 강력한 스매시 파워를 보유하고 계십니다.');
-      if (avgXFactor >= 35) report.pros.push('상하체 꼬임(X-Factor)이 완벽합니다.');
-      if (avgHeight >= 90) report.pros.push('타점이 매우 높습니다.');
+      if (avgXFactor >= 35) report.pros.push('상체와 골반을 부드럽게 꼬아주는 코어 회전력이 훌륭합니다.');
+      if (avgHeight >= 90) report.pros.push('가장 이상적이고 높은 위치에서 타점을 형성하고 있습니다.');
+      if (avgCOGDelta >= 0.15) report.pros.push('스윙 시 체중이 앞으로 자연스럽게 실리며 파워를 더하고 있습니다.');
 
-      if (avgXFactor < 20) { report.cons.push('몸통 회전이 부족합니다.'); report.training = '백스윙 시 어깨를 더 깊이 넣어주세요.'; }
-      else if (avgHeight < 75) { report.cons.push('타점이 낮아 네트에 걸릴 확률이 높습니다.'); report.training = '점프하여 가장 높은 지점에서 타격하는 연습을 하세요.'; }
-      else { report.training = '폼과 파워가 완벽합니다. 풋워크와 결합하여 실전 능력을 높여보세요.'; }
+      if (report.pros.length === 0) report.pros.push('끝까지 스윙 궤적을 멈추지 않고 가져가는 태도가 매우 좋습니다.');
+
+      // 단점(Cons) (용어 순화)
+      if (avgXFactor < 20) {
+        report.cons.push('상체의 꼬임이 덜 풀려 몸통 회전의 힘이 라켓에 전달되지 않고 있습니다.');
+        report.training = '▶ 백스윙 시 어깨를 뒤로 더 깊이 넣었다가 튕겨 나오는 코어 훈련을 진행하세요.';
+      } else if (avgHeight < 75) {
+        report.cons.push('타점이 낮게 형성되어 스매시가 네트에 걸릴 확률이 아주 높습니다.');
+        report.training = '▶ 가볍게 점프하여 타점을 머리 위쪽 가장 높은 곳으로 끌어올리는 연습이 필요합니다.';
+      } else if (avgCOGDelta < 0.1) {
+        report.cons.push('임팩트 순간 체중이 앞으로 쏠리지 못하고 뒤에 남아있습니다.');
+        report.training = '▶ 타격 시 뒤쪽 발이 스윙 방향을 따라 자연스럽게 앞으로 나오는 스텝 훈련을 병행하세요.';
+      } else {
+        report.training = '▶ 폼과 체중 이동이 완벽합니다. 풋워크와 결합하여 실전 능력을 높여보세요.';
+      }
     } else if (mode === 'LUNGE') {
       const maxHold = maxLungeHoldTime;
       const avgHeadTilt = data.lungeHeadTilts.reduce((a,b)=>a+b,0) / (data.lungeHeadTilts.length || 1);
@@ -534,12 +674,16 @@ export default function AIAnalysis() {
 
       report.avgScore = Math.floor(holdScore + stabilityScore + headScore);
 
-      if (maxHold >= 45) report.pros.push('매우 안정적인 하체 밸런스를 유지하고 있습니다.');
-      if (avgHeadTilt < 3) report.pros.push('시선 처리가 매우 안정적입니다.');
-      if (avgHeadTilt > 10) report.cons.push('버티는 동안 머리가 한쪽으로 기울어집니다.');
-      if (maxHold < 15) report.cons.push('하체 근력이 부족하여 자세가 금방 무너집니다.');
+      if (maxHold >= 45) report.pros.push('장시간 하체를 무너뜨리지 않는 완벽한 밸런스를 갖추고 있습니다.');
+      else if (maxHold >= 20) report.pros.push('기본적인 하체 근력과 버티는 힘이 양호합니다.');
+      else report.pros.push('힘들더라도 자세를 잡고 계속 시도하려는 모습이 훌륭합니다.');
 
-      report.training = maxHold < 30 ? '투명의자 자세로 버티는 훈련을 매일 수행하세요.' : '날아오는 셔틀콕을 식별하는 훈련을 추가하세요.';
+      if (avgHeadTilt < 3) report.pros.push('시선 처리가 흔들림 없이 아주 안정적입니다.');
+
+      if (avgHeadTilt > 10) report.cons.push('버티는 동안 머리가 한쪽으로 계속 기울어지고 있어 시야가 좁아질 수 있습니다.');
+      if (maxHold < 15) report.cons.push('하체 근력이 부족하여 기마 자세가 금방 풀려버립니다.');
+
+      report.training = maxHold < 30 ? '▶ 투명의자 자세로 매일 버티는 훈련을 수행하여 코어를 단련하세요.' : '▶ 정면을 바라보며 시선을 단단히 고정하는 연습을 추가하세요.';
     } else if (mode === 'FOOTWORK') {
       const totalSuccess = data.footworkSuccessCount;
       if (totalSuccess === 0) { report.training = '성공한 스텝이 없습니다. 천천히 다시 시도하세요.'; return report; }
@@ -547,11 +691,13 @@ export default function AIAnalysis() {
 
       report.totalCount = totalSuccess; report.maxRecord = avgReaction; report.avgScore = footworkScore;
 
-      if (avgReaction < 0.8) report.pros.push('반사 신경이 매우 빠릅니다.');
-      else if (avgReaction < 1.2) report.pros.push('준수한 반응 속도입니다.');
-      if (avgReaction > 1.5) report.cons.push('반응 후 첫 발을 떼는 속도가 느립니다.');
+      if (avgReaction < 0.8) report.pros.push('지시를 보자마자 몸이 반응하는 속도가 매우 빠릅니다.');
+      else if (avgReaction < 1.2) report.pros.push('안정적이고 일관된 스텝 리듬을 보여주고 있습니다.');
+      else report.pros.push('방향을 헷갈리지 않고 정확히 밟으려는 집중력이 좋습니다.');
 
-      report.training = difficulty === 'HARD' ? '스윙 후 즉시 센터로 복귀하는 리커버리 동작을 더 빠르게 연습하세요.' : '줄넘기 2단 뛰기와 사이드 스텝 왕복 달리기가 도움이 됩니다.';
+      if (avgReaction > 1.5) report.cons.push('방향 지시 후 첫 발이 떨어지기까지의 시간이 다소 깁니다.');
+
+      report.training = difficulty === 'HARD' ? '▶ 스윙 후 즉시 중앙 지점으로 복귀하는 리커버리 스텝을 최우선으로 연습하세요.' : '▶ 줄넘기 2단 뛰기와 좁은 폭의 사이드 스텝 달리기가 반응 속도를 크게 올려줍니다.';
     }
 
     if (report.pros.length === 0) report.pros.push('꾸준한 연습이 답입니다!');
@@ -579,10 +725,12 @@ export default function AIAnalysis() {
     let newMode: AnalysisMode = 'SWING';
     if (mode === 'SWING') newMode = 'LUNGE';
     else if (mode === 'LUNGE') newMode = 'FOOTWORK';
+    else if (mode === 'FOOTWORK') newMode = 'RHYTHM';
     else newMode = 'SWING';
-    setMode(newMode); setTimeLeft(newMode === 'FOOTWORK' ? FOOTWORK_DURATION : ANALYSIS_DURATION);
+
+    setMode(newMode); setTimeLeft(newMode === 'FOOTWORK' ? FOOTWORK_DURATION : newMode === 'RHYTHM' ? RHYTHM_DURATION : ANALYSIS_DURATION);
     setLastResult(null); popAnim.setValue(0); setSwingScore(0); setCurrentLungeHoldTime(0);
-    setMaxLungeHoldTime(0); setFootworkScore(0); setDifficulty('EASY');
+    setMaxLungeHoldTime(0); setFootworkScore(0); setDifficulty('EASY'); setRhythmCombo(0); setRhythmScore(0);
     webviewRef.current?.postMessage(JSON.stringify({ type: 'setMode', mode: newMode }));
   };
 
@@ -593,6 +741,22 @@ export default function AIAnalysis() {
     try {
       const parsed = JSON.parse(event.nativeEvent.data);
       if (parsed.type === 'log') return;
+
+      if (parsed.type === 'rhythmHit') {
+          if (parsed.timing === 'PERFECT' || parsed.timing === 'GREAT') {
+              setRhythmCombo(prev => prev + 1);
+              setRhythmScore(prev => prev + (parsed.timing === 'PERFECT' ? 100 : 50));
+              triggerSmashEffect();
+          } else {
+              setRhythmCombo(0);
+              Vibration.vibrate(50);
+          }
+          sessionDataRef.current.rhythmResults.push(parsed);
+          setLastResult({ value: rhythmCombo, isGood: parsed.timing !== 'MISS', type: 'RHYTHM', grade: parsed.timing, score: parsed.timing === 'PERFECT' ? 100 : 50, unit: 'COMBO' });
+          triggerResultAnimation();
+          return;
+      }
+
       if (parsed.type === 'poseData') {
         if (countdown !== null) return;
         const rawX = parsed.x; const rawY = parsed.y; const currentTime = parsed.timestamp;
@@ -703,6 +867,20 @@ export default function AIAnalysis() {
 
   const renderStatsOverlay = () => {
     if (mode === 'FOOTWORK') return renderFootworkOverlay();
+    if (mode === 'RHYTHM') return (
+        <View style={styles.statsOverlay}>
+            <View style={styles.statBox}>
+                <Music size={20} color="#10B981" />
+                <View style={styles.statContent}><Text style={styles.statLabel} numberOfLines={1}>콤보</Text><Text style={styles.statValue} numberOfLines={1}>{rhythmCombo}</Text></View>
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.statBox}>
+                <Award size={20} color="#FCD34D" />
+                <View style={styles.statContent}><Text style={styles.statLabel} numberOfLines={1}>스코어</Text><Text style={styles.statValue} numberOfLines={1}>{rhythmScore}</Text></View>
+            </View>
+        </View>
+    );
+
     return (
         <View style={styles.statsOverlay}>
             {mode === 'SWING' ? (
@@ -714,7 +892,7 @@ export default function AIAnalysis() {
                 <View style={styles.divider} />
                 <View style={styles.statBox}>
                     <RotateCw size={20} color="#60A5FA" />
-                    <View style={styles.statContent}><Text style={styles.statLabel} numberOfLines={1}>회전(X-F)</Text><Text style={styles.statValue} numberOfLines={1}>{Math.floor(currentXFactor)}°</Text></View>
+                    <View style={styles.statContent}><Text style={styles.statLabel} numberOfLines={1}>코어회전</Text><Text style={styles.statValue} numberOfLines={1}>{Math.floor(currentXFactor)}°</Text></View>
                 </View>
                 <View style={styles.divider} />
                 <View style={styles.statBox}>
@@ -788,10 +966,10 @@ export default function AIAnalysis() {
         <View style={styles.topControlContainer}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <TouchableOpacity onPress={toggleMode} style={styles.modeBadge}>
-              {mode === 'SWING' ? <Zap size={14} color="#F472B6" /> : mode === 'LUNGE' ? <Activity size={14} color="#60A5FA" /> : <Move size={14} color="#FCD34D" />}
-              <Text style={styles.modeText}>{mode === 'SWING' ? '스윙 모드' : mode === 'LUNGE' ? '준비 자세' : '풋워크 게임'}</Text>
+              {mode === 'SWING' ? <Zap size={14} color="#F472B6" /> : mode === 'LUNGE' ? <Activity size={14} color="#60A5FA" /> : mode === 'FOOTWORK' ? <Move size={14} color="#FCD34D" /> : <Music size={14} color="#10B981" />}
+              <Text style={styles.modeText}>{mode === 'SWING' ? '스윙 모드' : mode === 'LUNGE' ? '준비 자세' : mode === 'FOOTWORK' ? '풋워크 게임' : '나와의 랠리'}</Text>
             </TouchableOpacity>
-            {mode === 'FOOTWORK' && (
+            {(mode === 'FOOTWORK' || mode === 'RHYTHM') && (
                 <TouchableOpacity onPress={toggleDifficulty} style={[styles.difficultyButton, { backgroundColor: difficulty === 'EASY' ? '#34D399' : difficulty === 'NORMAL' ? '#60A5FA' : '#EF4444' }]}>
                     <BarChart2 size={16} color="#111827" />
                     <Text style={styles.difficultyButtonText}>{difficulty}</Text>
@@ -815,10 +993,10 @@ export default function AIAnalysis() {
         )}
 
         {lastResult && (
-          <Animated.View style={[styles.feedbackCard, { borderColor: mode === 'SWING' ? getGradeColor(lastResult.grade) : lastResult.isGood ? '#34D399' : '#EF4444', transform: [{ scale: popAnim }], opacity: popAnim }]}>
+          <Animated.View style={[styles.feedbackCard, { borderColor: (mode === 'SWING' || mode === 'RHYTHM') ? getGradeColor(lastResult.grade) : lastResult.isGood ? '#34D399' : '#EF4444', transform: [{ scale: popAnim }], opacity: popAnim }]}>
             <View style={styles.feedbackHeader}>
-              <Text style={[styles.feedbackTitle, { color: mode === 'SWING' ? getGradeColor(lastResult.grade) : 'white' }]}>{lastResult.grade ? `${lastResult.grade} CLASS` : lastResult.isGood ? 'GOOD!' : 'BAD'}</Text>
-              <Text style={{ color: 'white', fontSize: 16 }}>{mode === 'SWING' ? `최고속도: ${lastResult.value}km/h` : mode === 'LUNGE' ? `기록: ${lastResult.value}초` : `+${lastResult.score}점`}</Text>
+              <Text style={[styles.feedbackTitle, { color: (mode === 'SWING' || mode === 'RHYTHM') ? getGradeColor(lastResult.grade) : 'white' }]}>{lastResult.grade ? `${lastResult.grade}${mode==='SWING'?' CLASS':''}` : lastResult.isGood ? 'GOOD!' : 'BAD'}</Text>
+              <Text style={{ color: 'white', fontSize: 16 }}>{mode === 'SWING' ? `최고속도: ${lastResult.value}km/h` : mode === 'LUNGE' ? `기록: ${lastResult.value}초` : mode === 'RHYTHM' ? `${lastResult.value} COMBO` : `+${lastResult.score}점`}</Text>
             </View>
           </Animated.View>
         )}
@@ -929,7 +1107,7 @@ export default function AIAnalysis() {
             </View>
             {canMatchStyle ? <Play size={24} color="white" fill="white" /> : <Square size={24} color="rgba(255,255,255,0.5)" />}
           </View>
-          {!canMatchStyle && (<Text style={styles.matchBannerReqText}>* 모든 모드(스윙, 준비, 풋워크) 기록 1회 이상 필요</Text>)}
+          {!canMatchStyle && (<Text style={styles.matchBannerReqText}>* 모든 모드 기록 1회 이상 필요</Text>)}
         </TouchableOpacity>
 
         <View style={styles.tipCard}>
@@ -937,7 +1115,6 @@ export default function AIAnalysis() {
           <View style={styles.stepItem}><View style={styles.iconBox}><Smartphone size={24} color="#34D399" /></View><Text style={styles.stepText}>삼각대를 이용해 휴대폰을 고정해 주세요.</Text></View>
           <View style={styles.stepItem}><View style={styles.iconBox}><User size={24} color="#60A5FA" /></View><Text style={styles.stepText}>머리부터 발끝까지 전신이 화면에 나와야 합니다.</Text></View>
           <View style={styles.stepItem}><View style={styles.iconBox}><Eye size={24} color="#A78BFA" /></View><Text style={styles.stepText}>정면보다는 측면에서 촬영할 때 가장 정확합니다.</Text></View>
-          <View style={styles.stepItem}><View style={styles.iconBox}><Clock size={24} color="#FCD34D" /></View><Text style={styles.stepText}>시작 후 3초간 준비 자세를 취해주세요.</Text></View>
         </View>
 
         <View style={styles.historySection}>
@@ -978,13 +1155,13 @@ export default function AIAnalysis() {
               <View key={item.id} style={styles.historyItemCard}>
                 <TouchableOpacity style={{ flex: 1 }} onPress={() => { setSelectedReport(item); setShowReport(true); }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    {item.mode === 'SWING' ? <Zap size={16} color="#F472B6" /> : item.mode === 'LUNGE' ? <Activity size={16} color="#60A5FA" /> : <Move size={16} color="#FCD34D" />}
+                    {item.mode === 'SWING' ? <Zap size={16} color="#F472B6" /> : item.mode === 'LUNGE' ? <Activity size={16} color="#60A5FA" /> : item.mode === 'FOOTWORK' ? <Move size={16} color="#FCD34D" /> : <Music size={16} color="#10B981" />}
                     <Text style={styles.historyDate}>{item.date}</Text>
                     {item.difficulty && <Text style={{color:'#6B7280', fontSize:10, backgroundColor:'rgba(255,255,255,0.1)', paddingHorizontal:4, borderRadius:4}}>{item.difficulty}</Text>}
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 12 }}>
                     <Text style={styles.historyScore}>{item.avgScore}점</Text>
-                    <Text style={styles.historyCount}>{item.mode === 'SWING' ? `${item.maxRecord}km/h` : item.mode === 'LUNGE' ? `${item.maxRecord}초` : `${item.totalCount}회`}</Text>
+                    <Text style={styles.historyCount}>{item.mode === 'SWING' ? `${item.maxRecord}km/h` : item.mode === 'LUNGE' ? `${item.maxRecord}초` : item.mode === 'FOOTWORK' ? `${item.totalCount}회` : `${item.maxRecord} Combo`}</Text>
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.deleteButton} onPress={() => deleteHistory(item.id)}><Trash2 size={18} color="#EF4444" /></TouchableOpacity>
@@ -1006,38 +1183,45 @@ export default function AIAnalysis() {
               <View style={styles.reportHeader}>
                 <Text style={styles.reportTitle}>AI 분석 리포트</Text>
                 <Text style={styles.reportDate}>
-                  {selectedReport.date} ({selectedReport.mode === 'SWING' ? '스윙' : selectedReport.mode === 'LUNGE' ? '준비자세' : '풋워크'})
+                  {selectedReport.date} ({selectedReport.mode === 'SWING' ? '스윙' : selectedReport.mode === 'LUNGE' ? '준비자세' : selectedReport.mode === 'FOOTWORK' ? '풋워크' : '나와의 랠리'})
                 </Text>
-                {selectedReport.mode === 'FOOTWORK' && (<View style={styles.difficultyBadge}><Text style={styles.difficultyText}>{selectedReport.difficulty} MODE</Text></View>)}
+                {(selectedReport.mode === 'FOOTWORK' || selectedReport.mode === 'RHYTHM') && (<View style={styles.difficultyBadge}><Text style={styles.difficultyText}>{selectedReport.difficulty} MODE</Text></View>)}
               </View>
               <View style={styles.scoreCard}>
                 <Text style={styles.scoreLabel}>종합 점수</Text>
                 <Text style={styles.scoreValue}>{selectedReport.avgScore}<Text style={{ fontSize: 30 }}>점</Text></Text>
                 <View style={styles.countBadge}>
                   <Text style={{ color: '#111827', fontWeight: 'bold' }}>
-                    {selectedReport.mode === 'SWING' ? `${selectedReport.totalCount}회 수행` : `평균 안정성 ${selectedReport.avgScore}점`}
-                    {' | '}최고기록: {Math.floor(selectedReport.maxRecord)}{selectedReport.mode === 'SWING' ? 'km/h' : '초'}
+                    {selectedReport.mode === 'SWING' ? `${selectedReport.totalCount}회 수행` : selectedReport.mode === 'RHYTHM' ? `총 ${selectedReport.totalCount}노트 처리` : `평균 안정성 ${selectedReport.avgScore}점`}
+                    {' | '}최고기록: {Math.floor(selectedReport.maxRecord)}{selectedReport.mode === 'SWING' ? 'km/h' : selectedReport.mode === 'RHYTHM' ? 'Combo' : '초'}
                   </Text>
                 </View>
               </View>
+
+              {/* 장점 섹션 */}
               <View style={styles.sectionContainer}>
-                <Text style={styles.sectionTitle}>🔥 장점 (Pros)</Text>
+                <Text style={styles.sectionTitle}>🔥 칭찬해요 (Pros)</Text>
                 {selectedReport.pros.length > 0 ? (
                   selectedReport.pros.map((item, idx) => (<View key={idx} style={styles.listItem}><CheckCircle size={20} color="#34D399" /><Text style={styles.listText}>{item}</Text></View>))
-                ) : (<Text style={styles.emptyText}>노력이 필요합니다.</Text>)}
+                ) : (<Text style={styles.emptyText}>노력이 조금 더 필요합니다.</Text>)}
               </View>
+
+              {/* 단점 섹션 */}
               <View style={styles.sectionContainer}>
-                <Text style={styles.sectionTitle}>⚠️ 보완점 (Cons)</Text>
+                <Text style={styles.sectionTitle}>⚠️ 보완점 (Cons & 원인 분석)</Text>
                 {selectedReport.cons.length > 0 ? (
                   selectedReport.cons.map((item, idx) => (<View key={idx} style={styles.listItem}><XCircle size={20} color="#EF4444" /><Text style={styles.listText}>{item}</Text></View>))
-                ) : (<Text style={styles.emptyText}>완벽합니다.</Text>)}
+                ) : (<Text style={styles.emptyText}>고칠 곳이 없습니다. 완벽합니다!</Text>)}
               </View>
+
+              {/* 추천 훈련 섹션 */}
               <View style={[styles.sectionContainer, { backgroundColor: '#1F2937', borderColor: '#FCD34D', borderWidth: 1 }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
                   <Dumbbell size={24} color="#FCD34D" /><Text style={[styles.sectionTitle, { color: '#FCD34D', marginBottom: 0, marginLeft: 8 }]}>추천 트레이닝</Text>
                 </View>
                 <Text style={styles.trainingText}>{selectedReport.training}</Text>
               </View>
+
               <TouchableOpacity style={styles.closeReportButton} onPress={() => setShowReport(false)}><Text style={styles.closeReportText}>닫기</Text></TouchableOpacity>
             </ScrollView>
           </View>
@@ -1091,7 +1275,7 @@ export default function AIAnalysis() {
                     <Text style={styles.statBarValue}>{stat.value}</Text>
                   </View>
                 ))}
-                <Text style={styles.statHintText}>* 3가지 모드 최고 기록 갱신 시 스탯이 변동됩니다.</Text>
+                <Text style={styles.statHintText}>* 모든 모드의 최고 기록 갱신 시 스탯이 변동됩니다.</Text>
               </View>
 
               <View style={styles.youtubeCard}>
