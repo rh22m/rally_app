@@ -5,14 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="9bea4fd7-fbd9-41bf-bc54-2fdc6a7cce6a" name="Changes" comment="나와의 랠리 (리듬게임모드) 모드 업데이트 초안">
-      <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Screens/AI/AIAnalysis.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/AI/AIAnalysis.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Screens/AI/poseHtml.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/AI/poseHtml.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/.cxx/tools/debug/arm64-v8a/compile_commands.json" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/.cxx/tools/debug/arm64-v8a/compile_commands.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/.cxx/tools/debug/armeabi-v7a/compile_commands.json" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/.cxx/tools/debug/armeabi-v7a/compile_commands.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/.cxx/tools/debug/x86/compile_commands.json" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/.cxx/tools/debug/x86/compile_commands.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/.cxx/tools/debug/x86_64/compile_commands.json" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/.cxx/tools/debug/x86_64/compile_commands.json" afterDir="false" />
     </list>
     <list id="bec99eaf-3a58-4741-a0a4-dd14bee4c395" name="ignore" comment="웨어러블 연동을 위한 의존성 업데이트" />
     <option name="SHOW_DIALOG" value="false" />
@@ -152,14 +146,6 @@
       <option name="presentableId" value="LOCAL-00065" />
       <option name="project" value="LOCAL" />
       <updated>1766687766495</updated>
-    </task>
-    <task id="LOCAL-00002" summary="점수 되돌리기+경고문구, 듀스 기능 구현, 강제 종료 시 승패는 따지지 않도록 수정">
-      <option name="closed" value="true" />
-      <created>1762009582053</created>
-      <option name="number" value="00002" />
-      <option name="presentableId" value="LOCAL-00002" />
-      <option name="project" value="LOCAL" />
-      <updated>1762009582053</updated>
     </task>
     <task id="LOCAL-00003" summary="AI 분석 기능 탭 추가. (기능 미구현.)">
       <option name="closed" value="true" />
@@ -505,7 +491,15 @@
       <option name="project" value="LOCAL" />
       <updated>1783254456802</updated>
     </task>
-    <option name="localTasksCounter" value="111" />
+    <task id="LOCAL-00111" summary="나와의 랠리 (리듬게임모드) 모드 업데이트 초안">
+      <option name="closed" value="true" />
+      <created>1783254558855</created>
+      <option name="number" value="00111" />
+      <option name="presentableId" value="LOCAL-00111" />
+      <option name="project" value="LOCAL" />
+      <updated>1783254558855</updated>
+    </task>
+    <option name="localTasksCounter" value="112" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">

@@ -17,6 +17,7 @@ import {
   Linking
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Bot, Activity, Move, Zap, RefreshCcw, Square, Clock,
   CheckCircle, XCircle, Dumbbell, Play, Trash2, FileText,
@@ -192,18 +193,30 @@ const MODE_DETAILS = {
       { grade: 'PERFECT', value: '0.8초 ↓', desc: '국가대표급 반사신경' },
       { grade: 'GOOD', value: '1.2초 ↓', desc: '일반적인 반응 속도' },
     ],
-    tips: ['중앙 원 안에서 시작하세요.', '스텝 후 반드시 중앙으로 복귀해야 합니다.', 'Hard 모드는 스윙 동작까지 해야 인정됩니다.'],
+    tips: ['중앙 원 안에서 시작하세요.', '스텝 후 반드시 중앙 복귀해야 합니다.', 'Hard 모드는 스윙 동작까지 해야 인정됩니다.'],
     difficultyGuide: ['🟢 EASY: 1초 간격 (정확한 스텝 연습)', '🔵 NORMAL: 0.5초 간격 (실전 랠리 속도)', '🔴 HARD: 0.2초 간격 + 스윙 동작 필수']
   },
   RHYTHM: {
-    title: '나와의 랠리',
+    title: '나와의 랠리 (리듬 섀도우)',
     scoreCriteria: [
-      { label: '타이밍', pct: '50%', desc: '음악(궤적)에 맞춘 정확한 임팩트' },
-      { label: '상황별 자세', pct: '50%', desc: '스매시, 언더 등 상황에 맞는 관절 폼 유지' }
+      { label: '타이밍', pct: '40%', desc: '궤적에 맞춘 정확한 임팩트 (Perfect/Great)' },
+      { label: '관절각도', pct: '30%', desc: '스매시, 언더 등 상황에 맞는 폼 유지' },
+      { label: '체력유지', pct: '30%', desc: '랠리 후반부 자세 붕괴 방어력' }
     ],
-    analysisElements: ['노트별 타이밍 정확도', '공수 전환시 폼 붕괴 여부', '원인 기반 AI 진단'],
-    gradeCriteria: [{ grade: 'S', value: 'All Perfect', desc: '완벽한 폼과 반응 속도' }],
-    tips: ['화면에 표시되는 네온 서클의 타이밍에 맞춰 자세를 취하세요.', '빨간색은 스매시(공격), 파란색은 언더(수비) 동작을 요구합니다.', '종료 후 폼 붕괴의 원인을 AI가 분석해 드립니다.']
+    analysisElements: ['노트별 타이밍 판정 (Combo)', '공수 전환 시 코어 안정성', '스윙 궤적의 일관성', '체력 저하에 따른 폼 붕괴 시점'],
+    gradeCriteria: [
+      { grade: 'SS', value: 'Full Combo', desc: '무결점 완벽한 랠리' },
+      { grade: 'S', value: '80% ↑', desc: '뛰어난 리듬감과 자세' },
+      { grade: 'A', value: '60% ↑', desc: '안정적인 섀도우 폼' },
+      { grade: 'B', value: '40% ↓', desc: '타이밍 및 폼 교정 필요' },
+    ],
+    tips: [
+      '화면에 표시되는 네온 서클의 타이밍에 맞춰 자세를 취하세요.',
+      '🔴 빨간색(스매시), 🔵 파란색(언더), 🟢 초록색(클리어) 동작입니다.',
+      '동작 후에는 항상 준비 자세(Ready)로 빠르게 복귀하세요.',
+      '종료 후 폼이 무너진 근본적인 원인을 AI가 진단해 드립니다.'
+    ],
+    difficultyGuide: ['🟢 EASY: 여유로운 랠리 템포', '🔵 NORMAL: 실전과 유사한 공수 전환', '🔴 HARD: 빠른 템포의 연속 스매시/드라이브 방어']
   }
 };
 
@@ -313,7 +326,7 @@ export default function AIAnalysis() {
     requestPermission();
   }, []);
 
-  // 🔥 데이터베이스 기록 불러오기 (초기 마운트 시)
+  // 🔥 원본 코드의 경로 복구 완료 (분석 기록 불러오기 유지)
   useEffect(() => {
     const fetchHistory = async () => {
       try {
@@ -438,7 +451,7 @@ export default function AIAnalysis() {
     }
   }, [currentFootworkPose, targetDirection, isTimerRunning, mode, difficulty]);
 
-  const enterAnalysisMode = () => {
+  const enterAnalysisMode = async () => {
     if (hasPermission) {
       let duration = ANALYSIS_DURATION;
       if (mode === 'FOOTWORK') duration = FOOTWORK_DURATION;
@@ -456,8 +469,21 @@ export default function AIAnalysis() {
         lungeHoldTimes: [], lungeKnnScores: [], lungeHeadTilts: [], footworkReactionTimes: [], footworkSuccessCount: 0, count: 0, rhythmResults: []
       };
 
-      setIsAnalyzing(true); setShowHelp(true);
+      setIsAnalyzing(true);
       setTimeout(() => webviewRef.current?.postMessage(JSON.stringify({ type: 'setMode', mode: mode })), 500);
+
+      try {
+        const hideDate = await AsyncStorage.getItem(`hideHelp_${mode}`);
+        const today = new Date().toDateString();
+        if (hideDate === today) {
+          setShowHelp(false);
+          setCountdown(3);
+        } else {
+          setShowHelp(true);
+        }
+      } catch (e) {
+        setShowHelp(true);
+      }
     } else { Alert.alert('알림', '카메라 권한이 필요합니다.'); }
   };
 
@@ -471,7 +497,7 @@ export default function AIAnalysis() {
     }
   };
 
-  // 🔥 원본 데이터베이스 저장 로직
+  // 🔥 원본 데이터베이스 저장 로직 유지
   const finishAnalysis = async () => {
     setIsAnalyzing(false);
     setIsTimerRunning(false);
@@ -572,6 +598,15 @@ export default function AIAnalysis() {
     switch (grade) {
       case 'SS': return '#FFD700'; case 'S': return '#A78BFA'; case 'A': return '#60A5FA'; case 'B': return '#34D399'; default: return '#9CA3AF';
     }
+  };
+
+  const hideHelpToday = async () => {
+    try {
+      const today = new Date().toDateString();
+      await AsyncStorage.setItem(`hideHelp_${mode}`, today);
+    } catch(e) {}
+    setShowHelp(false);
+    if (countdown === null && !isTimerRunning) setCountdown(3);
   };
 
   // ==========================================
@@ -720,7 +755,8 @@ export default function AIAnalysis() {
   };
 
   const toggleCamera = () => webviewRef.current?.postMessage(JSON.stringify({ type: 'switchCamera' }));
-  const toggleMode = () => {
+
+  const toggleMode = async () => {
     if (isTimerRunning) { Alert.alert('알림', '분석 중에는 모드를 변경할 수 없습니다.'); return; }
     let newMode: AnalysisMode = 'SWING';
     if (mode === 'SWING') newMode = 'LUNGE';
@@ -732,6 +768,20 @@ export default function AIAnalysis() {
     setLastResult(null); popAnim.setValue(0); setSwingScore(0); setCurrentLungeHoldTime(0);
     setMaxLungeHoldTime(0); setFootworkScore(0); setDifficulty('EASY'); setRhythmCombo(0); setRhythmScore(0);
     webviewRef.current?.postMessage(JSON.stringify({ type: 'setMode', mode: newMode }));
+
+    try {
+      const hideDate = await AsyncStorage.getItem(`hideHelp_${newMode}`);
+      const today = new Date().toDateString();
+      if (hideDate !== today) {
+        setShowHelp(true);
+        setCountdown(null);
+      } else {
+        setCountdown(3);
+      }
+    } catch (e) {
+      setShowHelp(true);
+      setCountdown(null);
+    }
   };
 
   const triggerResultAnimation = () => { popAnim.setValue(0); Animated.spring(popAnim, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }).start(); };
@@ -1070,7 +1120,16 @@ export default function AIAnalysis() {
                     )}
                 </View>
               </ScrollView>
-              <TouchableOpacity style={styles.confirmButton} onPress={() => { setShowHelp(false); if(countdown === null && !isTimerRunning) setCountdown(3); }}><Text style={styles.confirmButtonText}>{isTimerRunning ? '닫기' : '완벽하게 이해했습니다'}</Text></TouchableOpacity>
+
+              <View style={styles.modalButtonGroup}>
+                <TouchableOpacity style={styles.hideTodayButton} onPress={hideHelpToday}>
+                  <Text style={styles.hideTodayButtonText}>오늘 하루 보지 않기</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.confirmButtonFlex} onPress={() => { setShowHelp(false); if(countdown === null && !isTimerRunning) setCountdown(3); }}>
+                  <Text style={styles.confirmButtonText}>{isTimerRunning ? '닫기' : '완벽하게 이해했습니다'}</Text>
+                </TouchableOpacity>
+              </View>
+
             </View>
           </View>
         </Modal>
@@ -1089,6 +1148,28 @@ export default function AIAnalysis() {
             <TouchableOpacity onPress={() => setShowInfoModal(true)}><HelpCircle size={24} color="#9CA3AF" /></TouchableOpacity>
           </View>
           <Text style={styles.mainSubTitle}>스윙 속도, 자세, 풋워크를 분석하여{'\n'}전문적인 피드백을 제공합니다.</Text>
+        </View>
+
+        <View style={styles.modeSelectionSection}>
+          <Text style={styles.historyTitle}>🎯 분석 모드 선택</Text>
+          <View style={styles.modeGrid}>
+            {[
+              { id: 'SWING', name: '스윙 모드', icon: <Zap size={24} color={mode === 'SWING' ? '#111827' : '#F472B6'} /> },
+              { id: 'LUNGE', name: '준비 자세', icon: <Activity size={24} color={mode === 'LUNGE' ? '#111827' : '#60A5FA'} /> },
+              { id: 'FOOTWORK', name: '풋워크 게임', icon: <Move size={24} color={mode === 'FOOTWORK' ? '#111827' : '#FCD34D'} /> },
+              { id: 'RHYTHM', name: '나와의 랠리', icon: <Music size={24} color={mode === 'RHYTHM' ? '#111827' : '#10B981'} /> }
+            ].map(item => (
+              <TouchableOpacity
+                key={item.id}
+                style={[styles.modeSelectCard, mode === item.id && styles.modeSelectCardActive]}
+                onPress={() => setMode(item.id as AnalysisMode)}
+                activeOpacity={0.8}
+              >
+                {item.icon}
+                <Text style={[styles.modeSelectCardText, mode === item.id && styles.modeSelectCardTextActive]}>{item.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         <TouchableOpacity style={styles.mainStartButton} onPress={enterAnalysisMode} activeOpacity={0.8}>
@@ -1329,6 +1410,13 @@ const styles = StyleSheet.create({
   mainStartButton: { backgroundColor: '#34D399', width: '100%', paddingVertical: 18, borderRadius: 16, alignItems: 'center', marginBottom: 20 },
   mainStartButtonText: { color: '#111827', fontSize: 18, fontWeight: 'bold' },
 
+  modeSelectionSection: { marginBottom: 20 },
+  modeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'space-between' },
+  modeSelectCard: { width: '48%', backgroundColor: '#1F2937', paddingVertical: 20, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  modeSelectCardActive: { backgroundColor: '#34D399', borderColor: '#34D399' },
+  modeSelectCardText: { color: '#D1D5DB', fontSize: 16, fontWeight: 'bold', marginTop: 10 },
+  modeSelectCardTextActive: { color: '#111827' },
+
   matchBanner: { backgroundColor: 'rgba(59, 130, 246, 0.15)', borderRadius: 16, padding: 20, marginBottom: 30, borderWidth: 1, borderColor: 'rgba(59, 130, 246, 0.3)' },
   matchBannerDisabled: { backgroundColor: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)' },
   matchBannerContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -1455,8 +1543,13 @@ const styles = StyleSheet.create({
 
   bulletText: { color: '#D1D5DB', fontSize: 14, marginBottom: 6, lineHeight: 22, paddingLeft: 4 },
 
+  modalButtonGroup: { flexDirection: 'row', gap: 12, marginTop: 16, justifyContent: 'space-between' },
+  hideTodayButton: { flex: 1, backgroundColor: '#374151', paddingVertical: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  hideTodayButtonText: { color: '#D1D5DB', fontSize: 13, fontWeight: 'bold' },
+  confirmButtonFlex: { flex: 1.5, backgroundColor: '#3B82F6', paddingVertical: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+
   confirmButton: { backgroundColor: '#3B82F6', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 10 },
-  confirmButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
+  confirmButtonText: { color: 'white', fontSize: 15, fontWeight: 'bold' },
 
   guideCard: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
   guideCardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
