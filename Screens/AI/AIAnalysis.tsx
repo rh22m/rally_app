@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNavigation } from '@react-navigation/native';
 import {
   Bot, Activity, Move, Zap, RefreshCcw, Square, Clock,
   CheckCircle, XCircle, Dumbbell, Play, Trash2, FileText,
@@ -27,15 +28,14 @@ import {
 } from 'lucide-react-native';
 import { htmlContent } from './poseHtml';
 
-// Firebase 연동 (데이터 저장 및 불러오기 모듈 추가)
-import { getFirestore, collection, addDoc, serverTimestamp, query, orderBy, getDocs, limit } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, serverTimestamp, query, getDocs } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { getApp } from 'firebase/app';
 
 // ---------------- [설정값] ----------------
 const ANALYSIS_DURATION = 20;
 const FOOTWORK_DURATION = 60;
-const RHYTHM_DURATION = 30; // RHYTHM 훈련 모드 길이 추가
+const RHYTHM_DURATION = 30;
 const SPEED_BUFFER_SIZE = 3;
 const USER_HEIGHT_CM = 175;
 const ARM_LENGTH_RATIO = 0.45;
@@ -44,7 +44,7 @@ const PIXEL_TO_REAL_SCALE = (USER_HEIGHT_CM * ARM_LENGTH_RATIO) / 200;
 const MIN_SWING_DISTANCE_PX = 0.15;
 const SWING_TRIGGER_SPEED = 25;
 
-export type AnalysisMode = 'SWING' | 'LUNGE' | 'FOOTWORK' | 'RHYTHM'; // RHYTHM 모드 통합
+export type AnalysisMode = 'SWING' | 'LUNGE' | 'FOOTWORK' | 'RHYTHM';
 type Difficulty = 'EASY' | 'NORMAL' | 'HARD';
 type FootworkDirection = 'CENTER' | 'FRONT_LEFT' | 'FRONT_RIGHT' | 'BACK_LEFT' | 'BACK_RIGHT';
 
@@ -80,7 +80,6 @@ export interface StyleRecord {
   image: any;
 }
 
-// ---------------- [리듬 섀도우 랠리 비트맵 데이터] ----------------
 const RHYTHM_BEATMAP = [
   { id: 1, time: 2000, type: 'SMASH', color: '#EF4444', targetX: 0.8, targetY: 0.2 },
   { id: 2, time: 4500, type: 'UNDER', color: '#3B82F6', targetX: 0.2, targetY: 0.8 },
@@ -96,7 +95,6 @@ const RHYTHM_BEATMAP = [
   { id: 12, time: 28000, type: 'CLEAR', color: '#10B981', targetX: 0.8, targetY: 0.2 },
 ];
 
-// ---------------- [플레이어 매칭 데이터] ----------------
 const PLAYER_STYLES = {
   POWER: {
     name: '정재성 스타일',
@@ -149,7 +147,6 @@ const SURVEY_QUESTIONS = [
   }
 ];
 
-// ---------------- [가이드 데이터] ----------------
 const MODE_DETAILS = {
   SWING: {
     title: '스윙 정밀 분석',
@@ -195,7 +192,7 @@ const MODE_DETAILS = {
       { grade: 'PERFECT', value: '0.8초 ↓', desc: '국가대표급 반사신경' },
       { grade: 'GOOD', value: '1.2초 ↓', desc: '일반적인 반응 속도' },
     ],
-    tips: ['중앙 원 안에서 시작하세요.', '스텝 후 반드시 중앙 복귀해야 합니다.', 'Hard 모드는 스윙 동작까지 해야 인정됩니다.'],
+    tips: ['중앙 원 안에서 시작하세요.', '스텝 후 반드시 중앙으로 복귀해야 합니다.', 'Hard 모드는 스윙 동작까지 해야 인정됩니다.'],
     difficultyGuide: ['🟢 EASY: 1초 간격 (정확한 스텝 연습)', '🔵 NORMAL: 0.5초 간격 (실전 랠리 속도)', '🔴 HARD: 0.2초 간격 + 스윙 동작 필수']
   },
   RHYTHM: {
@@ -230,6 +227,8 @@ const GENERAL_GUIDE_DATA = [
 ];
 
 export default function AIAnalysis() {
+  const navigation = useNavigation<any>();
+
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);
   const [mode, setMode] = useState<AnalysisMode>('SWING');
@@ -252,7 +251,6 @@ export default function AIAnalysis() {
   const [footworkCombo, setFootworkCombo] = useState(0);
   const [lastActionTime, setLastActionTime] = useState(0);
 
-  // 리듬 게임 상태 추가
   const [rhythmCombo, setRhythmCombo] = useState(0);
   const [rhythmScore, setRhythmScore] = useState(0);
 
@@ -291,7 +289,7 @@ export default function AIAnalysis() {
     swingXFactors: [] as number[], swingCOGDeltas: [] as number[], swingHeights: [] as number[],
     lungeHoldTimes: [] as number[], lungeKnnScores: [] as number[], lungeHeadTilts: [] as number[],
     footworkReactionTimes: [] as number[], footworkSuccessCount: 0,
-    rhythmResults: [] as any[], // 리듬 모드 XAI 분석용
+    rhythmResults: [] as any[],
     count: 0
   });
 
@@ -310,7 +308,6 @@ export default function AIAnalysis() {
   const isLungingRef = useRef(false);
   const lungeStartTimeRef = useRef(0);
 
-  // 권한 요청
   useEffect(() => {
     const requestPermission = async () => {
       if (Platform.OS === 'android') {
@@ -328,7 +325,7 @@ export default function AIAnalysis() {
     requestPermission();
   }, []);
 
-  // 🔥 원본 코드의 경로 복구 완료 (분석 기록 불러오기 유지)
+  // 🔥 수정됨: orderBy 없이 전체를 불러와 JavaScript에서 완벽하게 최신순으로 정렬합니다. (과거 데이터 증발 방지)
   useEffect(() => {
     const fetchHistory = async () => {
       try {
@@ -340,15 +337,15 @@ export default function AIAnalysis() {
           const appId = 'rally-app-main';
           const historyRef = collection(db, 'artifacts', appId, 'users', user.uid, 'videoHistory');
 
-          // 최신순으로 정렬하여 최대 20개의 기록을 불러옴
-          const q = query(historyRef, orderBy('createdAt', 'desc'), limit(20));
+          // orderBy 필터 제거: 모든 기록을 가져옵니다.
+          const q = query(historyRef);
           const querySnapshot = await getDocs(q);
 
           const loadedHistory: AnalysisReport[] = [];
           querySnapshot.forEach((doc) => {
             const data = doc.data();
             loadedHistory.push({
-              id: doc.id,
+              id: data.id || doc.id,
               date: data.date,
               mode: data.mode,
               avgScore: data.avgScore,
@@ -361,8 +358,11 @@ export default function AIAnalysis() {
             } as AnalysisReport);
           });
 
-          // 가져온 데이터를 history 상태에 업데이트
-          setHistory(loadedHistory);
+          // JavaScript 배열 Sort: Date.now() 기반 문자열 ID를 숫자로 변환하여 무조건 최신순 정렬
+          loadedHistory.sort((a, b) => Number(b.id) - Number(a.id));
+
+          // 메인 화면에서는 최신 기록 5개만 노출
+          setHistory(loadedHistory.slice(0, 3));
         }
       } catch (error) {
         console.error("기록 불러오기 실패:", error);
@@ -499,7 +499,6 @@ export default function AIAnalysis() {
     }
   };
 
-  // 🔥 원본 데이터베이스 저장 로직 유지
   const finishAnalysis = async () => {
     setIsAnalyzing(false);
     setIsTimerRunning(false);
@@ -507,7 +506,13 @@ export default function AIAnalysis() {
     if(mode === 'RHYTHM') webviewRef.current?.postMessage(JSON.stringify({ type: 'stopRhythm' }));
 
     const newReport = createReport();
-    setHistory((prev) => [newReport, ...prev]);
+
+    setHistory((prev) => {
+        // 새로 추가된 기록을 포함하여 다시 고유 ID 최신순 정렬 후 최대 5개 노출
+        const updated = [newReport, ...prev];
+        updated.sort((a, b) => Number(b.id) - Number(a.id));
+        return updated.slice(0, 3);
+    });
     setSelectedReport(newReport);
 
     setTimeout(() => setShowReport(true), 500);
@@ -517,7 +522,7 @@ export default function AIAnalysis() {
         const user = auth.currentUser;
         if (user) {
             const db = getFirestore(getApp());
-            const appId = 'rally-app-main';
+            const appId = 'com.recobystackapp';
 
             const reportToSave = { ...newReport };
             Object.keys(reportToSave).forEach(key => {
@@ -611,9 +616,6 @@ export default function AIAnalysis() {
     if (countdown === null && !isTimerRunning) setCountdown(3);
   };
 
-  // ==========================================
-  // XAI 피드백 생성 엔진 (장/단점 분리 및 일상 언어 순화 완료)
-  // ==========================================
   const createReport = (): AnalysisReport => {
     const data = sessionDataRef.current;
     let report: AnalysisReport = {
@@ -638,7 +640,6 @@ export default function AIAnalysis() {
       const clearMisses = results.filter(r => r.noteType === 'CLEAR' && r.xFactor < 20);
       const perfectCount = results.filter(r => r.timing === 'PERFECT').length;
 
-      // 장점(Pros) 무조건 독립 평가
       if (perfectCount >= RHYTHM_BEATMAP.length * 0.7) {
           report.pros.push('모든 궤적에 대한 반응 속도와 템포가 완벽합니다!');
       } else if (perfectCount >= RHYTHM_BEATMAP.length * 0.4) {
@@ -647,7 +648,6 @@ export default function AIAnalysis() {
           report.pros.push('포기하지 않고 랠리를 끝까지 따라가는 집중력이 돋보입니다.');
       }
 
-      // 단점(Cons) 및 훈련법 전문 용어 배제
       if (smashMisses.length > 0) {
           report.cons.push("스매시(Red) 타이밍에 타점이 무너지고 있습니다. 임팩트 순간 팔이 완전히 펴지지 않아 네트에 걸릴 확률이 높습니다.");
           report.training = '▶ 벽 짚고 스윙 연습: 벽을 마주 보고 서서 손이 벽에 닿을 만큼 팔을 뻗은 상태에서 타격하는 훈련을 권장합니다.';
@@ -679,7 +679,6 @@ export default function AIAnalysis() {
 
       report.avgScore = Math.floor(speedScore + formScore + powerScore + heightScore + weightScore);
 
-      // 장점(Pros)
       if (maxSpeed >= 110) report.pros.push('상급자 수준의 강력한 스매시 파워를 보유하고 계십니다.');
       if (avgXFactor >= 35) report.pros.push('상체와 골반을 부드럽게 꼬아주는 코어 회전력이 훌륭합니다.');
       if (avgHeight >= 90) report.pros.push('가장 이상적이고 높은 위치에서 타점을 형성하고 있습니다.');
@@ -687,7 +686,6 @@ export default function AIAnalysis() {
 
       if (report.pros.length === 0) report.pros.push('끝까지 스윙 궤적을 멈추지 않고 가져가는 태도가 매우 좋습니다.');
 
-      // 단점(Cons) (용어 순화)
       if (avgXFactor < 20) {
         report.cons.push('상체의 꼬임이 덜 풀려 몸통 회전의 힘이 라켓에 전달되지 않고 있습니다.');
         report.training = '▶ 백스윙 시 어깨를 뒤로 더 깊이 넣었다가 튕겨 나오는 코어 훈련을 진행하세요.';
@@ -737,8 +735,6 @@ export default function AIAnalysis() {
       report.training = difficulty === 'HARD' ? '▶ 스윙 후 즉시 중앙 지점으로 복귀하는 리커버리 스텝을 최우선으로 연습하세요.' : '▶ 줄넘기 2단 뛰기와 좁은 폭의 사이드 스텝 달리기가 반응 속도를 크게 올려줍니다.';
     }
 
-    if (report.pros.length === 0) report.pros.push('꾸준한 연습이 답입니다!');
-    if (report.cons.length === 0) report.cons.push('완벽합니다!');
     return report;
   };
 
@@ -1198,6 +1194,7 @@ export default function AIAnalysis() {
           <View style={styles.stepItem}><View style={styles.iconBox}><Smartphone size={24} color="#34D399" /></View><Text style={styles.stepText}>삼각대를 이용해 휴대폰을 고정해 주세요.</Text></View>
           <View style={styles.stepItem}><View style={styles.iconBox}><User size={24} color="#60A5FA" /></View><Text style={styles.stepText}>머리부터 발끝까지 전신이 화면에 나와야 합니다.</Text></View>
           <View style={styles.stepItem}><View style={styles.iconBox}><Eye size={24} color="#A78BFA" /></View><Text style={styles.stepText}>정면보다는 측면에서 촬영할 때 가장 정확합니다.</Text></View>
+          <View style={styles.stepItem}><View style={styles.iconBox}><Clock size={24} color="#FCD34D" /></View><Text style={styles.stepText}>시작 후 3초간 준비 자세를 취해주세요.</Text></View>
         </View>
 
         <View style={styles.historySection}>
@@ -1256,6 +1253,19 @@ export default function AIAnalysis() {
               <Text style={{ color: '#6B7280' }}>아직 저장된 기록이 없습니다.</Text>
             </View>
           )}
+
+          {history.length > 0 && (
+            <TouchableOpacity
+              style={styles.insightButton}
+              onPress={() => navigation.navigate('InsightDashboard')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.insightButtonContent}>
+                <BarChart2 size={20} color="#FCD34D" />
+                <Text style={styles.insightButtonText}>내 성장 리포트 전체 보기 및 AI 분석</Text>
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
 
@@ -1281,7 +1291,6 @@ export default function AIAnalysis() {
                 </View>
               </View>
 
-              {/* 장점 섹션 */}
               <View style={styles.sectionContainer}>
                 <Text style={styles.sectionTitle}>🔥 칭찬해요 (Pros)</Text>
                 {selectedReport.pros.length > 0 ? (
@@ -1289,7 +1298,6 @@ export default function AIAnalysis() {
                 ) : (<Text style={styles.emptyText}>노력이 조금 더 필요합니다.</Text>)}
               </View>
 
-              {/* 단점 섹션 */}
               <View style={styles.sectionContainer}>
                 <Text style={styles.sectionTitle}>⚠️ 보완점 (Cons & 원인 분석)</Text>
                 {selectedReport.cons.length > 0 ? (
@@ -1297,7 +1305,6 @@ export default function AIAnalysis() {
                 ) : (<Text style={styles.emptyText}>고칠 곳이 없습니다. 완벽합니다!</Text>)}
               </View>
 
-              {/* 추천 훈련 섹션 */}
               <View style={[styles.sectionContainer, { backgroundColor: '#1F2937', borderColor: '#FCD34D', borderWidth: 1 }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
                   <Dumbbell size={24} color="#FCD34D" /><Text style={[styles.sectionTitle, { color: '#FCD34D', marginBottom: 0, marginLeft: 8 }]}>추천 트레이닝</Text>
@@ -1476,6 +1483,27 @@ const styles = StyleSheet.create({
   historyScore: { color: '#34D399', fontSize: 18, fontWeight: 'bold' },
   historyCount: { color: '#9CA3AF', fontSize: 14 },
   deleteButton: { padding: 8, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 8 },
+
+  insightButton: {
+    marginTop: 16,
+    backgroundColor: 'rgba(252, 211, 77, 0.1)',
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  insightButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  insightButtonText: {
+    color: '#FCD34D',
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
 
   cameraContainer: { flex: 1, backgroundColor: 'black' },
   webview: { flex: 1, backgroundColor: 'transparent' },

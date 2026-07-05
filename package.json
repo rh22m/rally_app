@@ -24,6 +24,7 @@
     "react": "19.1.1",
     "react-native": "0.82.1",
     "react-native-calendars": "^1.1313.0",
+    "react-native-chart-kit": "^7.0.1",
     "react-native-circular-progress": "^1.4.1",
     "react-native-date-picker": "^5.0.13",
     "react-native-image-picker": "^8.2.1",

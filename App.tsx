@@ -78,6 +78,7 @@ import { OpponentEvaluation } from './components/OpponentEvaluation';
 import WatchScoreTracker from './components/WatchScoreTracker';
 
 import AIAnalysis from './Screens/AI/AIAnalysis';
+import InsightDashboard from './Screens/AI/InsightDashboard';
 import LoginScreen from './Screens/Auth/LoginScreen';
 import SignUpScreen from './Screens/Auth/SignUpScreen';
 import ChatListScreen from './Screens/Chat/ChatListScreen';
@@ -792,6 +793,11 @@ export default function App() {
               <MainScreen {...props} handleLogout={handleLogout} isFirstLogin={isFirstLogin} user={user} userProfile={userProfile} />
             )}
           </Stack.Screen>
+          <Stack.Screen
+            name="InsightDashboard"
+            component={InsightDashboard}
+            options={{ headerShown: false }}
+          />
           <Stack.Screen name="ChatRoom" component={ChatRoomScreen} />
           <Stack.Screen name="MatchHistory" component={MatchHistoryScreen} />
         </Stack.Navigator>

@@ -4,9 +4,13 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9bea4fd7-fbd9-41bf-bc54-2fdc6a7cce6a" name="Changes" comment="나와의 랠리 (리듬게임모드) 모드 업데이트 초안">
+    <list default="true" id="9bea4fd7-fbd9-41bf-bc54-2fdc6a7cce6a" name="Changes" comment="리듬게임 타이밍 일부 수정">
+      <change afterPath="$PROJECT_DIR$/Screens/AI/InsightDashboard.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/App.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Screens/AI/AIAnalysis.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/AI/AIAnalysis.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
     </list>
     <list id="bec99eaf-3a58-4741-a0a4-dd14bee4c395" name="ignore" comment="웨어러블 연동을 위한 의존성 업데이트" />
     <option name="SHOW_DIALOG" value="false" />
@@ -61,27 +65,27 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "DEBUGGABLE_DEVICE": "samsung-sm_s908n-R3CT10QC34X",
-    "DEBUGGABLE_PROCESS": "com.rally_app",
-    "DEBUGGER_ID": "Java",
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.cidr.known.project.marker": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.readMode.enableVisualFormatting": "true",
-    "SHOW_ALL_PROCESSES": "true",
-    "cf.first.check.clang-format": "false",
-    "cidr.known.project.marker": "true",
-    "com.android.tools.idea.streaming.zoom.toolbar.visible": "false",
-    "git-widget-placeholder": "main",
-    "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "/Users/5dplata/Desktop/reco_app/android/app",
-    "settings.editor.selected.configurable": "device.screenrecording"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;DEBUGGABLE_DEVICE&quot;: &quot;samsung-sm_s908n-R3CT10QC34X&quot;,
+    &quot;DEBUGGABLE_PROCESS&quot;: &quot;com.rally_app&quot;,
+    &quot;DEBUGGER_ID&quot;: &quot;Java&quot;,
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.readMode.enableVisualFormatting&quot;: &quot;true&quot;,
+    &quot;SHOW_ALL_PROCESSES&quot;: &quot;true&quot;,
+    &quot;cf.first.check.clang-format&quot;: &quot;false&quot;,
+    &quot;cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;com.android.tools.idea.streaming.zoom.toolbar.visible&quot;: &quot;false&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/5dplata/Desktop/reco_app/android/app&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;device.screenrecording&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$/android/app" />
@@ -146,22 +150,6 @@
       <option name="presentableId" value="LOCAL-00065" />
       <option name="project" value="LOCAL" />
       <updated>1766687766495</updated>
-    </task>
-    <task id="LOCAL-00003" summary="AI 분석 기능 탭 추가. (기능 미구현.)">
-      <option name="closed" value="true" />
-      <created>1762908979671</created>
-      <option name="number" value="00003" />
-      <option name="presentableId" value="LOCAL-00003" />
-      <option name="project" value="LOCAL" />
-      <updated>1762908979671</updated>
-    </task>
-    <task id="LOCAL-00004" summary="방 생성 버튼 추가.">
-      <option name="closed" value="true" />
-      <created>1762910405766</created>
-      <option name="number" value="00004" />
-      <option name="presentableId" value="LOCAL-00004" />
-      <option name="project" value="LOCAL" />
-      <updated>1762910405766</updated>
     </task>
     <task id="LOCAL-00005" summary="방 생성 구현 초안.">
       <option name="closed" value="true" />
@@ -499,7 +487,23 @@
       <option name="project" value="LOCAL" />
       <updated>1783254558855</updated>
     </task>
-    <option name="localTasksCounter" value="112" />
+    <task id="LOCAL-00112" summary="영상 분석 인터페이스 업데이트, 안내 모달 및 리듬게임 모드 일부 업데이트">
+      <option name="closed" value="true" />
+      <created>1783255557150</created>
+      <option name="number" value="00112" />
+      <option name="presentableId" value="LOCAL-00112" />
+      <option name="project" value="LOCAL" />
+      <updated>1783255557150</updated>
+    </task>
+    <task id="LOCAL-00113" summary="리듬게임 타이밍 일부 수정">
+      <option name="closed" value="true" />
+      <created>1783266722902</created>
+      <option name="number" value="00113" />
+      <option name="presentableId" value="LOCAL-00113" />
+      <option name="project" value="LOCAL" />
+      <updated>1783266722903</updated>
+    </task>
+    <option name="localTasksCounter" value="114" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -550,8 +554,6 @@
     <ignored-roots>
       <path value="$PROJECT_DIR$" />
     </ignored-roots>
-    <MESSAGE value="튜토리얼 영역 수정" />
-    <MESSAGE value="데이터베이스 연동. 회원가입 및 로그인 모듈 연결" />
     <MESSAGE value="회원가입 임시 커밋" />
     <MESSAGE value="아이디 중복 체크, 튜토리얼 오류 해소" />
     <MESSAGE value="로그인 정보 일치 확인" />
@@ -575,6 +577,8 @@
     <MESSAGE value="앱 명칭 전면 수정" />
     <MESSAGE value="카카오 연동 회원가입" />
     <MESSAGE value="나와의 랠리 (리듬게임모드) 모드 업데이트 초안" />
-    <option name="LAST_COMMIT_MESSAGE" value="나와의 랠리 (리듬게임모드) 모드 업데이트 초안" />
+    <MESSAGE value="영상 분석 인터페이스 업데이트, 안내 모달 및 리듬게임 모드 일부 업데이트" />
+    <MESSAGE value="리듬게임 타이밍 일부 수정" />
+    <option name="LAST_COMMIT_MESSAGE" value="리듬게임 타이밍 일부 수정" />
   </component>
 </project>
