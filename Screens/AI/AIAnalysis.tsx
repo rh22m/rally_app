@@ -92,6 +92,8 @@ const RHYTHM_BEATMAP = [
   { id: 8, time: 18000, type: 'SMASH', color: '#EF4444', targetX: 0.7, targetY: 0.2 },
   { id: 9, time: 20500, type: 'UNDER', color: '#3B82F6', targetX: 0.3, targetY: 0.8 },
   { id: 10, time: 23000, type: 'SMASH', color: '#EF4444', targetX: 0.5, targetY: 0.2 },
+  { id: 11, time: 25500, type: 'DRIVE', color: '#3B82F6', targetX: 0.2, targetY: 0.5 },
+  { id: 12, time: 28000, type: 'CLEAR', color: '#10B981', targetX: 0.8, targetY: 0.2 },
 ];
 
 // ---------------- [플레이어 매칭 데이터] ----------------
