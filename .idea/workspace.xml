@@ -4,16 +4,10 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9bea4fd7-fbd9-41bf-bc54-2fdc6a7cce6a" name="Changes" comment="분석기록 3개 노출, 전체 보기 분리 및 XAI 누적 피드백, 그래프 생성">
-      <change afterPath="$PROJECT_DIR$/Screens/AI/RealtimeFootworkMode.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Screens/AI/realtimeFootworkEngine.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Screens/AI/realtimeFootworkHtml.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
+    <list default="true" id="9bea4fd7-fbd9-41bf-bc54-2fdc6a7cce6a" name="Changes" comment="반코트 분석 테스트">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Screens/AI/AIAnalysis.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/AI/AIAnalysis.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/build.gradle" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/build.gradle" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Screens/AI/RealtimeFootworkMode.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/AI/RealtimeFootworkMode.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Screens/AI/realtimeFootworkHtml.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/AI/realtimeFootworkHtml.ts" afterDir="false" />
     </list>
     <list id="bec99eaf-3a58-4741-a0a4-dd14bee4c395" name="ignore" comment="웨어러블 연동을 위한 의존성 업데이트" />
     <option name="SHOW_DIALOG" value="false" />
@@ -153,14 +147,6 @@
       <option name="presentableId" value="LOCAL-00065" />
       <option name="project" value="LOCAL" />
       <updated>1766687766495</updated>
-    </task>
-    <task id="LOCAL-00006" summary="각 화면 기본 시안 제작.">
-      <option name="closed" value="true" />
-      <created>1762929571987</created>
-      <option name="number" value="00006" />
-      <option name="presentableId" value="LOCAL-00006" />
-      <option name="project" value="LOCAL" />
-      <updated>1762929571987</updated>
     </task>
     <task id="LOCAL-00007" summary="회원가입 단계 삽입">
       <option name="closed" value="true" />
@@ -506,7 +492,15 @@
       <option name="project" value="LOCAL" />
       <updated>1783275106589</updated>
     </task>
-    <option name="localTasksCounter" value="115" />
+    <task id="LOCAL-00115" summary="반코트 분석 테스트">
+      <option name="closed" value="true" />
+      <created>1783749324494</created>
+      <option name="number" value="00115" />
+      <option name="presentableId" value="LOCAL-00115" />
+      <option name="project" value="LOCAL" />
+      <updated>1783749324495</updated>
+    </task>
+    <option name="localTasksCounter" value="116" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -557,7 +551,6 @@
     <ignored-roots>
       <path value="$PROJECT_DIR$" />
     </ignored-roots>
-    <MESSAGE value="아이디 중복 체크, 튜토리얼 오류 해소" />
     <MESSAGE value="로그인 정보 일치 확인" />
     <MESSAGE value="임시 커밋" />
     <MESSAGE value="회원가입 데베 연동 클린 커밋" />
@@ -582,6 +575,7 @@
     <MESSAGE value="영상 분석 인터페이스 업데이트, 안내 모달 및 리듬게임 모드 일부 업데이트" />
     <MESSAGE value="리듬게임 타이밍 일부 수정" />
     <MESSAGE value="분석기록 3개 노출, 전체 보기 분리 및 XAI 누적 피드백, 그래프 생성" />
-    <option name="LAST_COMMIT_MESSAGE" value="분석기록 3개 노출, 전체 보기 분리 및 XAI 누적 피드백, 그래프 생성" />
+    <MESSAGE value="반코트 분석 테스트" />
+    <option name="LAST_COMMIT_MESSAGE" value="반코트 분석 테스트" />
   </component>
 </project>

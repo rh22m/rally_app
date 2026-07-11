@@ -40,6 +40,7 @@ export const footworkSetHtml = `
 
   function clamp01(value) { return Math.max(0, Math.min(1, value)); }
 
+  // 1. 코트 인식 (Luma Diff)
   function luma(r, g, b) { return 0.299 * r + 0.587 * g + 0.114 * b; }
   function detectCourt(data, width, height) {
     const left = Math.floor(width * 0.18), right = Math.floor(width * 0.82);
@@ -75,7 +76,7 @@ export const footworkSetHtml = `
     return ang;
   }
 
-  // ✅ 코트 영역 6분할 + 중앙 완벽 매핑
+  // 2. 동적 원근감(Perspective) 매핑 6분할 계산식
   function extractMetrics(landmarks) {
     const lHip = landmarks[23], rHip = landmarks[24];
     const lKnee = landmarks[25], rKnee = landmarks[26];
@@ -93,33 +94,43 @@ export const footworkSetHtml = `
         trunkLeanDeg = (Math.atan2(Math.abs(shoulderMid.x - hipMid.x), Math.max(0.001, Math.abs(shoulderMid.y - hipMid.y))) * 180) / Math.PI;
     }
 
-    // 발의 중심점을 구함
     const lFoot = midpoint(landmarks[31], lAnkle) || lAnkle;
     const rFoot = midpoint(landmarks[32], rAnkle) || rAnkle;
     const footCenter = midpoint(lFoot, rFoot);
 
-    let zone = 'CENTER';
+    let zone = 'UNKNOWN'; // 상대방 코트 및 바깥 영역은 기본적으로 제외
+
     if(footCenter) {
-      // Landscape Right 가로 모드 보정 (네이티브 카메라 좌표계와 브라우저 좌표계 차이 보정)
       const cx = clamp01(footCenter.y);
       const cy = clamp01(1 - footCenter.x);
 
-      // ✅ 오버레이 비율에 맞춘 코트 바운딩 박스 (네트: 0.3, 백라인: 0.95)
-      const court = { left: 0.1, right: 0.9, top: 0.30, bottom: 0.95 };
-      const nx = clamp01((cx - court.left) / (court.right - court.left));
-      const ny = clamp01((cy - court.top) / (court.bottom - court.top));
+      const courtTopY = 0.30;   // 화면에서 네트의 Y 비율 (대략 220/720)
+      const courtBottomY = 0.95; // 화면에서 엔드라인 Y 비율
 
-      // ✅ 정교한 6코너 + Center 매핑 로직
-      // Y축: 0~0.35 (Front), 0.35~0.7 (Mid/Center), 0.7~1.0 (Back)
-      // X축: 0~0.35 (Left), 0.35~0.65 (Center), 0.65~1.0 (Right)
-      if (ny < 0.35) {
-        zone = nx < 0.5 ? 'FRONT_LEFT' : 'FRONT_RIGHT';
-      } else if (ny > 0.70) {
-        zone = nx < 0.5 ? 'BACK_LEFT' : 'BACK_RIGHT';
-      } else {
-        if (nx < 0.35) zone = 'MID_LEFT';
-        else if (nx > 0.65) zone = 'MID_RIGHT';
-        else zone = 'CENTER';
+      // ✅ 상대 코트 영역(네트 위쪽)은 계산 제외
+      if (cy >= courtTopY) {
+          // ny: 네트(0)부터 엔드라인(1)까지의 진행률
+          let ny = clamp01((cy - courtTopY) / (courtBottomY - courtTopY));
+
+          // ✅ 사다리꼴 비율에 맞춰 X축(좌우) 폭을 동적으로 확장 (원근감 매핑)
+          // 윗변(네트)은 0.36~0.64 (상대적으로 좁음)
+          // 아랫변(엔드)은 0.02~0.98 (상대적으로 넓음)
+          let currentLeft = 0.36 - (0.34 * ny);
+          let currentRight = 0.64 + (0.34 * ny);
+
+          // 현재 Y축 기준에서의 X 진행률 (0: 맨 왼쪽 단식라인, 1: 맨 오른쪽 단식라인)
+          let nx = clamp01((cx - currentLeft) / (currentRight - currentLeft));
+
+          // 6분할 계산 적용
+          if (ny < 0.35) {
+              zone = nx < 0.5 ? 'FRONT_LEFT' : 'FRONT_RIGHT';
+          } else if (ny > 0.70) {
+              zone = nx < 0.5 ? 'BACK_LEFT' : 'BACK_RIGHT';
+          } else {
+              if (nx < 0.35) zone = 'MID_LEFT';
+              else if (nx > 0.65) zone = 'MID_RIGHT';
+              else zone = 'CENTER'; // 한가운데 박스
+          }
       }
     }
 
