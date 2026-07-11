@@ -27,6 +27,7 @@ import {
   Circle, RotateCw, BarChart2, Award, Video, Music
 } from 'lucide-react-native';
 import { htmlContent } from './poseHtml';
+import RealtimeFootworkMode from './RealtimeFootworkMode'; // ✅ 새로 추가된 반코트 분석 모드 컴포넌트 임포트
 
 import { getFirestore, collection, addDoc, serverTimestamp, query, getDocs } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
@@ -229,6 +230,7 @@ const GENERAL_GUIDE_DATA = [
 export default function AIAnalysis() {
   const navigation = useNavigation<any>();
 
+  const [showRealtimeMode, setShowRealtimeMode] = useState(false); // ✅ 반코트 진입 상태 추가
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);
   const [mode, setMode] = useState<AnalysisMode>('SWING');
@@ -361,8 +363,8 @@ export default function AIAnalysis() {
           // JavaScript 배열 Sort: Date.now() 기반 문자열 ID를 숫자로 변환하여 무조건 최신순 정렬
           loadedHistory.sort((a, b) => Number(b.id) - Number(a.id));
 
-          // 메인 화면에서는 최신 기록 5개만 노출
-          setHistory(loadedHistory.slice(0, 3));
+          // 메인 화면에서는 최신 기록 3개만 노출
+          setHistory(loadedHistory);
         }
       } catch (error) {
         console.error("기록 불러오기 실패:", error);
@@ -508,7 +510,7 @@ export default function AIAnalysis() {
     const newReport = createReport();
 
     setHistory((prev) => {
-        // 새로 추가된 기록을 포함하여 다시 고유 ID 최신순 정렬 후 최대 5개 노출
+        // 새로 추가된 기록을 포함하여 다시 고유 ID 최신순 정렬 후 3개 노출
         const updated = [newReport, ...prev];
         updated.sort((a, b) => Number(b.id) - Number(a.id));
         return updated.slice(0, 3);
@@ -994,6 +996,11 @@ export default function AIAnalysis() {
 
   const currentModeInfo = MODE_DETAILS[mode];
 
+  // ✅ 반코트 분기 진입 시 완전히 교체 처리 (격리)
+  if (showRealtimeMode) {
+    return <RealtimeFootworkMode onBack={() => setShowRealtimeMode(false)} />;
+  }
+
   if (isAnalyzing) {
     return (
       <View style={styles.cameraContainer}>
@@ -1174,6 +1181,15 @@ export default function AIAnalysis() {
           <Text style={styles.mainStartButtonText}>분석 시작</Text>
         </TouchableOpacity>
 
+        {/* ✅ 새로운 반코트 분석 모드 진입 버튼 추가 */}
+        <TouchableOpacity
+          style={[styles.mainStartButton, { backgroundColor: '#3B82F6', marginTop: -10 }]}
+          onPress={() => setShowRealtimeMode(true)}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.mainStartButtonText, { color: 'white' }]}>경기 실시간 (반코트) 분석 시작</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={[styles.matchBanner, !canMatchStyle && styles.matchBannerDisabled]}
           onPress={() => canMatchStyle ? startStyleMatch() : Alert.alert('알림', '스윙, 준비자세, 풋워크 기록을 1개 이상씩 모아주세요!')}
@@ -1231,7 +1247,7 @@ export default function AIAnalysis() {
         <View style={styles.historySection}>
           <Text style={styles.historyTitle}>📜 최근 분석 기록</Text>
           {history.length > 0 ? (
-            history.map((item) => (
+            history.slice(0, 3).map((item) => (
               <View key={item.id} style={styles.historyItemCard}>
                 <TouchableOpacity style={{ flex: 1 }} onPress={() => { setSelectedReport(item); setShowReport(true); }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -1292,14 +1308,14 @@ export default function AIAnalysis() {
               </View>
 
               <View style={styles.sectionContainer}>
-                <Text style={styles.sectionTitle}>🔥 칭찬해요 (Pros)</Text>
+                <Text style={styles.sectionTitle}>🔥 장점</Text>
                 {selectedReport.pros.length > 0 ? (
                   selectedReport.pros.map((item, idx) => (<View key={idx} style={styles.listItem}><CheckCircle size={20} color="#34D399" /><Text style={styles.listText}>{item}</Text></View>))
                 ) : (<Text style={styles.emptyText}>노력이 조금 더 필요합니다.</Text>)}
               </View>
 
               <View style={styles.sectionContainer}>
-                <Text style={styles.sectionTitle}>⚠️ 보완점 (Cons & 원인 분석)</Text>
+                <Text style={styles.sectionTitle}>⚠️ 보완점</Text>
                 {selectedReport.cons.length > 0 ? (
                   selectedReport.cons.map((item, idx) => (<View key={idx} style={styles.listItem}><XCircle size={20} color="#EF4444" /><Text style={styles.listText}>{item}</Text></View>))
                 ) : (<Text style={styles.emptyText}>고칠 곳이 없습니다. 완벽합니다!</Text>)}

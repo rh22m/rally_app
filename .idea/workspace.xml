@@ -4,11 +4,14 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9bea4fd7-fbd9-41bf-bc54-2fdc6a7cce6a" name="Changes" comment="리듬게임 타이밍 일부 수정">
-      <change afterPath="$PROJECT_DIR$/Screens/AI/InsightDashboard.tsx" afterDir="false" />
+    <list default="true" id="9bea4fd7-fbd9-41bf-bc54-2fdc6a7cce6a" name="Changes" comment="분석기록 3개 노출, 전체 보기 분리 및 XAI 누적 피드백, 그래프 생성">
+      <change afterPath="$PROJECT_DIR$/Screens/AI/RealtimeFootworkMode.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Screens/AI/realtimeFootworkEngine.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Screens/AI/realtimeFootworkHtml.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/App.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Screens/AI/AIAnalysis.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/AI/AIAnalysis.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/build.gradle" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/build.gradle" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
     </list>
@@ -150,14 +153,6 @@
       <option name="presentableId" value="LOCAL-00065" />
       <option name="project" value="LOCAL" />
       <updated>1766687766495</updated>
-    </task>
-    <task id="LOCAL-00005" summary="방 생성 구현 초안.">
-      <option name="closed" value="true" />
-      <created>1762911372389</created>
-      <option name="number" value="00005" />
-      <option name="presentableId" value="LOCAL-00005" />
-      <option name="project" value="LOCAL" />
-      <updated>1762911372389</updated>
     </task>
     <task id="LOCAL-00006" summary="각 화면 기본 시안 제작.">
       <option name="closed" value="true" />
@@ -503,7 +498,15 @@
       <option name="project" value="LOCAL" />
       <updated>1783266722903</updated>
     </task>
-    <option name="localTasksCounter" value="114" />
+    <task id="LOCAL-00114" summary="분석기록 3개 노출, 전체 보기 분리 및 XAI 누적 피드백, 그래프 생성">
+      <option name="closed" value="true" />
+      <created>1783275106589</created>
+      <option name="number" value="00114" />
+      <option name="presentableId" value="LOCAL-00114" />
+      <option name="project" value="LOCAL" />
+      <updated>1783275106589</updated>
+    </task>
+    <option name="localTasksCounter" value="115" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -554,7 +557,6 @@
     <ignored-roots>
       <path value="$PROJECT_DIR$" />
     </ignored-roots>
-    <MESSAGE value="회원가입 임시 커밋" />
     <MESSAGE value="아이디 중복 체크, 튜토리얼 오류 해소" />
     <MESSAGE value="로그인 정보 일치 확인" />
     <MESSAGE value="임시 커밋" />
@@ -579,6 +581,7 @@
     <MESSAGE value="나와의 랠리 (리듬게임모드) 모드 업데이트 초안" />
     <MESSAGE value="영상 분석 인터페이스 업데이트, 안내 모달 및 리듬게임 모드 일부 업데이트" />
     <MESSAGE value="리듬게임 타이밍 일부 수정" />
-    <option name="LAST_COMMIT_MESSAGE" value="리듬게임 타이밍 일부 수정" />
+    <MESSAGE value="분석기록 3개 노출, 전체 보기 분리 및 XAI 누적 피드백, 그래프 생성" />
+    <option name="LAST_COMMIT_MESSAGE" value="분석기록 3개 노출, 전체 보기 분리 및 XAI 누적 피드백, 그래프 생성" />
   </component>
 </project>
