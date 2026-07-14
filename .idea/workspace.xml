@@ -4,10 +4,12 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9bea4fd7-fbd9-41bf-bc54-2fdc6a7cce6a" name="Changes" comment="반코트 분석 테스트">
+    <list default="true" id="9bea4fd7-fbd9-41bf-bc54-2fdc6a7cce6a" name="Changes" comment="반코트 분석 테스트 (카메라 구도 조정)">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Screens/AI/AIAnalysis.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/AI/AIAnalysis.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Screens/AI/InsightDashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/AI/InsightDashboard.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Screens/AI/RealtimeFootworkMode.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/AI/RealtimeFootworkMode.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Screens/AI/realtimeFootworkHtml.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/AI/realtimeFootworkHtml.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Screens/AI/realtimeFootworkEngine.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/AI/realtimeFootworkEngine.ts" afterDir="false" />
     </list>
     <list id="bec99eaf-3a58-4741-a0a4-dd14bee4c395" name="ignore" comment="웨어러블 연동을 위한 의존성 업데이트" />
     <option name="SHOW_DIALOG" value="false" />
@@ -147,14 +149,6 @@
       <option name="presentableId" value="LOCAL-00065" />
       <option name="project" value="LOCAL" />
       <updated>1766687766495</updated>
-    </task>
-    <task id="LOCAL-00007" summary="회원가입 단계 삽입">
-      <option name="closed" value="true" />
-      <created>1762938949215</created>
-      <option name="number" value="00007" />
-      <option name="presentableId" value="LOCAL-00007" />
-      <option name="project" value="LOCAL" />
-      <updated>1762938949215</updated>
     </task>
     <task id="LOCAL-00008" summary="AIAnalysis+poseHtml 로 인식은 웹으로 연결.">
       <option name="closed" value="true" />
@@ -500,7 +494,15 @@
       <option name="project" value="LOCAL" />
       <updated>1783749324495</updated>
     </task>
-    <option name="localTasksCounter" value="116" />
+    <task id="LOCAL-00116" summary="반코트 분석 테스트 (카메라 구도 조정)">
+      <option name="closed" value="true" />
+      <created>1783751339012</created>
+      <option name="number" value="00116" />
+      <option name="presentableId" value="LOCAL-00116" />
+      <option name="project" value="LOCAL" />
+      <updated>1783751339013</updated>
+    </task>
+    <option name="localTasksCounter" value="117" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -551,7 +553,6 @@
     <ignored-roots>
       <path value="$PROJECT_DIR$" />
     </ignored-roots>
-    <MESSAGE value="로그인 정보 일치 확인" />
     <MESSAGE value="임시 커밋" />
     <MESSAGE value="회원가입 데베 연동 클린 커밋" />
     <MESSAGE value="회원가입 퀴즈 문제 확장, RD값에 영향" />
@@ -576,6 +577,7 @@
     <MESSAGE value="리듬게임 타이밍 일부 수정" />
     <MESSAGE value="분석기록 3개 노출, 전체 보기 분리 및 XAI 누적 피드백, 그래프 생성" />
     <MESSAGE value="반코트 분석 테스트" />
-    <option name="LAST_COMMIT_MESSAGE" value="반코트 분석 테스트" />
+    <MESSAGE value="반코트 분석 테스트 (카메라 구도 조정)" />
+    <option name="LAST_COMMIT_MESSAGE" value="반코트 분석 테스트 (카메라 구도 조정)" />
   </component>
 </project>

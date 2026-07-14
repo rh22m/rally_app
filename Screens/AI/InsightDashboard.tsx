@@ -8,16 +8,20 @@ import {
   ScrollView,
   StatusBar,
   Dimensions,
-  ActivityIndicator
+  ActivityIndicator,
+  Modal,
+  Alert
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LineChart } from 'react-native-chart-kit';
 import {
   ArrowLeft, BrainCircuit, TrendingUp, Zap,
-  Activity, Move, Music, ChevronRight, Target, Info
+  Activity, Move, Music, ChevronRight, Target, Info, Flame,
+  Trash2, CheckCircle, XCircle, Dumbbell, Compass
 } from 'lucide-react-native';
 
-import { getFirestore, collection, query, getDocs } from 'firebase/firestore';
+// ✅ 삭제를 위한 deleteDoc, doc 임포트
+import { getFirestore, collection, query, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { getApp } from 'firebase/app';
 
@@ -25,10 +29,22 @@ import { AnalysisMode, AnalysisReport } from './AIAnalysis';
 
 const screenWidth = Dimensions.get('window').width;
 
+// ✅ 어떠한 환경 포맷(MM/DD/YYYY 또는 YYYY.MM.DD)이든 년.월.일로 완벽하게 통일해주는 함수
+const formatYMD = (dateStr: string) => {
+  if (!dateStr) return '';
+  let match = dateStr.match(/(\d{4})[./-]\s*(\d{1,2})[./-]\s*(\d{1,2})/);
+  if (match) return `${match[1]}. ${match[2]}. ${match[3]}.`;
+
+  match = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (match) return `${match[3]}. ${match[1]}. ${match[2]}.`;
+
+  return dateStr.split(',')[0].replace(/(오전|오후).*/, '').trim();
+};
+
 interface CrossAnalysisResult {
   coachMessage: string;
   missionTitle: string;
-  missionType: AnalysisMode;
+  missionType: AnalysisMode | 'REALTIME_MATCH';
   stats: {
     power: number;
     agility: number;
@@ -47,7 +63,9 @@ export default function InsightDashboard() {
   const [history, setHistory] = useState<AnalysisReport[]>([]);
   const [insights, setInsights] = useState<CrossAnalysisResult | null>(null);
 
-  // Firestore에서 데이터를 가져와 orderBy 문제 우회 처리
+  const [showReport, setShowReport] = useState(false);
+  const [selectedReport, setSelectedReport] = useState<AnalysisReport | null>(null);
+
   useEffect(() => {
     fetchAndAnalyzeData();
   }, []);
@@ -59,25 +77,55 @@ export default function InsightDashboard() {
 
       if (user) {
         const db = getFirestore(getApp());
-        const appId = 'rally-app-main';
-        const historyRef = collection(db, 'artifacts', appId, 'users', user.uid, 'videoHistory');
 
-        const q = query(historyRef);
-        const querySnapshot = await getDocs(q);
+        const historyRef = collection(db, 'artifacts', 'rally-app-main', 'users', user.uid, 'videoHistory');
+        const footworkRef = collection(db, 'artifacts', 'com.recobystackapp', 'users', user.uid, 'footworkSets');
+
+        const [historySnap, footworkSnap] = await Promise.all([
+          getDocs(query(historyRef)),
+          getDocs(query(footworkRef))
+        ]);
 
         const loadedHistory: AnalysisReport[] = [];
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
+
+        historySnap.forEach((docSnap) => {
+          const data = docSnap.data();
           loadedHistory.push({
-            id: data.id || doc.id,
+            id: data.id || docSnap.id,
+            docId: docSnap.id, // ✅ 문서 ID 추가
             date: data.date,
             mode: data.mode as AnalysisMode,
             avgScore: data.avgScore,
+            pros: data.pros || [],
+            cons: data.cons || [],
+            training: data.training || '',
+            totalCount: data.totalCount,
             maxRecord: data.maxRecord,
+            difficulty: data.difficulty
           } as AnalysisReport);
         });
 
-        // Date.now() 기반 ID로 최신순 정렬 후 최대 30개 사용
+        footworkSnap.forEach((docSnap) => {
+          const data = docSnap.data();
+          loadedHistory.push({
+            id: data.id || docSnap.id,
+            docId: docSnap.id, // ✅ 문서 ID 추가
+            date: data.date,
+            mode: data.mode || 'REALTIME_MATCH',
+            avgScore: data.avgScore,
+            maxRecord: data.maxRecord,
+            pros: data.summary?.strengths || [],
+            cons: data.summary?.weaknesses || [],
+            training: data.summary?.recommendedDrill || '',
+            totalCount: data.maxRecord,
+            durationSec: data.summary?.durationSec || 0,
+            averageRecoveryMs: data.summary?.averageRecoveryMs || 0,
+            courtCoveragePct: data.summary?.courtCoveragePct || 0,
+            postureScore: data.summary?.postureScore || 0,
+            difficulty: 'FULL MATCH' as any
+          } as AnalysisReport);
+        });
+
         loadedHistory.sort((a, b) => Number(b.id) - Number(a.id));
         const recent30 = loadedHistory.slice(0, 30);
 
@@ -91,10 +139,7 @@ export default function InsightDashboard() {
     }
   };
 
-  // ==========================================
-  // XAI 기반 다중 모드 교차 분석 (Cross-Modal)
-  // ==========================================
-  const generateCrossModalInsights = (data: AnalysisReport[]) => {
+  const generateCrossModalInsights = (data: any[]) => {
     if (data.length < 5) {
       setInsights({
         coachMessage: "아직 분석할 데이터가 부족해요! 스윙, 준비자세, 풋워크, 나와의 랠리 모드를 각각 2번씩 더 진행해 주시면, 제가 완벽한 맞춤형 성장 피드백을 해드릴게요.",
@@ -146,17 +191,16 @@ export default function InsightDashboard() {
       mType = 'RHYTHM';
     }
 
-    // 데이터 최신순에서 오래된 순으로 뒤집어서 그래프 시계열 생성 (최대 6개)
     const recent6 = data.slice(0, 6).reverse();
 
-    // 🔥 X축 날짜 텍스트 안전하게 파싱 (잘림 방지)
     const chartLabels = recent6.map(d => {
-      // 정규식으로 "월/일" 또는 "월.일" 추출
-      const match = d.date.match(/(\d{1,2})[\.\/]\s*(\d{1,2})/);
+      // ✅ 차트 라벨에도 포맷 적용하여 에러 방지
+      const formatted = formatYMD(d.date);
+      const match = formatted.match(/(\d{1,2})\.\s*(\d{1,2})\./); // 월. 일. 파싱
       const dateStr = match ? `${match[1]}/${match[2]}` : d.date.substring(0, 5);
 
-      const modeMap = { SWING: '스윙', LUNGE: '런지', FOOTWORK: '스텝', RHYTHM: '랠리' };
-      return `${dateStr} ${modeMap[d.mode]}`;
+      const modeMap: any = { SWING: '스윙', LUNGE: '런지', FOOTWORK: '스텝', RHYTHM: '랠리', REALTIME_MATCH: '실전' };
+      return `${dateStr} ${modeMap[d.mode] || '분석'}`;
     });
 
     const chartScores = recent6.map(d => d.avgScore);
@@ -178,21 +222,52 @@ export default function InsightDashboard() {
     });
   };
 
-  const getModeIcon = (mode: AnalysisMode) => {
+  // ✅ 삭제 기능 (로컬 상태 및 Firestore 모두 삭제 처리)
+  const deleteHistoryItem = (id: string, docId: string | undefined, itemMode: string) => {
+    Alert.alert('기록 삭제', '이 기록을 정말 삭제하시겠습니까?', [
+      { text: '취소', style: 'cancel' },
+      { text: '삭제', style: 'destructive', onPress: () => performDelete(id, docId, itemMode) },
+    ]);
+  };
+
+  const performDelete = async (id: string, docId: string | undefined, itemMode: string) => {
+    try {
+      const auth = getAuth(getApp());
+      const user = auth.currentUser;
+      if (user && docId) {
+        const db = getFirestore(getApp());
+        const isRealtime = itemMode === 'REALTIME_MATCH';
+        const collectionName = isRealtime ? 'footworkSets' : 'videoHistory';
+        const appId = isRealtime ? 'com.recobystackapp' : 'rally-app-main';
+
+        // ✅ 타임스탬프 id가 아닌 docId를 사용해 문서를 삭제합니다
+        await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, collectionName, docId));
+        setHistory((prev) => prev.filter((item) => item.id !== id));
+      }
+    } catch (error) {
+      console.error("삭제 실패:", error);
+    }
+  };
+
+  const getModeIcon = (mode: string) => {
     switch(mode) {
       case 'SWING': return <Zap size={18} color="#F472B6" />;
       case 'LUNGE': return <Activity size={18} color="#60A5FA" />;
       case 'FOOTWORK': return <Move size={18} color="#FCD34D" />;
       case 'RHYTHM': return <Music size={18} color="#10B981" />;
+      case 'REALTIME_MATCH': return <Flame size={18} color="#EF4444" />;
+      default: return <Activity size={18} color="#FFF" />;
     }
   };
 
-  const getModeName = (mode: AnalysisMode) => {
+  const getModeName = (mode: string) => {
     switch(mode) {
       case 'SWING': return "스윙 분석";
       case 'LUNGE': return "준비 자세";
       case 'FOOTWORK': return "풋워크";
       case 'RHYTHM': return "나와의 랠리";
+      case 'REALTIME_MATCH': return "실전 랠리 (반코트)";
+      default: return "분석 모드";
     }
   };
 
@@ -205,7 +280,6 @@ export default function InsightDashboard() {
     );
   }
 
-  // 동적 가로 너비 계산 (최소 화면 크기를 보장하며 데이터가 많으면 확장됨)
   const chartWidth = insights ? Math.max(screenWidth - 16, insights.trendChart.labels.length * 65) : screenWidth - 16;
 
   return (
@@ -267,12 +341,11 @@ export default function InsightDashboard() {
 
         <Text style={styles.sectionTitle}>📈 최근 성장 추세</Text>
 
-        {/* 🔥 차트 설명 박스 추가 */}
         <View style={styles.chartDescBox}>
           <Info size={16} color="#60A5FA" />
           <Text style={styles.chartDescText}>
             그래프의 수치는 각 훈련의 <Text style={{fontWeight: 'bold', color: 'white'}}>'종합 달성 점수'</Text>입니다.{'\n'}
-            (기초 분석: 100점 만점 / 랠리 모드: 콤보 누적 점수)
+            (기초 분석/실전: 100점 만점 | 랠리: 콤보 누적 점수)
           </Text>
         </View>
 
@@ -283,8 +356,8 @@ export default function InsightDashboard() {
                 data={insights.trendChart}
                 width={chartWidth}
                 height={240}
-                verticalLabelRotation={-30} // 🔥 라벨 회전으로 겹침 완벽 방지
-                fromZero={true} // 스케일 안정화
+                verticalLabelRotation={-30}
+                fromZero={true}
                 chartConfig={{
                   backgroundColor: '#1F2937',
                   backgroundGradientFrom: '#1F2937',
@@ -312,19 +385,34 @@ export default function InsightDashboard() {
         <View style={styles.historyList}>
           {history.map((item, index) => (
             <View key={item.id} style={styles.historyItem}>
-              <View style={styles.historyItemLeft}>
-                <View style={styles.historyIconBox}>
-                  {getModeIcon(item.mode)}
+              {/* 상세 내역 보기 터치 영역 */}
+              <TouchableOpacity
+                style={styles.historyItemContent}
+                onPress={() => { setSelectedReport(item); setShowReport(true); }}
+              >
+                <View style={styles.historyItemLeft}>
+                  <View style={styles.historyIconBox}>
+                    {getModeIcon(item.mode)}
+                  </View>
+                  <View>
+                    <Text style={styles.historyModeName}>{getModeName(item.mode)}</Text>
+                    {/* ✅ 대시보드 리스트에도 formatYMD 적용 */}
+                    <Text style={styles.historyDate}>{formatYMD(item.date)}</Text>
+                  </View>
                 </View>
-                <View>
-                  <Text style={styles.historyModeName}>{getModeName(item.mode)}</Text>
-                  <Text style={styles.historyDate}>{item.date}</Text>
+                <View style={styles.historyItemRight}>
+                  <Text style={styles.historyScore}>{item.avgScore}점</Text>
+                  <ChevronRight size={20} color="#4B5563" />
                 </View>
-              </View>
-              <View style={styles.historyItemRight}>
-                <Text style={styles.historyScore}>{item.avgScore}점</Text>
-                <ChevronRight size={20} color="#4B5563" />
-              </View>
+              </TouchableOpacity>
+
+              {/* 삭제 버튼 추가 */}
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={() => deleteHistoryItem(item.id, item.docId, item.mode)}
+              >
+                <Trash2 size={20} color="#EF4444" />
+              </TouchableOpacity>
             </View>
           ))}
           {history.length === 0 && (
@@ -333,6 +421,82 @@ export default function InsightDashboard() {
         </View>
 
       </ScrollView>
+
+      {/* ✅ 상세 분석 리포트 모달 (반코트 모드 호환 및 formatYMD 적용) */}
+      <Modal animationType="slide" transparent={false} visible={showReport} onRequestClose={() => setShowReport(false)}>
+        {selectedReport && (
+          <View style={styles.reportContainer}>
+            <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+              <View style={styles.reportHeader}>
+                <Text style={styles.reportTitle}>AI 분석 리포트</Text>
+                <Text style={styles.reportDate}>
+                  {formatYMD(selectedReport.date)} ({getModeName(selectedReport.mode)})
+                </Text>
+                {(selectedReport.mode === 'FOOTWORK' || selectedReport.mode === 'RHYTHM' || selectedReport.mode === 'REALTIME_MATCH') && (<View style={styles.difficultyBadge}><Text style={styles.difficultyText}>{selectedReport.difficulty} MODE</Text></View>)}
+              </View>
+
+              <View style={styles.scoreCard}>
+                <Text style={styles.scoreLabel}>종합 점수</Text>
+                <Text style={styles.scoreValue}>{selectedReport.avgScore}<Text style={{ fontSize: 30 }}>점</Text></Text>
+                <View style={styles.countBadge}>
+                  <Text style={{ color: '#111827', fontWeight: 'bold' }}>
+                    {selectedReport.mode === 'SWING' ? `${selectedReport.totalCount}회 수행` : selectedReport.mode === 'RHYTHM' ? `총 ${selectedReport.totalCount}노트 처리` : selectedReport.mode === 'REALTIME_MATCH' ? `총 ${selectedReport.totalCount}회 스텝` : `평균 안정성 ${selectedReport.avgScore}점`}
+                    {' | '}최고기록: {Math.floor(selectedReport.maxRecord)}{selectedReport.mode === 'SWING' ? 'km/h' : selectedReport.mode === 'RHYTHM' ? 'Combo' : selectedReport.mode === 'REALTIME_MATCH' ? '스텝' : '초'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* 반코트(실전 랠리) 전용 스탯 UI 조건부 렌더링 */}
+              {selectedReport.mode === 'REALTIME_MATCH' && (
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+                  <View style={styles.subStatBox}>
+                      <Activity size={24} color="#F472B6" />
+                      <Text style={styles.subStatLabel}>평균 복귀</Text>
+                      <Text style={styles.subStatValue}>{selectedReport.averageRecoveryMs && selectedReport.averageRecoveryMs > 0 ? `${selectedReport.averageRecoveryMs}ms` : '-'}</Text>
+                      <Text style={styles.subStatSubText}>홈 포지션 회귀율</Text>
+                  </View>
+                  <View style={styles.subStatBox}>
+                      <Compass size={24} color="#60A5FA" />
+                      <Text style={styles.subStatLabel}>코트 장악력</Text>
+                      <Text style={styles.subStatValue}>{selectedReport.courtCoveragePct}%</Text>
+                      <Text style={styles.subStatSubText}>6코너 커버리지</Text>
+                  </View>
+                  <View style={styles.subStatBox}>
+                      <Flame size={24} color="#FCD34D" />
+                      <Text style={styles.subStatLabel}>하체 밸런스</Text>
+                      <Text style={styles.subStatValue}>{selectedReport.postureScore}점</Text>
+                      <Text style={styles.subStatSubText}>중심점 안정성</Text>
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.sectionContainer}>
+                <Text style={styles.sectionTitle}>🔥 장점</Text>
+                {selectedReport.pros && selectedReport.pros.length > 0 ? (
+                  selectedReport.pros.map((item, idx) => (<View key={idx} style={styles.listItem}><CheckCircle size={20} color="#34D399" /><Text style={styles.listText}>{item}</Text></View>))
+                ) : (<Text style={styles.emptyText}>노력이 조금 더 필요합니다.</Text>)}
+              </View>
+
+              <View style={styles.sectionContainer}>
+                <Text style={styles.sectionTitle}>⚠️ 보완점</Text>
+                {selectedReport.cons && selectedReport.cons.length > 0 ? (
+                  selectedReport.cons.map((item, idx) => (<View key={idx} style={styles.listItem}><XCircle size={20} color="#EF4444" /><Text style={styles.listText}>{item}</Text></View>))
+                ) : (<Text style={styles.emptyText}>고칠 곳이 없습니다. 완벽합니다!</Text>)}
+              </View>
+
+              <View style={[styles.sectionContainer, { backgroundColor: '#1F2937', borderColor: '#FCD34D', borderWidth: 1 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                  <Dumbbell size={24} color="#FCD34D" /><Text style={[styles.sectionTitle, { color: '#FCD34D', marginBottom: 0, marginLeft: 8 }]}>추천 트레이닝</Text>
+                </View>
+                <Text style={styles.trainingText}>{selectedReport.training}</Text>
+              </View>
+
+              <TouchableOpacity style={styles.closeReportButton} onPress={() => setShowReport(false)}><Text style={styles.closeReportText}>닫기</Text></TouchableOpacity>
+            </ScrollView>
+          </View>
+        )}
+      </Modal>
+
     </View>
   );
 }
@@ -424,13 +588,41 @@ const styles = StyleSheet.create({
   },
   emptyChart: { height: 200, width: '100%', justifyContent: 'center', alignItems: 'center' },
 
+  // ✅ 통일된 히스토리 리스트 디자인 스타일 (삭제 버튼 포함)
   historyList: { backgroundColor: '#1F2937', borderRadius: 24, padding: 8, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.05)' },
-  historyItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+  historyItem: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+  historyItemContent: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingRight: 12 },
   historyItemLeft: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   historyIconBox: { width: 44, height: 44, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' },
   historyModeName: { color: 'white', fontSize: 15, fontWeight: 'bold', marginBottom: 4 },
   historyDate: { color: '#6B7280', fontSize: 12 },
   historyItemRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   historyScore: { color: '#34D399', fontSize: 16, fontWeight: 'bold' },
+  deleteButton: { padding: 10, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 12, marginLeft: 4 },
   emptyText: { color: '#6B7280', textAlign: 'center', paddingVertical: 30 },
+
+  // ✅ 모달 리포트 전용 UI 스타일
+  reportContainer: { flex: 1, backgroundColor: '#111827', padding: 24 },
+  reportHeader: { marginTop: 40, marginBottom: 30 },
+  reportTitle: { fontSize: 28, fontWeight: 'bold', color: 'white' },
+  reportDate: { fontSize: 14, color: '#9CA3AF', marginTop: 4 },
+  difficultyBadge: { alignSelf:'flex-start', backgroundColor: 'rgba(59, 130, 246, 0.2)', paddingVertical:4, paddingHorizontal:8, borderRadius:8, marginTop:8 },
+  difficultyText: { color: '#60A5FA', fontWeight:'bold', fontSize:12 },
+  scoreCard: { backgroundColor: '#34D399', borderRadius: 20, padding: 24, alignItems: 'center', marginBottom: 24 },
+  scoreLabel: { color: '#064E3B', fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
+  scoreValue: { color: '#064E3B', fontSize: 48, fontWeight: 'bold' },
+  countBadge: { backgroundColor: 'white', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10, marginTop: 8 },
+
+  subStatBox: { flex: 1, backgroundColor: '#1F2937', borderRadius: 16, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  subStatLabel: { color: '#9CA3AF', fontSize: 12, marginTop: 10, marginBottom: 4 },
+  subStatValue: { color: 'white', fontSize: 20, fontWeight: 'bold' },
+  subStatSubText: { color: '#6B7280', fontSize: 10, marginTop: 4 },
+
+  sectionContainer: { backgroundColor: '#1F2937', borderRadius: 16, padding: 20, marginBottom: 16 },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: 'white', marginBottom: 16 },
+  listItem: { flexDirection: 'row', gap: 12, marginBottom: 12, alignItems: 'flex-start' },
+  listText: { color: '#D1D5DB', fontSize: 15, flex: 1, lineHeight: 22 },
+  trainingText: { color: '#D1D5DB', fontSize: 15, lineHeight: 22 },
+  closeReportButton: { backgroundColor: '#3B82F6', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 10, marginBottom: 20 },
+  closeReportText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
 });

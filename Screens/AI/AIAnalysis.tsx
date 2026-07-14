@@ -24,12 +24,12 @@ import {
   CheckCircle, XCircle, Dumbbell, Play, Trash2, FileText,
   Smartphone, User, Eye, HelpCircle, Info, X,
   ArrowUpLeft, ArrowUpRight, ArrowDownLeft, ArrowDownRight,
-  Circle, RotateCw, BarChart2, Award, Video, Music
+  Circle, RotateCw, BarChart2, Award, Video, Music, Flame, Compass, ChevronRight
 } from 'lucide-react-native';
 import { htmlContent } from './poseHtml';
-import RealtimeFootworkMode from './RealtimeFootworkMode'; // ✅ 새로 추가된 반코트 분석 모드 컴포넌트 임포트
+import RealtimeFootworkMode from './RealtimeFootworkMode';
 
-import { getFirestore, collection, addDoc, serverTimestamp, query, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, serverTimestamp, query, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { getApp } from 'firebase/app';
 
@@ -45,8 +45,8 @@ const PIXEL_TO_REAL_SCALE = (USER_HEIGHT_CM * ARM_LENGTH_RATIO) / 200;
 const MIN_SWING_DISTANCE_PX = 0.15;
 const SWING_TRIGGER_SPEED = 25;
 
-export type AnalysisMode = 'SWING' | 'LUNGE' | 'FOOTWORK' | 'RHYTHM';
-type Difficulty = 'EASY' | 'NORMAL' | 'HARD';
+export type AnalysisMode = 'SWING' | 'LUNGE' | 'FOOTWORK' | 'RHYTHM' | 'REALTIME_MATCH';
+type Difficulty = 'EASY' | 'NORMAL' | 'HARD' | 'FULL MATCH';
 type FootworkDirection = 'CENTER' | 'FRONT_LEFT' | 'FRONT_RIGHT' | 'BACK_LEFT' | 'BACK_RIGHT';
 
 interface ResultData {
@@ -61,6 +61,7 @@ interface ResultData {
 
 export interface AnalysisReport {
   id: string;
+  docId?: string;
   date: string;
   mode: AnalysisMode;
   avgScore: number;
@@ -70,6 +71,10 @@ export interface AnalysisReport {
   totalCount: number;
   maxRecord: number;
   difficulty?: Difficulty;
+  durationSec?: number;
+  averageRecoveryMs?: number;
+  courtCoveragePct?: number;
+  postureScore?: number;
 }
 
 export interface StyleRecord {
@@ -80,6 +85,21 @@ export interface StyleRecord {
   title: string;
   image: any;
 }
+
+// ✅ 어떠한 환경 포맷(MM/DD/YYYY 또는 YYYY.MM.DD)이든 년.월.일로 완벽하게 통일해주는 함수
+const formatYMD = (dateStr: string) => {
+  if (!dateStr) return '';
+  // 1) YYYY.MM.DD 또는 YYYY-MM-DD 형태 처리
+  let match = dateStr.match(/(\d{4})[./-]\s*(\d{1,2})[./-]\s*(\d{1,2})/);
+  if (match) return `${match[1]}. ${match[2]}. ${match[3]}.`;
+
+  // 2) MM/DD/YYYY 형태 처리 (예: 6/15/2026, 4:30 PM)
+  match = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (match) return `${match[3]}. ${match[1]}. ${match[2]}.`;
+
+  // 3) 최후의 보루 (시간 잘라내기)
+  return dateStr.split(',')[0].replace(/(오전|오후).*/, '').trim();
+};
 
 const RHYTHM_BEATMAP = [
   { id: 1, time: 2000, type: 'SMASH', color: '#EF4444', targetX: 0.8, targetY: 0.2 },
@@ -230,7 +250,7 @@ const GENERAL_GUIDE_DATA = [
 export default function AIAnalysis() {
   const navigation = useNavigation<any>();
 
-  const [showRealtimeMode, setShowRealtimeMode] = useState(false); // ✅ 반코트 진입 상태 추가
+  const [showRealtimeMode, setShowRealtimeMode] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);
   const [mode, setMode] = useState<AnalysisMode>('SWING');
@@ -327,7 +347,6 @@ export default function AIAnalysis() {
     requestPermission();
   }, []);
 
-  // 🔥 수정됨: orderBy 없이 전체를 불러와 JavaScript에서 완벽하게 최신순으로 정렬합니다. (과거 데이터 증발 방지)
   useEffect(() => {
     const fetchHistory = async () => {
       try {
@@ -336,18 +355,22 @@ export default function AIAnalysis() {
 
         if (user) {
           const db = getFirestore(getApp());
-          const appId = 'rally-app-main';
-          const historyRef = collection(db, 'artifacts', appId, 'users', user.uid, 'videoHistory');
 
-          // orderBy 필터 제거: 모든 기록을 가져옵니다.
-          const q = query(historyRef);
-          const querySnapshot = await getDocs(q);
+          const historyRef = collection(db, 'artifacts', 'rally-app-main', 'users', user.uid, 'videoHistory');
+          const footworkRef = collection(db, 'artifacts', 'com.recobystackapp', 'users', user.uid, 'footworkSets');
+
+          const [historySnap, footworkSnap] = await Promise.all([
+            getDocs(query(historyRef)),
+            getDocs(query(footworkRef))
+          ]);
 
           const loadedHistory: AnalysisReport[] = [];
-          querySnapshot.forEach((doc) => {
+
+          historySnap.forEach((doc) => {
             const data = doc.data();
             loadedHistory.push({
               id: data.id || doc.id,
+              docId: doc.id,
               date: data.date,
               mode: data.mode,
               avgScore: data.avgScore,
@@ -360,10 +383,28 @@ export default function AIAnalysis() {
             } as AnalysisReport);
           });
 
-          // JavaScript 배열 Sort: Date.now() 기반 문자열 ID를 숫자로 변환하여 무조건 최신순 정렬
-          loadedHistory.sort((a, b) => Number(b.id) - Number(a.id));
+          footworkSnap.forEach((doc) => {
+            const data = doc.data();
+            loadedHistory.push({
+              id: data.id || doc.id,
+              docId: doc.id,
+              date: data.date,
+              mode: data.mode || 'REALTIME_MATCH',
+              avgScore: data.avgScore,
+              maxRecord: data.maxRecord,
+              pros: data.summary?.strengths || [],
+              cons: data.summary?.weaknesses || [],
+              training: data.summary?.recommendedDrill || '',
+              totalCount: data.maxRecord,
+              durationSec: data.summary?.durationSec || 0,
+              averageRecoveryMs: data.summary?.averageRecoveryMs || 0,
+              courtCoveragePct: data.summary?.courtCoveragePct || 0,
+              postureScore: data.summary?.postureScore || 0,
+              difficulty: 'FULL MATCH' as any
+            } as AnalysisReport);
+          });
 
-          // 메인 화면에서는 최신 기록 3개만 노출
+          loadedHistory.sort((a, b) => Number(b.id) - Number(a.id));
           setHistory(loadedHistory);
         }
       } catch (error) {
@@ -372,7 +413,7 @@ export default function AIAnalysis() {
     };
 
     fetchHistory();
-  }, []);
+  }, [showRealtimeMode]);
 
   useEffect(() => {
     if (countdown !== null) {
@@ -510,10 +551,9 @@ export default function AIAnalysis() {
     const newReport = createReport();
 
     setHistory((prev) => {
-        // 새로 추가된 기록을 포함하여 다시 고유 ID 최신순 정렬 후 3개 노출
         const updated = [newReport, ...prev];
         updated.sort((a, b) => Number(b.id) - Number(a.id));
-        return updated.slice(0, 3);
+        return updated;
     });
     setSelectedReport(newReport);
 
@@ -524,9 +564,11 @@ export default function AIAnalysis() {
         const user = auth.currentUser;
         if (user) {
             const db = getFirestore(getApp());
-            const appId = 'com.recobystackapp';
+            const appId = 'rally-app-main';
 
             const reportToSave = { ...newReport };
+            delete reportToSave.docId;
+
             Object.keys(reportToSave).forEach(key => {
                 if (reportToSave[key as keyof AnalysisReport] === undefined) {
                     delete reportToSave[key as keyof AnalysisReport];
@@ -606,6 +648,28 @@ export default function AIAnalysis() {
     if (grade === 'PERFECT' || grade === 'NICE SMASH!') return '#FFD700';
     switch (grade) {
       case 'SS': return '#FFD700'; case 'S': return '#A78BFA'; case 'A': return '#60A5FA'; case 'B': return '#34D399'; default: return '#9CA3AF';
+    }
+  };
+
+  const getModeIcon = (itemMode: string) => {
+    switch(itemMode) {
+      case 'SWING': return <Zap size={20} color="#F472B6" />;
+      case 'LUNGE': return <Activity size={20} color="#60A5FA" />;
+      case 'FOOTWORK': return <Move size={20} color="#FCD34D" />;
+      case 'RHYTHM': return <Music size={20} color="#10B981" />;
+      case 'REALTIME_MATCH': return <Flame size={20} color="#EF4444" />;
+      default: return <Activity size={20} color="#FFF" />;
+    }
+  };
+
+  const getModeName = (itemMode: string) => {
+    switch(itemMode) {
+      case 'SWING': return "스윙 분석";
+      case 'LUNGE': return "준비 자세";
+      case 'FOOTWORK': return "풋워크";
+      case 'RHYTHM': return "나와의 랠리";
+      case 'REALTIME_MATCH': return "실전 랠리 (반코트)";
+      default: return "분석 모드";
     }
   };
 
@@ -740,11 +804,30 @@ export default function AIAnalysis() {
     return report;
   };
 
-  const deleteHistory = (id: string) => {
+  // ✅ 삭제 기능 (로컬 상태 및 Firestore 모두 삭제 처리)
+  const deleteHistoryItem = (id: string, docId: string | undefined, itemMode: string) => {
     Alert.alert('기록 삭제', '이 기록을 정말 삭제하시겠습니까?', [
       { text: '취소', style: 'cancel' },
-      { text: '삭제', style: 'destructive', onPress: () => setHistory((prev) => prev.filter((item) => item.id !== id)) },
+      { text: '삭제', style: 'destructive', onPress: () => performDelete(id, docId, itemMode) },
     ]);
+  };
+
+  const performDelete = async (id: string, docId: string | undefined, itemMode: string) => {
+    try {
+      const auth = getAuth(getApp());
+      const user = auth.currentUser;
+      if (user && docId) {
+        const db = getFirestore(getApp());
+        const isRealtime = itemMode === 'REALTIME_MATCH';
+        const collectionName = isRealtime ? 'footworkSets' : 'videoHistory';
+        const appId = isRealtime ? 'com.recobystackapp' : 'rally-app-main';
+
+        await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, collectionName, docId));
+        setHistory((prev) => prev.filter((item) => item.id !== id));
+      }
+    } catch (error) {
+      console.error("삭제 실패:", error);
+    }
   };
 
   const deleteStyleHistory = (id: string) => {
@@ -996,7 +1079,6 @@ export default function AIAnalysis() {
 
   const currentModeInfo = MODE_DETAILS[mode];
 
-  // ✅ 반코트 분기 진입 시 완전히 교체 처리 (격리)
   if (showRealtimeMode) {
     return <RealtimeFootworkMode onBack={() => setShowRealtimeMode(false)} />;
   }
@@ -1181,7 +1263,6 @@ export default function AIAnalysis() {
           <Text style={styles.mainStartButtonText}>분석 시작</Text>
         </TouchableOpacity>
 
-        {/* ✅ 새로운 반코트 분석 모드 진입 버튼 추가 */}
         <TouchableOpacity
           style={[styles.mainStartButton, { backgroundColor: '#3B82F6', marginTop: -10 }]}
           onPress={() => setShowRealtimeMode(true)}
@@ -1227,11 +1308,12 @@ export default function AIAnalysis() {
                 >
                   <Image source={item.image} style={styles.styleHistoryImg} />
                   <View>
-                    <Text style={styles.styleHistoryDate}>{item.date}</Text>
+                    {/* ✅ 스타일 기록에도 formatYMD 적용 */}
+                    <Text style={styles.styleHistoryDate}>{formatYMD(item.date)}</Text>
                     <Text style={styles.styleHistoryName}>{item.name}</Text>
                   </View>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.deleteButton} onPress={() => deleteStyleHistory(item.id)}>
+                <TouchableOpacity style={styles.deleteButtonOld} onPress={() => deleteStyleHistory(item.id)}>
                   <Trash2 size={18} color="#EF4444" />
                 </TouchableOpacity>
               </View>
@@ -1246,29 +1328,42 @@ export default function AIAnalysis() {
 
         <View style={styles.historySection}>
           <Text style={styles.historyTitle}>📜 최근 분석 기록</Text>
-          {history.length > 0 ? (
-            history.slice(0, 3).map((item) => (
-              <View key={item.id} style={styles.historyItemCard}>
-                <TouchableOpacity style={{ flex: 1 }} onPress={() => { setSelectedReport(item); setShowReport(true); }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    {item.mode === 'SWING' ? <Zap size={16} color="#F472B6" /> : item.mode === 'LUNGE' ? <Activity size={16} color="#60A5FA" /> : item.mode === 'FOOTWORK' ? <Move size={16} color="#FCD34D" /> : <Music size={16} color="#10B981" />}
-                    <Text style={styles.historyDate}>{item.date}</Text>
-                    {item.difficulty && <Text style={{color:'#6B7280', fontSize:10, backgroundColor:'rgba(255,255,255,0.1)', paddingHorizontal:4, borderRadius:4}}>{item.difficulty}</Text>}
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 12 }}>
-                    <Text style={styles.historyScore}>{item.avgScore}점</Text>
-                    <Text style={styles.historyCount}>{item.mode === 'SWING' ? `${item.maxRecord}km/h` : item.mode === 'LUNGE' ? `${item.maxRecord}초` : item.mode === 'FOOTWORK' ? `${item.totalCount}회` : `${item.maxRecord} Combo`}</Text>
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.deleteButton} onPress={() => deleteHistory(item.id)}><Trash2 size={18} color="#EF4444" /></TouchableOpacity>
-              </View>
-            ))
-          ) : (
-            <View style={styles.historyPlaceholder}>
-              <FileText size={24} color="#4B5563" style={{ marginBottom: 8 }} />
-              <Text style={{ color: '#6B7280' }}>아직 저장된 기록이 없습니다.</Text>
-            </View>
-          )}
+          <View style={styles.historyList}>
+            {history.length > 0 ? (
+              history.slice(0, 3).map((item) => (
+                <View key={item.id} style={styles.historyItem}>
+                  <TouchableOpacity
+                    style={styles.historyItemContent}
+                    onPress={() => { setSelectedReport(item); setShowReport(true); }}
+                  >
+                    <View style={styles.historyItemLeft}>
+                      <View style={styles.historyIconBox}>
+                        {getModeIcon(item.mode)}
+                      </View>
+                      <View>
+                        <Text style={styles.historyModeName}>{getModeName(item.mode)}</Text>
+                        {/* ✅ 일반 기록 목록에 formatYMD 적용 */}
+                        <Text style={styles.historyDate}>{formatYMD(item.date)}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.historyItemRight}>
+                      <Text style={styles.historyScore}>{item.avgScore}점</Text>
+                      <ChevronRight size={20} color="#4B5563" />
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={() => deleteHistoryItem(item.id, item.docId, item.mode)}
+                  >
+                    <Trash2 size={20} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.emptyText}>저장된 기록이 없습니다.</Text>
+            )}
+          </View>
 
           {history.length > 0 && (
             <TouchableOpacity
@@ -1291,32 +1386,57 @@ export default function AIAnalysis() {
             <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
               <View style={styles.reportHeader}>
                 <Text style={styles.reportTitle}>AI 분석 리포트</Text>
+                {/* ✅ 상세 분석 모달에도 formatYMD 적용 */}
                 <Text style={styles.reportDate}>
-                  {selectedReport.date} ({selectedReport.mode === 'SWING' ? '스윙' : selectedReport.mode === 'LUNGE' ? '준비자세' : selectedReport.mode === 'FOOTWORK' ? '풋워크' : '나와의 랠리'})
+                  {formatYMD(selectedReport.date)} ({getModeName(selectedReport.mode)})
                 </Text>
-                {(selectedReport.mode === 'FOOTWORK' || selectedReport.mode === 'RHYTHM') && (<View style={styles.difficultyBadge}><Text style={styles.difficultyText}>{selectedReport.difficulty} MODE</Text></View>)}
+                {(selectedReport.mode === 'FOOTWORK' || selectedReport.mode === 'RHYTHM' || selectedReport.mode === 'REALTIME_MATCH') && (<View style={styles.difficultyBadge}><Text style={styles.difficultyText}>{selectedReport.difficulty} MODE</Text></View>)}
               </View>
+
               <View style={styles.scoreCard}>
                 <Text style={styles.scoreLabel}>종합 점수</Text>
                 <Text style={styles.scoreValue}>{selectedReport.avgScore}<Text style={{ fontSize: 30 }}>점</Text></Text>
                 <View style={styles.countBadge}>
                   <Text style={{ color: '#111827', fontWeight: 'bold' }}>
-                    {selectedReport.mode === 'SWING' ? `${selectedReport.totalCount}회 수행` : selectedReport.mode === 'RHYTHM' ? `총 ${selectedReport.totalCount}노트 처리` : `평균 안정성 ${selectedReport.avgScore}점`}
-                    {' | '}최고기록: {Math.floor(selectedReport.maxRecord)}{selectedReport.mode === 'SWING' ? 'km/h' : selectedReport.mode === 'RHYTHM' ? 'Combo' : '초'}
+                    {selectedReport.mode === 'SWING' ? `${selectedReport.totalCount}회 수행` : selectedReport.mode === 'RHYTHM' ? `총 ${selectedReport.totalCount}노트 처리` : selectedReport.mode === 'REALTIME_MATCH' ? `총 ${selectedReport.totalCount}회 스텝` : `평균 안정성 ${selectedReport.avgScore}점`}
+                    {' | '}최고기록: {Math.floor(selectedReport.maxRecord)}{selectedReport.mode === 'SWING' ? 'km/h' : selectedReport.mode === 'RHYTHM' ? 'Combo' : selectedReport.mode === 'REALTIME_MATCH' ? '스텝' : '초'}
                   </Text>
                 </View>
               </View>
 
+              {selectedReport.mode === 'REALTIME_MATCH' && (
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+                  <View style={styles.subStatBox}>
+                      <Activity size={24} color="#F472B6" />
+                      <Text style={styles.subStatLabel}>평균 복귀</Text>
+                      <Text style={styles.subStatValue}>{selectedReport.averageRecoveryMs && selectedReport.averageRecoveryMs > 0 ? `${selectedReport.averageRecoveryMs}ms` : '-'}</Text>
+                      <Text style={styles.subStatSubText}>홈 포지션 회귀율</Text>
+                  </View>
+                  <View style={styles.subStatBox}>
+                      <Compass size={24} color="#60A5FA" />
+                      <Text style={styles.subStatLabel}>코트 장악력</Text>
+                      <Text style={styles.subStatValue}>{selectedReport.courtCoveragePct}%</Text>
+                      <Text style={styles.subStatSubText}>6코너 커버리지</Text>
+                  </View>
+                  <View style={styles.subStatBox}>
+                      <Flame size={24} color="#FCD34D" />
+                      <Text style={styles.subStatLabel}>하체 밸런스</Text>
+                      <Text style={styles.subStatValue}>{selectedReport.postureScore}점</Text>
+                      <Text style={styles.subStatSubText}>중심점 안정성</Text>
+                  </View>
+                </View>
+              )}
+
               <View style={styles.sectionContainer}>
                 <Text style={styles.sectionTitle}>🔥 장점</Text>
-                {selectedReport.pros.length > 0 ? (
+                {selectedReport.pros && selectedReport.pros.length > 0 ? (
                   selectedReport.pros.map((item, idx) => (<View key={idx} style={styles.listItem}><CheckCircle size={20} color="#34D399" /><Text style={styles.listText}>{item}</Text></View>))
                 ) : (<Text style={styles.emptyText}>노력이 조금 더 필요합니다.</Text>)}
               </View>
 
               <View style={styles.sectionContainer}>
                 <Text style={styles.sectionTitle}>⚠️ 보완점</Text>
-                {selectedReport.cons.length > 0 ? (
+                {selectedReport.cons && selectedReport.cons.length > 0 ? (
                   selectedReport.cons.map((item, idx) => (<View key={idx} style={styles.listItem}><XCircle size={20} color="#EF4444" /><Text style={styles.listText}>{item}</Text></View>))
                 ) : (<Text style={styles.emptyText}>고칠 곳이 없습니다. 완벽합니다!</Text>)}
               </View>
@@ -1493,12 +1613,19 @@ const styles = StyleSheet.create({
   styleHistoryImg: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.1)' },
   styleHistoryDate: { color: '#9CA3AF', fontSize: 12, marginBottom: 4 },
   styleHistoryName: { color: '#60A5FA', fontSize: 16, fontWeight: 'bold' },
+  deleteButtonOld: { padding: 8, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 8 },
 
-  historyItemCard: { backgroundColor: '#1F2937', padding: 16, borderRadius: 12, marginBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
-  historyDate: { color: '#D1D5DB', fontSize: 14, fontWeight: 'bold' },
-  historyScore: { color: '#34D399', fontSize: 18, fontWeight: 'bold' },
-  historyCount: { color: '#9CA3AF', fontSize: 14 },
-  deleteButton: { padding: 8, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 8 },
+  historyList: { backgroundColor: '#1F2937', borderRadius: 24, padding: 8, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.05)' },
+  historyItem: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+  historyItemContent: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingRight: 12 },
+  historyItemLeft: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  historyIconBox: { width: 44, height: 44, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' },
+  historyModeName: { color: 'white', fontSize: 15, fontWeight: 'bold', marginBottom: 4 },
+  historyDate: { color: '#6B7280', fontSize: 12 },
+  historyItemRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  historyScore: { color: '#34D399', fontSize: 16, fontWeight: 'bold' },
+  deleteButton: { padding: 10, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 12, marginLeft: 4 },
+  emptyText: { color: '#6B7280', textAlign: 'center', paddingVertical: 30 },
 
   insightButton: {
     marginTop: 16,
@@ -1597,15 +1724,6 @@ const styles = StyleSheet.create({
   confirmButton: { backgroundColor: '#3B82F6', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 10 },
   confirmButtonText: { color: 'white', fontSize: 15, fontWeight: 'bold' },
 
-  guideCard: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
-  guideCardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
-  guideIconBox: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  guideCardTitle: { fontSize: 18, fontWeight: 'bold', color: '#F3F4F6' },
-  guideDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginBottom: 12 },
-  guideDescRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 6 },
-  bulletPoint: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#9CA3AF', marginTop: 8, marginRight: 8 },
-  guideDescText: { color: '#D1D5DB', fontSize: 14, lineHeight: 20, flex: 1 },
-
   modalScrollViewContent: { paddingBottom: 20 },
   footworkOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, justifyContent: 'center', alignItems: 'center', zIndex: 2 },
   arrowRow: { flexDirection: 'row', justifyContent: 'space-between', width: '80%', marginVertical: 40 },
@@ -1625,12 +1743,18 @@ const styles = StyleSheet.create({
   scoreLabel: { color: '#064E3B', fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
   scoreValue: { color: '#064E3B', fontSize: 48, fontWeight: 'bold' },
   countBadge: { backgroundColor: 'white', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10, marginTop: 8 },
+
+  subStatBox: { flex: 1, backgroundColor: '#1F2937', borderRadius: 16, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  subStatLabel: { color: '#9CA3AF', fontSize: 12, marginTop: 10, marginBottom: 4 },
+  subStatValue: { color: 'white', fontSize: 20, fontWeight: 'bold' },
+  subStatSubText: { color: '#6B7280', fontSize: 10, marginTop: 4 },
+
   sectionContainer: { backgroundColor: '#1F2937', borderRadius: 16, padding: 20, marginBottom: 16 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: 'white', marginBottom: 16 },
-  listItem: { flexDirection: 'row', gap: 12, marginBottom: 12 },
+  listItem: { flexDirection: 'row', gap: 12, marginBottom: 12, alignItems: 'flex-start' },
   listText: { color: '#D1D5DB', fontSize: 15, flex: 1, lineHeight: 22 },
   emptyText: { color: '#6B7280', fontStyle: 'italic' },
   trainingText: { color: '#D1D5DB', fontSize: 15, lineHeight: 22 },
-  closeReportButton: { backgroundColor: '#3B82F6', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 10 },
+  closeReportButton: { backgroundColor: '#3B82F6', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 10, marginBottom: 20 },
   closeReportText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
 });

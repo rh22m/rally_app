@@ -11,16 +11,24 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import Svg, { Line, Polygon, Text as SvgText } from 'react-native-svg';
-import { ChevronLeft, RotateCcw, Square, CheckCircle, XCircle, Dumbbell, Activity, Clock } from 'lucide-react-native';
+import { ChevronLeft, RotateCcw, Square, CheckCircle, XCircle, Dumbbell, Activity, Compass, Flame } from 'lucide-react-native';
 import Orientation from 'react-native-orientation-locker';
+import { useNavigation } from '@react-navigation/native';
+
+// ✅ Firebase 연동 모듈 임포트
+import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+import { getApp } from 'firebase/app';
 
 import { footworkSetHtml } from './realtimeFootworkHtml';
 import { summarizeFootworkSet, StepEvent } from './realtimeFootworkEngine';
 
 export default function RealtimeFootworkMode({ onBack }: { onBack: () => void }) {
+  const navigation = useNavigation();
+
   const [cameraState, setCameraState] = useState<'LOADING' | 'READY' | 'RUNNING' | 'FINISHED'>('LOADING');
   const [courtDetected, setCourtDetected] = useState(false);
-  const [hasWarnedNoCourt, setHasWarnedNoCourt] = useState(false); // ✅ 강제 시작을 위한 경고 상태
+  const [hasWarnedNoCourt, setHasWarnedNoCourt] = useState(false);
   const [status, setStatus] = useState('가로 모드로 전환하여 카메라를 준비합니다.');
   const [report, setReport] = useState<any>(null);
   const [currentDisplayZone, setCurrentDisplayZone] = useState('CENTER');
@@ -33,11 +41,17 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
   const lastNonCenterAtRef = useRef(0);
 
   useEffect(() => {
-    Orientation.lockToLandscapeRight();
+    const parent = navigation.getParent();
+    if (parent) {
+      parent.setOptions({ tabBarStyle: { display: 'none' } });
+    }
     return () => {
+      if (parent) {
+        parent.setOptions({ tabBarStyle: undefined });
+      }
       Orientation.lockToPortrait();
     };
-  }, []);
+  }, [navigation]);
 
   useEffect(() => {
     if (report) {
@@ -62,7 +76,6 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
            const zone = parsed.zone;
            const now = parsed.ts;
 
-           // ✅ 상대방 코트나 벗어난 영역은 무시 (좌표계 변환 오류 방지)
            if (zone === 'UNKNOWN') return;
 
            if (zone !== currentDisplayZone) {
@@ -106,12 +119,11 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
     webviewRef.current?.injectJavaScript('window.__RECO_FOOTWORK_START();');
   };
 
-  // ✅ 코트 인식이 안 되었더라도 혼자서 시작할 수 있게 해주는 로직
   const handleStartPress = () => {
     if (!courtDetected && !hasWarnedNoCourt) {
        Alert.alert(
          '코트 인식 미흡',
-         '코트 라인이 완벽히 일치하지 않습니다.\n그래도 분석을 시작하시겠습니까?',
+         '코트 라인이 완벽히 일치하지 않습니다.\n그래도 강제로 분석을 시작하시겠습니까?',
          [
            { text: '취소', style: 'cancel' },
            { text: '강제 시작', style: 'destructive', onPress: () => {
@@ -125,10 +137,11 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
     startSet();
   };
 
-  const stopSet = () => {
+  // ✅ 분석 완료 시 Firebase footworkSets 컬렉션에 분리 저장
+  const stopSet = async () => {
     setCameraState('FINISHED');
     webviewRef.current?.injectJavaScript('window.__RECO_FOOTWORK_STOP();');
-    setStatus('데이터 압축 및 요약 중입니다...');
+    setStatus('초정밀 랠리 데이터를 분석하고 있습니다...');
 
     const localSummary = summarizeFootworkSet({
       sessionId: `reco_fw_${Date.now()}`,
@@ -140,6 +153,28 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
     });
 
     setReport(localSummary);
+
+    try {
+      const auth = getAuth(getApp());
+      const user = auth.currentUser;
+      if (user) {
+        const db = getFirestore(getApp());
+        const appId = 'com.recobystackapp'; // 앱 ID 통일
+
+        // videoHistory가 아닌 footworkSets에 분리하여 저장
+        await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'footworkSets'), {
+          id: Date.now().toString(),
+          date: new Date().toLocaleString(),
+          mode: 'REALTIME_MATCH',
+          avgScore: localSummary.totalScore, // 대시보드 호환용 종합점수
+          maxRecord: localSummary.eventCount, // 대시보드 호환용 스텝수
+          summary: localSummary,
+          createdAt: serverTimestamp()
+        });
+      }
+    } catch (error) {
+      console.error("실시간 반코트 분석 저장 오류:", error);
+    }
   };
 
   return (
@@ -156,31 +191,39 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
         <SafeAreaView style={[styles.container, { paddingTop: 40 }]}>
           <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
             <View style={styles.reportHeader}>
-              <Text style={styles.reportTitle}>AI 실시간 분석 리포트</Text>
-              <Text style={styles.reportDate}>{new Date().toLocaleString()} (반코트 분석)</Text>
+              <Text style={styles.reportTitle}>AI 실전 랠리 분석</Text>
+              <Text style={styles.reportDate}>{new Date().toLocaleString()} (반코트 추적)</Text>
               <View style={styles.difficultyBadge}><Text style={styles.difficultyText}>FULL MATCH MODE</Text></View>
             </View>
 
             <View style={styles.scoreCard}>
-              <Text style={styles.scoreLabel}>종합 점수</Text>
+              <Text style={styles.scoreLabel}>실전 기동력 종합 점수</Text>
               <Text style={styles.scoreValue}>{report.totalScore}<Text style={{ fontSize: 30 }}>점</Text></Text>
               <View style={styles.countBadge}>
                 <Text style={{ color: '#111827', fontWeight: 'bold' }}>
-                  총 {report.eventCount}회 스텝 | 자세 {report.postureScore}점 / 풋워크 {report.footworkScore}점
+                  총 {report.eventCount}회 스텝 | 랠리 시간: {report.durationSec}초
                 </Text>
               </View>
             </View>
 
             <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
                 <View style={styles.subStatBox}>
-                    <Clock size={20} color="#60A5FA" />
-                    <Text style={styles.subStatLabel}>평균 반응</Text>
-                    <Text style={styles.subStatValue}>{report.averageReactionMs}ms</Text>
+                    <Activity size={24} color="#F472B6" />
+                    <Text style={styles.subStatLabel}>평균 복귀</Text>
+                    <Text style={styles.subStatValue}>{report.averageRecoveryMs > 0 ? `${report.averageRecoveryMs}ms` : '-'}</Text>
+                    <Text style={styles.subStatSubText}>홈 포지션 회귀율</Text>
                 </View>
                 <View style={styles.subStatBox}>
-                    <Activity size={20} color="#F472B6" />
-                    <Text style={styles.subStatLabel}>평균 복귀</Text>
-                    <Text style={styles.subStatValue}>{report.averageRecoveryMs}ms</Text>
+                    <Compass size={24} color="#60A5FA" />
+                    <Text style={styles.subStatLabel}>코트 장악력</Text>
+                    <Text style={styles.subStatValue}>{report.courtCoveragePct}%</Text>
+                    <Text style={styles.subStatSubText}>6코너 커버리지</Text>
+                </View>
+                <View style={styles.subStatBox}>
+                    <Flame size={24} color="#FCD34D" />
+                    <Text style={styles.subStatLabel}>하체 밸런스</Text>
+                    <Text style={styles.subStatValue}>{report.postureScore}점</Text>
+                    <Text style={styles.subStatSubText}>중심점 안정성</Text>
                 </View>
             </View>
 
@@ -190,7 +233,7 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
                 report.strengths.map((item: string, idx: number) => (
                   <View key={idx} style={styles.listItem}><CheckCircle size={20} color="#34D399" /><Text style={styles.listText}>{item}</Text></View>
                 ))
-              ) : (<Text style={styles.emptyText}>노력이 조금 더 필요합니다.</Text>)}
+              ) : (<Text style={styles.emptyText}>장점을 찾기 위해 데이터가 더 필요합니다.</Text>)}
             </View>
 
             <View style={styles.sectionContainer}>
@@ -199,7 +242,7 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
                 report.weaknesses.map((item: string, idx: number) => (
                   <View key={idx} style={styles.listItem}><XCircle size={20} color="#EF4444" /><Text style={styles.listText}>{item}</Text></View>
                 ))
-              ) : (<Text style={styles.emptyText}>고칠 곳이 없습니다. 완벽합니다!</Text>)}
+              ) : (<Text style={styles.emptyText}>훌륭한 랠리 방어력을 보여주었습니다.</Text>)}
             </View>
 
             <View style={[styles.sectionContainer, { backgroundColor: '#1F2937', borderColor: '#FCD34D', borderWidth: 1 }]}>
@@ -230,27 +273,17 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
             <View style={styles.halfCourtOverlay}>
                 <Svg width="100%" height="100%" viewBox="0 0 1280 720" preserveAspectRatio="none">
 
-                    {/* ✅ 1. 상대편 코트 (분석 제외 영역 - 반투명 블랙 빗금 오버레이 효과) */}
                     <Polygon points="560,100 720,100 820,220 460,220" fill="rgba(0,0,0,0.5)" stroke="rgba(255,255,255,0.4)" strokeDasharray="5, 5" strokeWidth="2" />
                     <SvgText x="640" y="165" fill="rgba(255,255,255,0.8)" fontSize="20" fontWeight="bold" textAnchor="middle">상대편 코트</SvgText>
 
-                    {/* ✅ 2. 우리편 코트 (분석 영역) - 밑변 대폭 확장, 윗변 축소 (원근감 강화) */}
                     <Polygon points="460,220 820,220 1250,680 30,680" fill="rgba(52,211,153,0.06)" stroke={courtDetected ? '#34D399' : '#FBBF24'} strokeWidth="5" />
 
-                    {/* 네트 라인 */}
                     <Line x1="400" y1="220" x2="880" y2="220" stroke="#EF4444" strokeWidth="6" />
                     <SvgText x="640" y="210" fill="#EF4444" fontSize="24" fontWeight="bold" textAnchor="middle">NET</SvgText>
 
-                    {/* 센터 라인 */}
                     <Line x1="640" y1="220" x2="640" y2="680" stroke="rgba(255,255,255,0.8)" strokeWidth="3" />
-
-                    {/* 숏 서비스 라인 */}
                     <Line x1="339" y1="350" x2="941" y2="350" stroke="rgba(255,255,255,0.6)" strokeWidth="3" strokeDasharray="10, 8" />
-
-                    {/* 복식 롱 서비스 라인 */}
                     <Line x1="108" y1="600" x2="1172" y2="600" stroke="rgba(255,255,255,0.6)" strokeWidth="2" />
-
-                    {/* 단식 사이드 라인 */}
                     <Line x1="496" y1="220" x2="152" y2="680" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeDasharray="10, 8" />
                     <Line x1="784" y1="220" x2="1128" y2="680" stroke="rgba(255,255,255,0.6)" strokeWidth="2" strokeDasharray="10, 8" />
                 </Svg>
@@ -279,7 +312,6 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
                 <Square size={24} color="#EF4444" fill="#EF4444" />
               </TouchableOpacity>
             ) : (
-              // ✅ disabled 속성을 지우고 handleStartPress 로직으로 이관 (코트에 들어가기 전에 누를 수 있게)
               <TouchableOpacity style={[styles.mainBtn, { borderColor: courtDetected ? 'white' : '#FBBF24' }]} onPress={handleStartPress}>
                  <View style={{ width: 40, height: 40, backgroundColor: courtDetected ? 'white' : '#FBBF24', borderRadius: 20 }} />
               </TouchableOpacity>
@@ -306,7 +338,6 @@ const styles = StyleSheet.create({
   controlBtn: { padding: 15, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 30 },
   mainBtn: { width: 60, height: 60, borderRadius: 30, borderWidth: 3, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.3)' },
 
-  // 리포트 전용 UI 스타일
   reportHeader: { marginBottom: 30 },
   reportTitle: { fontSize: 28, fontWeight: 'bold', color: 'white' },
   reportDate: { fontSize: 14, color: '#9CA3AF', marginTop: 4 },
@@ -316,9 +347,12 @@ const styles = StyleSheet.create({
   scoreLabel: { color: '#064E3B', fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
   scoreValue: { color: '#064E3B', fontSize: 48, fontWeight: 'bold' },
   countBadge: { backgroundColor: 'white', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, marginTop: 8 },
+
   subStatBox: { flex: 1, backgroundColor: '#1F2937', borderRadius: 16, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
-  subStatLabel: { color: '#9CA3AF', fontSize: 12, marginTop: 6, marginBottom: 2 },
-  subStatValue: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  subStatLabel: { color: '#9CA3AF', fontSize: 12, marginTop: 10, marginBottom: 4 },
+  subStatValue: { color: 'white', fontSize: 20, fontWeight: 'bold' },
+  subStatSubText: { color: '#6B7280', fontSize: 10, marginTop: 4 },
+
   sectionContainer: { backgroundColor: '#1F2937', borderRadius: 16, padding: 20, marginBottom: 16 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: 'white', marginBottom: 16 },
   listItem: { flexDirection: 'row', gap: 12, marginBottom: 12, alignItems: 'flex-start' },
