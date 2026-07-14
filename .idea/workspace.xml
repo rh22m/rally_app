@@ -4,14 +4,10 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9bea4fd7-fbd9-41bf-bc54-2fdc6a7cce6a" name="Changes" comment="반코트 리포트 수정, 데이터베이스 연결. 분석 기록 정규화.">
-      <change afterPath="$PROJECT_DIR$/Screens/AI/badmintonAiEvaluator.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Screens/AI/badmintonKinematicAnalyzer.ts" afterDir="false" />
+    <list default="true" id="9bea4fd7-fbd9-41bf-bc54-2fdc6a7cce6a" name="Changes" comment="반코트 전용 가이드 모달 추가, 좌표 추적 강화, 스윙 연계성 통합.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Screens/AI/AIAnalysis.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/AI/AIAnalysis.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Screens/AI/InsightDashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/AI/InsightDashboard.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Screens/AI/RealtimeFootworkMode.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/AI/RealtimeFootworkMode.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Screens/AI/realtimeFootworkEngine.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/AI/realtimeFootworkEngine.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Screens/AI/badmintonKinematicAnalyzer.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/AI/badmintonKinematicAnalyzer.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Screens/AI/realtimeFootworkHtml.ts" beforeDir="false" afterPath="$PROJECT_DIR$/Screens/AI/realtimeFootworkHtml.ts" afterDir="false" />
     </list>
     <list id="bec99eaf-3a58-4741-a0a4-dd14bee4c395" name="ignore" comment="웨어러블 연동을 위한 의존성 업데이트" />
@@ -152,14 +148,6 @@
       <option name="presentableId" value="LOCAL-00065" />
       <option name="project" value="LOCAL" />
       <updated>1766687766495</updated>
-    </task>
-    <task id="LOCAL-00009" summary="AIAnalysis+poseHtml 로 인식은 웹으로 연결.">
-      <option name="closed" value="true" />
-      <created>1763820167228</created>
-      <option name="number" value="00009" />
-      <option name="presentableId" value="LOCAL-00009" />
-      <option name="project" value="LOCAL" />
-      <updated>1763820167228</updated>
     </task>
     <task id="LOCAL-00010" summary="AIAnalysis+poseHtml 로 인식은 웹으로 연결.">
       <option name="closed" value="true" />
@@ -505,7 +493,15 @@
       <option name="project" value="LOCAL" />
       <updated>1784001241618</updated>
     </task>
-    <option name="localTasksCounter" value="118" />
+    <task id="LOCAL-00118" summary="반코트 전용 가이드 모달 추가, 좌표 추적 강화, 스윙 연계성 통합.">
+      <option name="closed" value="true" />
+      <created>1784004855116</created>
+      <option name="number" value="00118" />
+      <option name="presentableId" value="LOCAL-00118" />
+      <option name="project" value="LOCAL" />
+      <updated>1784004855116</updated>
+    </task>
+    <option name="localTasksCounter" value="119" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -556,7 +552,6 @@
     <ignored-roots>
       <path value="$PROJECT_DIR$" />
     </ignored-roots>
-    <MESSAGE value="회원가입 데베 연동 클린 커밋" />
     <MESSAGE value="회원가입 퀴즈 문제 확장, RD값에 영향" />
     <MESSAGE value="RD(신뢰도)시스템 재구성" />
     <MESSAGE value="rmr 데이터베이스 동기화, 경기 기록 및 영상 분석 db 저장" />
@@ -581,6 +576,7 @@
     <MESSAGE value="반코트 분석 테스트" />
     <MESSAGE value="반코트 분석 테스트 (카메라 구도 조정)" />
     <MESSAGE value="반코트 리포트 수정, 데이터베이스 연결. 분석 기록 정규화." />
-    <option name="LAST_COMMIT_MESSAGE" value="반코트 리포트 수정, 데이터베이스 연결. 분석 기록 정규화." />
+    <MESSAGE value="반코트 전용 가이드 모달 추가, 좌표 추적 강화, 스윙 연계성 통합." />
+    <option name="LAST_COMMIT_MESSAGE" value="반코트 전용 가이드 모달 추가, 좌표 추적 강화, 스윙 연계성 통합." />
   </component>
 </project>

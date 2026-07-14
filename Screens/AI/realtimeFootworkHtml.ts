@@ -38,8 +38,6 @@ export const footworkSetHtml = `
     }
   }
 
-  function clamp01(value) { return Math.max(0, Math.min(1, value)); }
-
   function luma(r, g, b) { return 0.299 * r + 0.587 * g + 0.114 * b; }
   function detectCourt(data, width, height) {
     const left = Math.floor(width * 0.18), right = Math.floor(width * 0.82);
@@ -75,6 +73,7 @@ export const footworkSetHtml = `
     return ang;
   }
 
+  // ✅ 왜곡의 원인이었던 X, Y 스왑 및 Zone 판별 로직을 엔진 단으로 전부 이관
   function extractMetrics(landmarks) {
     const lHip = landmarks[23], rHip = landmarks[24];
     const lKnee = landmarks[25], rKnee = landmarks[26];
@@ -92,41 +91,6 @@ export const footworkSetHtml = `
         trunkLeanDeg = (Math.atan2(Math.abs(shoulderMid.x - hipMid.x), Math.max(0.001, Math.abs(shoulderMid.y - hipMid.y))) * 180) / Math.PI;
     }
 
-    const lFoot = midpoint(landmarks[31], lAnkle) || lAnkle;
-    const rFoot = midpoint(landmarks[32], rAnkle) || rAnkle;
-    let footCenter = midpoint(lFoot, rFoot);
-
-    // ✅ 발이 안보일 경우 골반을 기준으로 Fallback 위치 보정 (하체 잘림 방어 로직)
-    if (!footCenter && hipMid) {
-        footCenter = { x: hipMid.x, y: clamp01(hipMid.y + 0.25) };
-    }
-
-    let zone = 'UNKNOWN';
-
-    if(footCenter) {
-      const cx = clamp01(footCenter.y);
-      const cy = clamp01(1 - footCenter.x);
-      const courtTopY = 0.30;
-      const courtBottomY = 0.95;
-
-      if (cy >= courtTopY) {
-          let ny = clamp01((cy - courtTopY) / (courtBottomY - courtTopY));
-          let currentLeft = 0.36 - (0.34 * ny);
-          let currentRight = 0.64 + (0.34 * ny);
-          let nx = clamp01((cx - currentLeft) / (currentRight - currentLeft));
-
-          if (ny < 0.35) {
-              zone = nx < 0.5 ? 'FRONT_LEFT' : 'FRONT_RIGHT';
-          } else if (ny > 0.70) {
-              zone = nx < 0.5 ? 'BACK_LEFT' : 'BACK_RIGHT';
-          } else {
-              if (nx < 0.35) zone = 'MID_LEFT';
-              else if (nx > 0.65) zone = 'MID_RIGHT';
-              else zone = 'CENTER';
-          }
-      }
-    }
-
     const required = [11,12,13,14,15,16,23,24,25,26,27,28];
     const playerConfidence = required.filter(idx => visible(landmarks[idx])).length / required.length;
 
@@ -134,7 +98,7 @@ export const footworkSetHtml = `
     const shoulderWidth = distance(lShoulder, rShoulder) || 0.18;
     const balanceScore = Math.max(45, 100 - Math.abs((ankleWidth/shoulderWidth) - 1.35) * 35);
 
-    return { zone, kneeAngleMin, trunkLeanDeg, balanceScore, playerConfidence };
+    return { kneeAngleMin, trunkLeanDeg, balanceScore, playerConfidence };
   }
 
   const pose = new Pose({locateFile: (file) => \`https://cdn.jsdelivr.net/npm/@mediapipe/pose/\${file}\`});
@@ -157,10 +121,8 @@ export const footworkSetHtml = `
 
       if(results.poseLandmarks) {
          const metrics = extractMetrics(results.poseLandmarks);
-         // ✅ 원본에는 없던 landmarks 원시 데이터 배열을 추가 전송하여 Kinematic 분석 가능하게 구성
          post('poseMetrics', {
             ts: Date.now(),
-            zone: metrics.zone,
             kneeAngleMin: metrics.kneeAngleMin,
             trunkLeanDeg: metrics.trunkLeanDeg,
             balanceScore: metrics.balanceScore,

@@ -72,42 +72,54 @@ function visible(point?: PoseLandmark, minVisibility = 0.35) {
   return !!point && (point.visibility ?? 0) >= minVisibility;
 }
 
-function getFootCenter(snapshot: PoseSnapshot): PoseLandmark | undefined {
-  const l = snapshot.landmarks;
+// ✅ 사다리꼴 원근감 공식을 단일 모듈로 완벽히 통합 (가로 모드 기반)
+export function getPerspectiveZone(landmarks: Record<string, any>): { zone: CourtArea, nx: number, ny: number } {
+  const l = landmarks;
+  const lAnkle = l.left_ankle;
+  const rAnkle = l.right_ankle;
+  const lFoot = midpoint(l.left_foot_index, lAnkle) || lAnkle;
+  const rFoot = midpoint(l.right_foot_index, rAnkle) || rAnkle;
 
-  const leftFoot =
-    visible(l.left_foot_index) && visible(l.left_ankle)
-      ? midpoint(l.left_foot_index, l.left_ankle)
-      : l.left_ankle ?? l.left_heel ?? l.left_foot_index;
+  let footCenter = midpoint(lFoot, rFoot);
 
-  const rightFoot =
-    visible(l.right_foot_index) && visible(l.right_ankle)
-      ? midpoint(l.right_foot_index, l.right_ankle)
-      : l.right_ankle ?? l.right_heel ?? l.right_foot_index;
+  // 하체가 잘렸을 경우 골반을 기준으로 유추 (Fallback)
+  if (!footCenter) {
+      const hipMid = midpoint(l.left_hip, l.right_hip);
+      if (hipMid) {
+          footCenter = { x: hipMid.x, y: clamp(hipMid.y + 0.25, 0, 1), visibility: 1 };
+      }
+  }
 
-  return midpoint(leftFoot, rightFoot);
-}
+  if (!footCenter) return { zone: 'UNKNOWN', nx: 0.5, ny: 0.5 };
 
-function normalizeToCourt(point: PoseLandmark | undefined, court: CourtCalibration) {
-  if (!point) return undefined;
+  const x = footCenter.x;
+  const y = footCenter.y;
 
-  const width = Math.max(0.001, court.right - court.left);
-  const height = Math.max(0.001, court.bottom - court.top);
+  // 카메라가 플레이어 뒤에 있을 때: 상단(0.30) = 네트(FRONT), 하단(0.95) = 베이스라인(BACK)
+  const courtTopY = 0.30;
+  const courtBottomY = 0.95;
 
-  return {
-    x: clamp((point.x - court.left) / width, 0, 1),
-    y: clamp((point.y - court.top) / height, 0, 1),
-  };
-}
+  let ny = clamp((y - courtTopY) / (courtBottomY - courtTopY), 0, 1);
 
-function courtZoneFromNormalized(x: number, y: number): CourtArea {
-  if (y < 0.34 && x < 0.5) return 'BACK_LEFT';
-  if (y < 0.34 && x >= 0.5) return 'BACK_RIGHT';
-  if (y > 0.67 && x < 0.5) return 'FRONT_LEFT';
-  if (y > 0.67 && x >= 0.5) return 'FRONT_RIGHT';
-  if (x < 0.38) return 'MID_LEFT';
-  if (x > 0.62) return 'MID_RIGHT';
-  return 'CENTER';
+  // 멀어질수록(위로 갈수록) 좁아지는 원근감 맵핑 적용
+  let currentLeft = 0.36 - (0.34 * ny);
+  let currentRight = 0.64 + (0.34 * ny);
+  let nx = clamp((x - currentLeft) / (currentRight - currentLeft), 0, 1);
+
+  let zone: CourtArea = 'CENTER';
+
+  // 가로 모드 좌표계에 맞게 정상적으로 존 판별
+  if (ny < 0.35) {
+      zone = nx < 0.5 ? 'FRONT_LEFT' : 'FRONT_RIGHT';
+  } else if (ny > 0.70) {
+      zone = nx < 0.5 ? 'BACK_LEFT' : 'BACK_RIGHT';
+  } else {
+      if (nx < 0.35) zone = 'MID_LEFT';
+      else if (nx > 0.65) zone = 'MID_RIGHT';
+      else zone = 'CENTER';
+  }
+
+  return { zone, nx, ny };
 }
 
 function frontMidBack(zone: CourtArea) {
@@ -119,18 +131,9 @@ function frontMidBack(zone: CourtArea) {
 
 function estimatePlayerScore(snapshot: PoseSnapshot) {
   const required = [
-    'left_shoulder',
-    'right_shoulder',
-    'left_elbow',
-    'right_elbow',
-    'left_wrist',
-    'right_wrist',
-    'left_hip',
-    'right_hip',
-    'left_knee',
-    'right_knee',
-    'left_ankle',
-    'right_ankle',
+    'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow',
+    'left_wrist', 'right_wrist', 'left_hip', 'right_hip',
+    'left_knee', 'right_knee', 'left_ankle', 'right_ankle',
   ];
 
   const visibleCount = required.filter(key => visible(snapshot.landmarks[key], 0.35)).length;
@@ -140,16 +143,15 @@ function estimatePlayerScore(snapshot: PoseSnapshot) {
 export function analyzeCourtPosition(snapshots: PoseSnapshot[], courtConfidence = 0.76): CourtMetrics {
   const normalizedPositions = snapshots
     .map(snapshot => {
-      const footCenter = getFootCenter(snapshot);
-      const normalized = normalizeToCourt(footCenter, snapshot.court);
-
-      if (!normalized) return null;
+      // ✅ 하드코딩 사각형 대신 통합된 Perspective Zone 함수 사용
+      const { zone, nx, ny } = getPerspectiveZone(snapshot.landmarks);
+      if (zone === 'UNKNOWN') return null;
 
       return {
         ts: snapshot.ts,
-        x: normalized.x,
-        y: normalized.y,
-        zone: courtZoneFromNormalized(normalized.x, normalized.y),
+        x: nx,
+        y: ny,
+        zone: zone,
       };
     })
     .filter((item): item is { ts: number; x: number; y: number; zone: CourtArea } => !!item);
@@ -159,7 +161,6 @@ export function analyzeCourtPosition(snapshots: PoseSnapshot[], courtConfidence 
   const frontMidBackPattern = normalizedPositions.map(item => frontMidBack(item.zone));
   const uniquePattern = Array.from(new Set(frontMidBackPattern.filter(item => item !== 'UNKNOWN')));
 
-  // ✅ 기술적 수치 배제, 자연어 평가만 남김
   const courtDetail =
     uniquePattern.length >= 2
       ? '단식 코트 전후좌우를 폭넓게 활용하며 훌륭한 코트 장악력을 보여주고 있습니다.'
@@ -254,7 +255,6 @@ export function analyzeFootwork(snapshots: PoseSnapshot[], events: any[], courtC
   const changeScore = clamp((zoneChanges.length / Math.max(1, snapshots.length - 1)) * 240, 35, 100);
   const footworkScore = Math.round(coverageScore * 0.28 + recoveryScore * 0.34 + splitStepRate * 100 * 0.25 + changeScore * 0.13);
 
-  // ✅ 기술적 수치 배제, 자연어 평가만 남김
   const footworkDetail =
     footworkScore >= 75
       ? '스플릿 스텝 타이밍이 적절하며, 타구 직후 홈 포지션으로 되돌아오는 리커버리 속도와 탄력이 매우 뛰어납니다.'
@@ -376,7 +376,6 @@ export function analyzeSwing(snapshots: PoseSnapshot[], footwork: FootworkMetric
   const phaseScore = clamp((phases.length / Math.max(1, snapshots.length / 16)) * 100, 38, 100);
   const swingScore = Math.round(racketReadyScore * 0.36 + swingPowerScore * 0.28 + connectionScore * 0.24 + phaseScore * 0.12);
 
-  // ✅ 기술적 수치 배제, 자연어 평가만 남김
   const swingDetail =
     swingScore >= 75
       ? '이동 중에도 라켓이 충분히 들려있어 타구 준비가 빠르며, 풋워크와 스윙 동작이 물 흐르듯 매끄럽게 연결됩니다.'

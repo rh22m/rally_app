@@ -22,6 +22,8 @@ import { getApp } from 'firebase/app';
 import { footworkSetHtml } from './realtimeFootworkHtml';
 import { summarizeFootworkSet, StepEvent } from './realtimeFootworkEngine';
 import { evaluateBadmintonAiSet, PoseSnapshot } from './badmintonAiEvaluator';
+// ✅ 통합된 원근감 구역 판별 로직 임포트
+import { getPerspectiveZone } from './badmintonKinematicAnalyzer';
 
 const LANDMARK_NAMES = [
   'nose', 'left_eye_inner', 'left_eye', 'left_eye_outer', 'right_eye_inner', 'right_eye', 'right_eye_outer',
@@ -78,7 +80,6 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
   const [report, setReport] = useState<any>(null);
   const [currentDisplayZone, setCurrentDisplayZone] = useState('CENTER');
 
-  // ✅ 가이드 모달 상태 추가
   const [showGuideModal, setShowGuideModal] = useState(false);
 
   const webviewRef = useRef<WebView>(null);
@@ -119,11 +120,16 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
       } else if (parsed.type === 'poseMetrics') {
 
         if (cameraState === 'RUNNING') {
-           const zone = parsed.zone;
            const now = parsed.ts;
+           let zone = 'UNKNOWN';
 
            if (parsed.landmarks) {
                const mappedLandmarks = mapLandmarks(parsed.landmarks);
+
+               // ✅ AI 역학 엔진의 통합된 원근감 로직으로 구역(Zone) 판별
+               const perspectiveResult = getPerspectiveZone(mappedLandmarks);
+               zone = perspectiveResult.zone;
+
                const snapshot: PoseSnapshot = {
                    ts: now,
                    landmarks: mappedLandmarks,
@@ -148,7 +154,7 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
 
              infiniteEventsRef.current.push({
                ts: now,
-               zone: lastZoneRef.current,
+               zone: lastZoneRef.current as any,
                dwellMs,
                splitStepDetected: isSplitStepCandidate(poseSnapshotsRef.current),
                reactionMs: lastCenterStableAtRef.current ? now - lastCenterStableAtRef.current : undefined,
@@ -176,7 +182,6 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
     } catch (e) {}
   };
 
-  // ✅ 분석 시작 로직 분리
   const startSet = () => {
     startedAtRef.current = Date.now();
     infiniteEventsRef.current = [];
@@ -186,7 +191,6 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
     webviewRef.current?.injectJavaScript('window.__RECO_FOOTWORK_START();');
   };
 
-  // ✅ 시작 버튼 클릭 시 바로 가이드 모달 띄우기
   const handleStartPress = () => {
     if (!courtDetected && !hasWarnedNoCourt) {
        Alert.alert(
@@ -205,7 +209,6 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
     setShowGuideModal(true);
   };
 
-  // ✅ 가이드 확인 후 실제 추적 시작
   const confirmAndStart = () => {
       setShowGuideModal(false);
       startSet();
@@ -266,7 +269,6 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
       presentationStyle="fullScreen"
       statusBarTranslucent={true}
     >
-      {/* ✅ 가이드 모달 */}
       <Modal animationType="fade" transparent visible={showGuideModal} onRequestClose={() => setShowGuideModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -499,9 +501,8 @@ const styles = StyleSheet.create({
   closeReportButton: { backgroundColor: '#3B82F6', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 10, marginBottom: 20 },
   closeReportText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
 
-  // 가이드 팝업 모달 스타일
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { width: '90%', backgroundColor: '#1F2937', borderRadius: 24, padding: 24, maxHeight: '90%', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  modalContent: { width: '85%', backgroundColor: '#1F2937', borderRadius: 24, padding: 24, maxHeight: '85%', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)', paddingBottom: 15 },
   modalTitle: { fontSize: 20, fontWeight: 'bold', color: 'white' },
   guideCard: { backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
