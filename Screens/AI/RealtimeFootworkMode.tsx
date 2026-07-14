@@ -11,17 +11,62 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import Svg, { Line, Polygon, Text as SvgText } from 'react-native-svg';
-import { ChevronLeft, RotateCcw, Square, CheckCircle, XCircle, Dumbbell, Activity, Compass, Flame } from 'lucide-react-native';
+import { ChevronLeft, RotateCcw, Square, CheckCircle, XCircle, Dumbbell, Activity, Compass, Flame, Move, User, Info, X } from 'lucide-react-native';
 import Orientation from 'react-native-orientation-locker';
 import { useNavigation } from '@react-navigation/native';
 
-// ✅ Firebase 연동 모듈 임포트
 import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { getApp } from 'firebase/app';
 
 import { footworkSetHtml } from './realtimeFootworkHtml';
 import { summarizeFootworkSet, StepEvent } from './realtimeFootworkEngine';
+import { evaluateBadmintonAiSet, PoseSnapshot } from './badmintonAiEvaluator';
+
+const LANDMARK_NAMES = [
+  'nose', 'left_eye_inner', 'left_eye', 'left_eye_outer', 'right_eye_inner', 'right_eye', 'right_eye_outer',
+  'left_ear', 'right_ear', 'mouth_left', 'mouth_right', 'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow',
+  'left_wrist', 'right_wrist', 'left_pinky', 'right_pinky', 'left_index', 'right_index', 'left_thumb', 'right_thumb',
+  'left_hip', 'right_hip', 'left_knee', 'right_knee', 'left_ankle', 'right_ankle', 'left_heel', 'right_heel',
+  'left_foot_index', 'right_foot_index'
+];
+
+function mapLandmarks(arr: any[]) {
+  if (!arr || !arr.length) return {};
+  const res: any = {};
+  arr.forEach((pt, i) => { if (LANDMARK_NAMES[i]) res[LANDMARK_NAMES[i]] = pt; });
+  return res;
+}
+
+function distance(a: any, b: any) {
+  if (!a || !b) return 0;
+  const dx = (a.x || 0) - (b.x || 0);
+  const dy = (a.y || 0) - (b.y || 0);
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function midpoint(a: any, b: any) {
+  if (!a || !b) return undefined;
+  return { x: ((a.x || 0) + (b.x || 0)) / 2, y: ((a.y || 0) + (b.y || 0)) / 2 };
+}
+
+function isSplitStepCandidate(snapshots: PoseSnapshot[]) {
+  if (snapshots.length < 3) return false;
+  const prev = snapshots[snapshots.length - 3].landmarks;
+  const cur = snapshots[snapshots.length - 2].landmarks;
+  const next = snapshots[snapshots.length - 1].landmarks;
+
+  const prevAnkleWidth = distance(prev.left_ankle, prev.right_ankle);
+  const curAnkleWidth = distance(cur.left_ankle, cur.right_ankle);
+  const nextAnkleWidth = distance(next.left_ankle, next.right_ankle);
+  const hipPrev = midpoint(prev.left_hip, prev.right_hip);
+  const hipCur = midpoint(cur.left_hip, cur.right_hip);
+  const hipNext = midpoint(next.left_hip, next.right_hip);
+
+  const stanceExpansion = curAnkleWidth > prevAnkleWidth * 1.06 && curAnkleWidth >= nextAnkleWidth * 0.96;
+  const smallHop = !!hipPrev && !!hipCur && !!hipNext && (hipCur.y < hipPrev.y - 0.008) && (hipNext.y >= hipCur.y);
+  return stanceExpansion || smallHop;
+}
 
 export default function RealtimeFootworkMode({ onBack }: { onBack: () => void }) {
   const navigation = useNavigation();
@@ -32,33 +77,34 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
   const [status, setStatus] = useState('가로 모드로 전환하여 카메라를 준비합니다.');
   const [report, setReport] = useState<any>(null);
   const [currentDisplayZone, setCurrentDisplayZone] = useState('CENTER');
-  const webviewRef = useRef<WebView>(null);
 
+  // ✅ 가이드 모달 상태 추가
+  const [showGuideModal, setShowGuideModal] = useState(false);
+
+  const webviewRef = useRef<WebView>(null);
   const infiniteEventsRef = useRef<StepEvent[]>([]);
+  const poseSnapshotsRef = useRef<PoseSnapshot[]>([]);
+
   const startedAtRef = useRef(Date.now());
   const lastZoneRef = useRef('CENTER');
   const zoneEnteredAtRef = useRef(0);
   const lastNonCenterAtRef = useRef(0);
 
+  const centerEnteredAtRef = useRef(0);
+  const lastCenterStableAtRef = useRef(0);
+
   useEffect(() => {
     const parent = navigation.getParent();
-    if (parent) {
-      parent.setOptions({ tabBarStyle: { display: 'none' } });
-    }
+    if (parent) parent.setOptions({ tabBarStyle: { display: 'none' } });
     return () => {
-      if (parent) {
-        parent.setOptions({ tabBarStyle: undefined });
-      }
+      if (parent) parent.setOptions({ tabBarStyle: undefined });
       Orientation.lockToPortrait();
     };
   }, [navigation]);
 
   useEffect(() => {
-    if (report) {
-      Orientation.lockToPortrait();
-    } else {
-      Orientation.lockToLandscapeRight();
-    }
+    if (report) Orientation.lockToPortrait();
+    else Orientation.lockToLandscapeRight();
   }, [report]);
 
   const handlePoseMessage = (event: any) => {
@@ -76,11 +122,19 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
            const zone = parsed.zone;
            const now = parsed.ts;
 
-           if (zone === 'UNKNOWN') return;
-
-           if (zone !== currentDisplayZone) {
-               setCurrentDisplayZone(zone);
+           if (parsed.landmarks) {
+               const mappedLandmarks = mapLandmarks(parsed.landmarks);
+               const snapshot: PoseSnapshot = {
+                   ts: now,
+                   landmarks: mappedLandmarks,
+                   court: { left: 0, right: 1, top: 0, bottom: 1, centerX: 0.5, serviceY: 0.5, confidence: parsed.courtConfidence }
+               };
+               poseSnapshotsRef.current.push(snapshot);
+               if (poseSnapshotsRef.current.length > 2000) poseSnapshotsRef.current.shift();
            }
+
+           if (zone === 'UNKNOWN') return;
+           if (zone !== currentDisplayZone) setCurrentDisplayZone(zone);
 
            if (!lastZoneRef.current || lastZoneRef.current === 'UNKNOWN') {
              lastZoneRef.current = zone;
@@ -91,11 +145,13 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
 
            if (zone !== lastZoneRef.current) {
              const dwellMs = Math.max(120, now - zoneEnteredAtRef.current);
+
              infiniteEventsRef.current.push({
                ts: now,
                zone: lastZoneRef.current,
                dwellMs,
-               splitStepDetected: false,
+               splitStepDetected: isSplitStepCandidate(poseSnapshotsRef.current),
+               reactionMs: lastCenterStableAtRef.current ? now - lastCenterStableAtRef.current : undefined,
                recoveryToCenterMs: zone === 'CENTER' && lastNonCenterAtRef.current ? now - lastNonCenterAtRef.current : undefined,
                kneeAngleMin: parsed.kneeAngleMin,
                trunkLeanDeg: parsed.trunkLeanDeg,
@@ -106,38 +162,55 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
              lastZoneRef.current = zone;
              zoneEnteredAtRef.current = now;
            }
+
+           if (zone === 'CENTER') {
+               if (lastZoneRef.current !== 'CENTER') {
+                   centerEnteredAtRef.current = now;
+                   lastCenterStableAtRef.current = now;
+               } else if (now - centerEnteredAtRef.current > 240) {
+                   lastCenterStableAtRef.current = now;
+               }
+           }
         }
       }
     } catch (e) {}
   };
 
+  // ✅ 분석 시작 로직 분리
   const startSet = () => {
     startedAtRef.current = Date.now();
     infiniteEventsRef.current = [];
+    poseSnapshotsRef.current = [];
     setCameraState('RUNNING');
     setStatus('분석이 진행 중입니다. 카메라 안쪽 코트에서 자유롭게 움직이세요.');
     webviewRef.current?.injectJavaScript('window.__RECO_FOOTWORK_START();');
   };
 
+  // ✅ 시작 버튼 클릭 시 바로 가이드 모달 띄우기
   const handleStartPress = () => {
     if (!courtDetected && !hasWarnedNoCourt) {
        Alert.alert(
          '코트 인식 미흡',
-         '코트 라인이 완벽히 일치하지 않습니다.\n그래도 강제로 분석을 시작하시겠습니까?',
+         '코트 라인이 완벽히 일치하지 않습니다.\n그래도 분석을 시작하시겠습니까?',
          [
            { text: '취소', style: 'cancel' },
-           { text: '강제 시작', style: 'destructive', onPress: () => {
+           { text: '시작', style: 'destructive', onPress: () => {
                setHasWarnedNoCourt(true);
-               startSet();
+               setShowGuideModal(true);
            }}
          ]
        );
        return;
     }
-    startSet();
+    setShowGuideModal(true);
   };
 
-  // ✅ 분석 완료 시 Firebase footworkSets 컬렉션에 분리 저장
+  // ✅ 가이드 확인 후 실제 추적 시작
+  const confirmAndStart = () => {
+      setShowGuideModal(false);
+      startSet();
+  };
+
   const stopSet = async () => {
     setCameraState('FINISHED');
     webviewRef.current?.injectJavaScript('window.__RECO_FOOTWORK_STOP();');
@@ -152,23 +225,29 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
       events: infiniteEventsRef.current
     });
 
-    setReport(localSummary);
+    const aiResult = evaluateBadmintonAiSet({
+      snapshots: poseSnapshotsRef.current,
+      events: infiniteEventsRef.current,
+      courtConfidence: 0.8
+    });
+
+    setReport({ ...localSummary, aiEvaluation: aiResult });
 
     try {
       const auth = getAuth(getApp());
       const user = auth.currentUser;
       if (user) {
         const db = getFirestore(getApp());
-        const appId = 'com.recobystackapp'; // 앱 ID 통일
+        const appId = 'com.recobystackapp';
 
-        // videoHistory가 아닌 footworkSets에 분리하여 저장
         await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'footworkSets'), {
           id: Date.now().toString(),
           date: new Date().toLocaleString(),
           mode: 'REALTIME_MATCH',
-          avgScore: localSummary.totalScore, // 대시보드 호환용 종합점수
-          maxRecord: localSummary.eventCount, // 대시보드 호환용 스텝수
+          avgScore: localSummary.totalScore,
+          maxRecord: localSummary.eventCount,
           summary: localSummary,
+          aiEvaluation: aiResult,
           createdAt: serverTimestamp()
         });
       }
@@ -187,6 +266,50 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
       presentationStyle="fullScreen"
       statusBarTranslucent={true}
     >
+      {/* ✅ 가이드 모달 */}
+      <Modal animationType="fade" transparent visible={showGuideModal} onRequestClose={() => setShowGuideModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>🤖 실전 랠리 AI 정밀 분석 가이드</Text>
+              <TouchableOpacity onPress={() => setShowGuideModal(false)} style={{ padding: 4 }}>
+                <X size={24} color="#9CA3AF" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={{ paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
+              <View style={styles.guideCard}>
+                <View style={styles.guideCardHeader}>
+                  <View style={styles.guideIconBox}><Activity size={24} color="#60A5FA" /></View>
+                  <Text style={styles.guideCardTitle}>하체 및 무게 중심 안정성</Text>
+                </View>
+                <Text style={styles.guideDescText}>기동 중 무릎의 굽힘 각도와 상체 기울기를 추적하여 타구 및 착지 시 밸런스가 굳건하게 유지되는지 분석합니다.</Text>
+              </View>
+
+              <View style={styles.guideCard}>
+                <View style={styles.guideCardHeader}>
+                  <View style={styles.guideIconBox}><Move size={24} color="#34D399" /></View>
+                  <Text style={styles.guideCardTitle}>스텝 반응성 및 코트 장악</Text>
+                </View>
+                <Text style={styles.guideDescText}>전후좌우 이동 반경을 파악하고, 스플릿 스텝 타이밍과 타구 직후 홈 포지션 복귀 속도를 정밀하게 측정합니다.</Text>
+              </View>
+
+              <View style={styles.guideCard}>
+                <View style={styles.guideCardHeader}>
+                  <View style={styles.guideIconBox}><User size={24} color="#FBBF24" /></View>
+                  <Text style={styles.guideCardTitle}>스윙 연계 및 프로 비교</Text>
+                </View>
+                <Text style={styles.guideDescText}>이동 중에 라켓이 충분히 준비되어 있는지 평가하고, 추출된 역학 데이터를 프로 선수들의 랠리 패턴과 비교합니다.</Text>
+              </View>
+
+              <TouchableOpacity style={styles.confirmButton} onPress={confirmAndStart}>
+                <Text style={styles.confirmButtonText}>숙지했습니다 (카메라 추적 시작)</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {report ? (
         <SafeAreaView style={[styles.container, { paddingTop: 40 }]}>
           <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
@@ -226,6 +349,24 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
                     <Text style={styles.subStatSubText}>중심점 안정성</Text>
                 </View>
             </View>
+
+            {report.aiEvaluation && (
+                <View style={styles.sectionContainer}>
+                  <Text style={styles.sectionTitle}>🤖 AI 정밀 역학 분석</Text>
+                  <View style={styles.listItem}>
+                      <Activity size={20} color="#60A5FA" />
+                      <Text style={styles.listText}>{report.aiEvaluation.swingDetail}</Text>
+                  </View>
+                  <View style={styles.listItem}>
+                      <Move size={20} color="#34D399" />
+                      <Text style={styles.listText}>{report.aiEvaluation.footworkDetail}</Text>
+                  </View>
+                  <View style={styles.listItem}>
+                      <User size={20} color="#FBBF24" />
+                      <Text style={styles.listText}>{report.aiEvaluation.proComparison}</Text>
+                  </View>
+                </View>
+            )}
 
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>🔥 장점</Text>
@@ -272,15 +413,11 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
           <View pointerEvents="none" style={styles.overlayWrapper}>
             <View style={styles.halfCourtOverlay}>
                 <Svg width="100%" height="100%" viewBox="0 0 1280 720" preserveAspectRatio="none">
-
                     <Polygon points="560,100 720,100 820,220 460,220" fill="rgba(0,0,0,0.5)" stroke="rgba(255,255,255,0.4)" strokeDasharray="5, 5" strokeWidth="2" />
                     <SvgText x="640" y="165" fill="rgba(255,255,255,0.8)" fontSize="20" fontWeight="bold" textAnchor="middle">상대편 코트</SvgText>
-
                     <Polygon points="460,220 820,220 1250,680 30,680" fill="rgba(52,211,153,0.06)" stroke={courtDetected ? '#34D399' : '#FBBF24'} strokeWidth="5" />
-
                     <Line x1="400" y1="220" x2="880" y2="220" stroke="#EF4444" strokeWidth="6" />
                     <SvgText x="640" y="210" fill="#EF4444" fontSize="24" fontWeight="bold" textAnchor="middle">NET</SvgText>
-
                     <Line x1="640" y1="220" x2="640" y2="680" stroke="rgba(255,255,255,0.8)" strokeWidth="3" />
                     <Line x1="339" y1="350" x2="941" y2="350" stroke="rgba(255,255,255,0.6)" strokeWidth="3" strokeDasharray="10, 8" />
                     <Line x1="108" y1="600" x2="1172" y2="600" stroke="rgba(255,255,255,0.6)" strokeWidth="2" />
@@ -361,4 +498,19 @@ const styles = StyleSheet.create({
   trainingText: { color: '#D1D5DB', fontSize: 15, lineHeight: 22 },
   closeReportButton: { backgroundColor: '#3B82F6', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 10, marginBottom: 20 },
   closeReportText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+
+  // 가이드 팝업 모달 스타일
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { width: '90%', backgroundColor: '#1F2937', borderRadius: 24, padding: 24, maxHeight: '90%', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)', paddingBottom: 15 },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', color: 'white' },
+  guideCard: { backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  guideCardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 10 },
+  guideIconBox: { width: 40, height: 40, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  guideCardTitle: { color: 'white', fontWeight: 'bold', fontSize: 16 },
+  guideDescText: { color: '#D1D5DB', fontSize: 14, lineHeight: 22 },
+  tipBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(96, 165, 250, 0.1)', padding: 14, borderRadius: 12, marginBottom: 20, borderWidth: 1, borderColor: 'rgba(96, 165, 250, 0.2)' },
+  tipBoxText: { color: '#9CA3AF', fontSize: 13, lineHeight: 18, marginLeft: 8, flex: 1 },
+  confirmButton: { backgroundColor: '#3B82F6', paddingVertical: 16, borderRadius: 16, alignItems: 'center' },
+  confirmButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
 });

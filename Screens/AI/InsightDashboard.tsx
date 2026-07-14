@@ -17,7 +17,7 @@ import { LineChart } from 'react-native-chart-kit';
 import {
   ArrowLeft, BrainCircuit, TrendingUp, Zap,
   Activity, Move, Music, ChevronRight, Target, Info, Flame,
-  Trash2, CheckCircle, XCircle, Dumbbell, Compass
+  Trash2, CheckCircle, XCircle, Dumbbell, Compass, User
 } from 'lucide-react-native';
 
 // ✅ 삭제를 위한 deleteDoc, doc 임포트
@@ -122,6 +122,7 @@ export default function InsightDashboard() {
             averageRecoveryMs: data.summary?.averageRecoveryMs || 0,
             courtCoveragePct: data.summary?.courtCoveragePct || 0,
             postureScore: data.summary?.postureScore || 0,
+            aiEvaluation: data.aiEvaluation || null, // ✅ 역학 분석 결과 병합
             difficulty: 'FULL MATCH' as any
           } as AnalysisReport);
         });
@@ -174,7 +175,7 @@ export default function InsightDashboard() {
       mission = "지금의 감각으로 '나와의 랠리 (HARD)' 도전하기";
       mType = 'RHYTHM';
     } else if (isRhythmDeclining && avgStability < 50) {
-      message = "요즘 '나와의 랠리' 후반부에 언더 리시브(수비) 폼이 자주 무너지고 있습니다. 원인을 분석해 보니, 최근 '준비 자세(LUNGE)' 점수가 많이 떨어졌네요. 하체 근력이 먼저 지치면서 수비 밸런스가 흔들리는 현상입니다. 당분간은 코어 훈련에 집중해야 할 타이밍입니다.";
+      message = "요즘 '나와의 랠리' 후반부에 언더 리시브(수비) 폼이 자주 무너지고 있습니다. 원인을 분석해 보니, 최근 '준비 자세(LUNGE)' 점 점수가 많이 떨어졌네요. 하체 근력이 먼저 지치면서 수비 밸런스가 흔들리는 현상입니다. 당분간은 코어 훈련에 집중해야 할 타이밍입니다.";
       mission = "하체 안정화 '준비 자세' 40초 버티기";
       mType = 'LUNGE';
     } else if (avgPower > 80 && avgRhythm < 60) {
@@ -470,6 +471,25 @@ export default function InsightDashboard() {
                 </View>
               )}
 
+              {/* ✅ 대시보드 리포트에도 심층 분석 피드백 표시 */}
+              {selectedReport.aiEvaluation && (
+                  <View style={styles.sectionContainer}>
+                    <Text style={styles.sectionTitle}>🤖 AI 정밀 역학 분석</Text>
+                    <View style={styles.listItem}>
+                        <Activity size={20} color="#60A5FA" />
+                        <Text style={styles.listText}>{selectedReport.aiEvaluation.swingDetail}</Text>
+                    </View>
+                    <View style={styles.listItem}>
+                        <Move size={20} color="#34D399" />
+                        <Text style={styles.listText}>{selectedReport.aiEvaluation.footworkDetail}</Text>
+                    </View>
+                    <View style={styles.listItem}>
+                        <User size={20} color="#FBBF24" />
+                        <Text style={styles.listText}>{selectedReport.aiEvaluation.proComparison}</Text>
+                    </View>
+                  </View>
+              )}
+
               <View style={styles.sectionContainer}>
                 <Text style={styles.sectionTitle}>🔥 장점</Text>
                 {selectedReport.pros && selectedReport.pros.length > 0 ? (
@@ -588,7 +608,6 @@ const styles = StyleSheet.create({
   },
   emptyChart: { height: 200, width: '100%', justifyContent: 'center', alignItems: 'center' },
 
-  // ✅ 통일된 히스토리 리스트 디자인 스타일 (삭제 버튼 포함)
   historyList: { backgroundColor: '#1F2937', borderRadius: 24, padding: 8, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.05)' },
   historyItem: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
   historyItemContent: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingRight: 12 },
@@ -601,7 +620,6 @@ const styles = StyleSheet.create({
   deleteButton: { padding: 10, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 12, marginLeft: 4 },
   emptyText: { color: '#6B7280', textAlign: 'center', paddingVertical: 30 },
 
-  // ✅ 모달 리포트 전용 UI 스타일
   reportContainer: { flex: 1, backgroundColor: '#111827', padding: 24 },
   reportHeader: { marginTop: 40, marginBottom: 30 },
   reportTitle: { fontSize: 28, fontWeight: 'bold', color: 'white' },

@@ -1,0 +1,393 @@
+import type { CourtCalibration, PoseLandmark, PoseSnapshot } from './badmintonAiEvaluator';
+
+export type CourtArea =
+  | 'FRONT_LEFT'
+  | 'FRONT_RIGHT'
+  | 'MID_LEFT'
+  | 'MID_RIGHT'
+  | 'BACK_LEFT'
+  | 'BACK_RIGHT'
+  | 'CENTER'
+  | 'UNKNOWN';
+
+export type FootworkMetrics = {
+  footworkScore: number;
+  detectedStepCount: number;
+  averageRecoveryMs: number;
+  splitStepRate: number;
+  zoneCoverage: number;
+  movementPattern: CourtArea[];
+  footworkDetail: string;
+};
+
+export type SwingPhase = {
+  startTs: number;
+  impactTs: number;
+  followThroughTs: number;
+  peakSpeed: number;
+};
+
+export type SwingMetrics = {
+  swingScore: number;
+  racketReadyScore: number;
+  connectionScore: number;
+  swingPhaseCount: number;
+  phases: SwingPhase[];
+  swingDetail: string;
+};
+
+export type CourtMetrics = {
+  courtScore: number;
+  playerScore: number;
+  normalizedPositions: Array<{ ts: number; x: number; y: number; zone: CourtArea }>;
+  frontMidBackPattern: string[];
+  courtDetail: string;
+};
+
+function clamp(value: number, min = 0, max = 100) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function avg(values: number[]) {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+}
+
+function distance(a?: PoseLandmark, b?: PoseLandmark) {
+  if (!a || !b) return 0;
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function midpoint(a?: PoseLandmark, b?: PoseLandmark): PoseLandmark | undefined {
+  if (!a || !b) return undefined;
+  return {
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
+    visibility: Math.min(a.visibility ?? 1, b.visibility ?? 1),
+  };
+}
+
+function visible(point?: PoseLandmark, minVisibility = 0.35) {
+  return !!point && (point.visibility ?? 0) >= minVisibility;
+}
+
+function getFootCenter(snapshot: PoseSnapshot): PoseLandmark | undefined {
+  const l = snapshot.landmarks;
+
+  const leftFoot =
+    visible(l.left_foot_index) && visible(l.left_ankle)
+      ? midpoint(l.left_foot_index, l.left_ankle)
+      : l.left_ankle ?? l.left_heel ?? l.left_foot_index;
+
+  const rightFoot =
+    visible(l.right_foot_index) && visible(l.right_ankle)
+      ? midpoint(l.right_foot_index, l.right_ankle)
+      : l.right_ankle ?? l.right_heel ?? l.right_foot_index;
+
+  return midpoint(leftFoot, rightFoot);
+}
+
+function normalizeToCourt(point: PoseLandmark | undefined, court: CourtCalibration) {
+  if (!point) return undefined;
+
+  const width = Math.max(0.001, court.right - court.left);
+  const height = Math.max(0.001, court.bottom - court.top);
+
+  return {
+    x: clamp((point.x - court.left) / width, 0, 1),
+    y: clamp((point.y - court.top) / height, 0, 1),
+  };
+}
+
+function courtZoneFromNormalized(x: number, y: number): CourtArea {
+  if (y < 0.34 && x < 0.5) return 'BACK_LEFT';
+  if (y < 0.34 && x >= 0.5) return 'BACK_RIGHT';
+  if (y > 0.67 && x < 0.5) return 'FRONT_LEFT';
+  if (y > 0.67 && x >= 0.5) return 'FRONT_RIGHT';
+  if (x < 0.38) return 'MID_LEFT';
+  if (x > 0.62) return 'MID_RIGHT';
+  return 'CENTER';
+}
+
+function frontMidBack(zone: CourtArea) {
+  if (zone.startsWith('FRONT')) return 'FRONT';
+  if (zone.startsWith('BACK')) return 'BACK';
+  if (zone.startsWith('MID') || zone === 'CENTER') return 'MID';
+  return 'UNKNOWN';
+}
+
+function estimatePlayerScore(snapshot: PoseSnapshot) {
+  const required = [
+    'left_shoulder',
+    'right_shoulder',
+    'left_elbow',
+    'right_elbow',
+    'left_wrist',
+    'right_wrist',
+    'left_hip',
+    'right_hip',
+    'left_knee',
+    'right_knee',
+    'left_ankle',
+    'right_ankle',
+  ];
+
+  const visibleCount = required.filter(key => visible(snapshot.landmarks[key], 0.35)).length;
+  return clamp((visibleCount / required.length) * 100);
+}
+
+export function analyzeCourtPosition(snapshots: PoseSnapshot[], courtConfidence = 0.76): CourtMetrics {
+  const normalizedPositions = snapshots
+    .map(snapshot => {
+      const footCenter = getFootCenter(snapshot);
+      const normalized = normalizeToCourt(footCenter, snapshot.court);
+
+      if (!normalized) return null;
+
+      return {
+        ts: snapshot.ts,
+        x: normalized.x,
+        y: normalized.y,
+        zone: courtZoneFromNormalized(normalized.x, normalized.y),
+      };
+    })
+    .filter((item): item is { ts: number; x: number; y: number; zone: CourtArea } => !!item);
+
+  const playerScore = Math.round(avg(snapshots.map(estimatePlayerScore)));
+  const courtScore = Math.round(clamp((courtConfidence * 100) * 0.75 + playerScore * 0.25));
+  const frontMidBackPattern = normalizedPositions.map(item => frontMidBack(item.zone));
+  const uniquePattern = Array.from(new Set(frontMidBackPattern.filter(item => item !== 'UNKNOWN')));
+
+  // ✅ 기술적 수치 배제, 자연어 평가만 남김
+  const courtDetail =
+    uniquePattern.length >= 2
+      ? '단식 코트 전후좌우를 폭넓게 활용하며 훌륭한 코트 장악력을 보여주고 있습니다.'
+      : '움직임이 특정 구역에 편중되어 있어 코트 전체의 넓은 활용도가 다소 아쉽습니다.';
+
+  return {
+    courtScore,
+    playerScore: Math.round(playerScore || 62),
+    normalizedPositions,
+    frontMidBackPattern,
+    courtDetail,
+  };
+}
+
+export function analyzeFootwork(snapshots: PoseSnapshot[], events: any[], courtConfidence = 0.76): FootworkMetrics {
+  const court = analyzeCourtPosition(snapshots, courtConfidence);
+  const positions = court.normalizedPositions;
+
+  if (positions.length < 2) {
+    const splitRate = events.length ? events.filter(event => event.splitStepDetected).length / events.length : 0.5;
+    const zoneCoverage = new Set(events.map(event => event.zone)).size;
+    const footworkScore = Math.round(clamp((zoneCoverage / 7) * 100 * 0.4 + splitRate * 100 * 0.35 + 68 * 0.25));
+
+    return {
+      footworkScore,
+      detectedStepCount: events.length,
+      averageRecoveryMs: 0,
+      splitStepRate: splitRate,
+      zoneCoverage,
+      movementPattern: events.map(event => event.zone ?? 'UNKNOWN'),
+      footworkDetail: footworkScore >= 70 ? '준수한 스플릿 스텝과 민첩한 반응성을 보유하고 있습니다.' : '스플릿 스텝 리듬이 불안정하고 첫 반응 속도의 보완이 필요합니다.',
+    };
+  }
+
+  const movementPattern = positions.map(item => item.zone);
+  const uniqueZones = new Set(movementPattern.filter(zone => zone !== 'UNKNOWN'));
+  const zoneChanges: number[] = [];
+
+  for (let i = 1; i < positions.length; i += 1) {
+    if (positions[i].zone !== positions[i - 1].zone) {
+      zoneChanges.push(positions[i].ts);
+    }
+  }
+
+  const recoverySamples: number[] = [];
+  let leftCenterAt = 0;
+
+  for (const position of positions) {
+    const isCenter = position.zone === 'CENTER';
+
+    if (!isCenter && !leftCenterAt) {
+      leftCenterAt = position.ts;
+    }
+
+    if (isCenter && leftCenterAt) {
+      recoverySamples.push(position.ts - leftCenterAt);
+      leftCenterAt = 0;
+    }
+  }
+
+  const averageRecoveryMs = Math.round(avg(recoverySamples));
+  const recoveryScore = averageRecoveryMs
+    ? clamp(100 - ((averageRecoveryMs - 900) / 900) * 48, 42, 100)
+    : 66;
+
+  const splitStepCandidates: boolean[] = [];
+
+  for (let i = 1; i < snapshots.length - 1; i += 1) {
+    const prev = snapshots[i - 1].landmarks;
+    const cur = snapshots[i].landmarks;
+    const next = snapshots[i + 1].landmarks;
+
+    const prevAnkleWidth = distance(prev.left_ankle, prev.right_ankle);
+    const curAnkleWidth = distance(cur.left_ankle, cur.right_ankle);
+    const nextAnkleWidth = distance(next.left_ankle, next.right_ankle);
+
+    const hipPrev = midpoint(prev.left_hip, prev.right_hip);
+    const hipCur = midpoint(cur.left_hip, cur.right_hip);
+    const hipNext = midpoint(next.left_hip, next.right_hip);
+
+    const stanceExpansion = curAnkleWidth > prevAnkleWidth * 1.06 && curAnkleWidth >= nextAnkleWidth * 0.96;
+    const smallHop = !!hipPrev && !!hipCur && !!hipNext && hipCur.y < hipPrev.y - 0.008 && hipNext.y >= hipCur.y;
+
+    splitStepCandidates.push(stanceExpansion || smallHop);
+  }
+
+  const splitStepRate = splitStepCandidates.length
+    ? splitStepCandidates.filter(Boolean).length / splitStepCandidates.length
+    : 0.5;
+
+  const coverageScore = clamp((uniqueZones.size / 7) * 100, 35, 100);
+  const changeScore = clamp((zoneChanges.length / Math.max(1, snapshots.length - 1)) * 240, 35, 100);
+  const footworkScore = Math.round(coverageScore * 0.28 + recoveryScore * 0.34 + splitStepRate * 100 * 0.25 + changeScore * 0.13);
+
+  // ✅ 기술적 수치 배제, 자연어 평가만 남김
+  const footworkDetail =
+    footworkScore >= 75
+      ? '스플릿 스텝 타이밍이 적절하며, 타구 직후 홈 포지션으로 되돌아오는 리커버리 속도와 탄력이 매우 뛰어납니다.'
+      : '스플릿 스텝이 누락되거나 중앙 복귀가 다소 지연되어, 연속 공격 방어 시 취약한 틈이 발생하고 있습니다.';
+
+  return {
+    footworkScore,
+    detectedStepCount: zoneChanges.length,
+    averageRecoveryMs,
+    splitStepRate,
+    zoneCoverage: uniqueZones.size,
+    movementPattern,
+    footworkDetail,
+  };
+}
+
+function wristPoint(snapshot: PoseSnapshot) {
+  const l = snapshot.landmarks;
+  const left = l.left_wrist;
+  const right = l.right_wrist;
+
+  if (visible(left) && visible(right)) {
+    return (left!.y < right!.y) ? left : right;
+  }
+
+  return visible(left) ? left : right;
+}
+
+function dominantShoulder(snapshot: PoseSnapshot) {
+  const l = snapshot.landmarks;
+  const wrist = wristPoint(snapshot);
+  if (!wrist) return l.right_shoulder ?? l.left_shoulder;
+
+  const leftDistance = distance(wrist, l.left_shoulder);
+  const rightDistance = distance(wrist, l.right_shoulder);
+
+  return rightDistance <= leftDistance ? l.right_shoulder : l.left_shoulder;
+}
+
+export function analyzeSwing(snapshots: PoseSnapshot[], footwork: FootworkMetrics): SwingMetrics {
+  if (snapshots.length < 3) {
+    return {
+      swingScore: 68,
+      racketReadyScore: 64,
+      connectionScore: 62,
+      swingPhaseCount: 0,
+      phases: [],
+      swingDetail: '풋워크와 스윙 동작이 분리되는 경향이 있습니다. 이동과 동시에 라켓을 준비하는 훈련이 필요합니다.',
+    };
+  }
+
+  const wristSpeeds: Array<{ ts: number; speed: number }> = [];
+  const racketReadyScores: number[] = [];
+
+  for (let i = 1; i < snapshots.length; i += 1) {
+    const prevWrist = wristPoint(snapshots[i - 1]);
+    const curWrist = wristPoint(snapshots[i]);
+    const dt = Math.max(1, snapshots[i].ts - snapshots[i - 1].ts);
+    const speed = distance(prevWrist, curWrist) / dt * 1000;
+    wristSpeeds.push({ ts: snapshots[i].ts, speed });
+
+    const l = snapshots[i].landmarks;
+    const wrist = curWrist;
+    const shoulder = dominantShoulder(snapshots[i]);
+    const shoulderMid = midpoint(l.left_shoulder, l.right_shoulder);
+
+    const readyHeight =
+      wrist && (shoulder ?? shoulderMid)
+        ? clamp(((shoulder ?? shoulderMid)!.y - wrist.y + 0.08) * 240, 35, 100)
+        : 62;
+
+    racketReadyScores.push(readyHeight);
+  }
+
+  const speedAvg = avg(wristSpeeds.map(item => item.speed));
+  const speedStd = Math.sqrt(avg(wristSpeeds.map(item => Math.pow(item.speed - speedAvg, 2))));
+  const threshold = Math.max(0.08, speedAvg + speedStd * 0.75);
+
+  const phases: SwingPhase[] = [];
+  let i = 1;
+
+  while (i < wristSpeeds.length - 1) {
+    const current = wristSpeeds[i];
+
+    if (current.speed >= threshold && current.speed >= wristSpeeds[i - 1].speed && current.speed >= wristSpeeds[i + 1].speed) {
+      let startIndex = i;
+      while (startIndex > 0 && wristSpeeds[startIndex].speed > threshold * 0.45) {
+        startIndex -= 1;
+      }
+
+      let followIndex = i;
+      while (followIndex < wristSpeeds.length - 1 && wristSpeeds[followIndex].speed > threshold * 0.42) {
+        followIndex += 1;
+      }
+
+      phases.push({
+        startTs: wristSpeeds[startIndex].ts,
+        impactTs: current.ts,
+        followThroughTs: wristSpeeds[followIndex].ts,
+        peakSpeed: current.speed,
+      });
+
+      i = followIndex + 2;
+    } else {
+      i += 1;
+    }
+  }
+
+  const racketReadyScore = Math.round(avg(racketReadyScores));
+  const swingPowerScore = clamp((avg(phases.map(phase => phase.peakSpeed)) || speedAvg) * 520, 35, 100);
+
+  const connectionSamples = phases.map(phase => {
+    const nearestMovementTs = footwork.movementPattern.length ? phase.startTs : phase.impactTs;
+    const delay = Math.abs(phase.startTs - nearestMovementTs);
+    return clamp(100 - Math.max(0, delay - 450) / 7, 40, 100);
+  });
+
+  const connectionScore = Math.round(connectionSamples.length ? avg(connectionSamples) : racketReadyScore * 0.8);
+  const phaseScore = clamp((phases.length / Math.max(1, snapshots.length / 16)) * 100, 38, 100);
+  const swingScore = Math.round(racketReadyScore * 0.36 + swingPowerScore * 0.28 + connectionScore * 0.24 + phaseScore * 0.12);
+
+  // ✅ 기술적 수치 배제, 자연어 평가만 남김
+  const swingDetail =
+    swingScore >= 75
+      ? '이동 중에도 라켓이 충분히 들려있어 타구 준비가 빠르며, 풋워크와 스윙 동작이 물 흐르듯 매끄럽게 연결됩니다.'
+      : '스텝 이동 시 라켓이 아래로 쳐져 있어 백스윙 시작이 늦어지며, 이동 동작과 스윙 동작이 다소 끊어지는 경향이 있습니다.';
+
+  return {
+    swingScore,
+    racketReadyScore,
+    connectionScore,
+    swingPhaseCount: phases.length,
+    phases,
+    swingDetail,
+  };
+}

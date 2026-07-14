@@ -40,7 +40,6 @@ export const footworkSetHtml = `
 
   function clamp01(value) { return Math.max(0, Math.min(1, value)); }
 
-  // 1. 코트 인식 (Luma Diff)
   function luma(r, g, b) { return 0.299 * r + 0.587 * g + 0.114 * b; }
   function detectCourt(data, width, height) {
     const left = Math.floor(width * 0.18), right = Math.floor(width * 0.82);
@@ -76,7 +75,6 @@ export const footworkSetHtml = `
     return ang;
   }
 
-  // 2. 동적 원근감(Perspective) 매핑 6분할 계산식
   function extractMetrics(landmarks) {
     const lHip = landmarks[23], rHip = landmarks[24];
     const lKnee = landmarks[25], rKnee = landmarks[26];
@@ -96,32 +94,27 @@ export const footworkSetHtml = `
 
     const lFoot = midpoint(landmarks[31], lAnkle) || lAnkle;
     const rFoot = midpoint(landmarks[32], rAnkle) || rAnkle;
-    const footCenter = midpoint(lFoot, rFoot);
+    let footCenter = midpoint(lFoot, rFoot);
 
-    let zone = 'UNKNOWN'; // 상대방 코트 및 바깥 영역은 기본적으로 제외
+    // ✅ 발이 안보일 경우 골반을 기준으로 Fallback 위치 보정 (하체 잘림 방어 로직)
+    if (!footCenter && hipMid) {
+        footCenter = { x: hipMid.x, y: clamp01(hipMid.y + 0.25) };
+    }
+
+    let zone = 'UNKNOWN';
 
     if(footCenter) {
       const cx = clamp01(footCenter.y);
       const cy = clamp01(1 - footCenter.x);
+      const courtTopY = 0.30;
+      const courtBottomY = 0.95;
 
-      const courtTopY = 0.30;   // 화면에서 네트의 Y 비율 (대략 220/720)
-      const courtBottomY = 0.95; // 화면에서 엔드라인 Y 비율
-
-      // ✅ 상대 코트 영역(네트 위쪽)은 계산 제외
       if (cy >= courtTopY) {
-          // ny: 네트(0)부터 엔드라인(1)까지의 진행률
           let ny = clamp01((cy - courtTopY) / (courtBottomY - courtTopY));
-
-          // ✅ 사다리꼴 비율에 맞춰 X축(좌우) 폭을 동적으로 확장 (원근감 매핑)
-          // 윗변(네트)은 0.36~0.64 (상대적으로 좁음)
-          // 아랫변(엔드)은 0.02~0.98 (상대적으로 넓음)
           let currentLeft = 0.36 - (0.34 * ny);
           let currentRight = 0.64 + (0.34 * ny);
-
-          // 현재 Y축 기준에서의 X 진행률 (0: 맨 왼쪽 단식라인, 1: 맨 오른쪽 단식라인)
           let nx = clamp01((cx - currentLeft) / (currentRight - currentLeft));
 
-          // 6분할 계산 적용
           if (ny < 0.35) {
               zone = nx < 0.5 ? 'FRONT_LEFT' : 'FRONT_RIGHT';
           } else if (ny > 0.70) {
@@ -129,7 +122,7 @@ export const footworkSetHtml = `
           } else {
               if (nx < 0.35) zone = 'MID_LEFT';
               else if (nx > 0.65) zone = 'MID_RIGHT';
-              else zone = 'CENTER'; // 한가운데 박스
+              else zone = 'CENTER';
           }
       }
     }
@@ -164,6 +157,7 @@ export const footworkSetHtml = `
 
       if(results.poseLandmarks) {
          const metrics = extractMetrics(results.poseLandmarks);
+         // ✅ 원본에는 없던 landmarks 원시 데이터 배열을 추가 전송하여 Kinematic 분석 가능하게 구성
          post('poseMetrics', {
             ts: Date.now(),
             zone: metrics.zone,
@@ -171,7 +165,8 @@ export const footworkSetHtml = `
             trunkLeanDeg: metrics.trunkLeanDeg,
             balanceScore: metrics.balanceScore,
             playerConfidence: metrics.playerConfidence,
-            courtConfidence: courtConfidence
+            courtConfidence: courtConfidence,
+            landmarks: results.poseLandmarks
          });
       } else {
          post('POSE_LOST');

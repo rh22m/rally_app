@@ -75,6 +75,7 @@ export interface AnalysisReport {
   averageRecoveryMs?: number;
   courtCoveragePct?: number;
   postureScore?: number;
+  aiEvaluation?: any; // ✅ 정밀 역학 분석 객체 타입 추가
 }
 
 export interface StyleRecord {
@@ -244,7 +245,9 @@ const GENERAL_GUIDE_DATA = [
   { mode: 'SWING', title: '스윙 정밀 분석', icon: <Zap size={24} color="#F472B6" />, desc: ['최고 속도(km/h)와 폼의 정확도를 측정합니다.', '분석 지표: 상하체 회전차, 타점 높이, 체중 이동', '임팩트 시 팔의 각도와 허리 회전을 중점적으로 봅니다.'] },
   { mode: 'LUNGE', title: '준비 자세 안정성', icon: <Activity size={24} color="#60A5FA" />, desc: ['수비 리시브 자세의 유지 시간을 측정합니다.', '분석 지표: 시선 흔들림, 무릎 각도 유지력', '버티는 동안 머리가 기울어지지 않도록 주의하세요.'] },
   { mode: 'FOOTWORK', title: '민첩성 훈련', icon: <Move size={24} color="#FCD34D" />, desc: ['화면에 표시되는 방향으로 빠르게 이동하세요.', '중앙 복귀 후 다음 지시를 기다려야 합니다.', '반응 속도(초)와 스텝의 정확도를 평가합니다.'] },
-  { mode: 'RHYTHM', title: '나와의 랠리', icon: <Music size={24} color="#10B981" />, desc: ['타인의 시선 부담 없이 혼자서 훈련하는 랠리 모드입니다.', '날아오는 궤적의 리듬에 맞춰 올바른 폼을 구사하세요.', '분석 후 폼이 붕괴된 근본적인 원인을 짚어줍니다.'] }
+  { mode: 'RHYTHM', title: '나와의 랠리', icon: <Music size={24} color="#10B981" />, desc: ['타인의 시선 부담 없이 혼자서 훈련하는 랠리 모드입니다.', '날아오는 궤적의 리듬에 맞춰 올바른 폼을 구사하세요.', '분석 후 폼이 붕괴된 근본적인 원인을 짚어줍니다.'] },
+  // ✅ 실전 반코트 정밀 분석 가이드 항목 추가
+  { mode: 'REALTIME_MATCH', title: '실전 랠리 (반코트)', icon: <Flame size={24} color="#EF4444" />, desc: ['실제 랠리 중의 이동과 스윙을 종합적으로 추적합니다.', '분석 지표: 스플릿 스텝 타이밍, 홈 포지션 복귀 속도, 기동 중 자세 안정성', 'AI가 나의 움직임을 프로 선수 패턴과 역학적으로 비교하여 자연어로 알려줍니다.'] }
 ];
 
 export default function AIAnalysis() {
@@ -400,6 +403,7 @@ export default function AIAnalysis() {
               averageRecoveryMs: data.summary?.averageRecoveryMs || 0,
               courtCoveragePct: data.summary?.courtCoveragePct || 0,
               postureScore: data.summary?.postureScore || 0,
+              aiEvaluation: data.aiEvaluation || null, // ✅ 역학 분석 결과 병합
               difficulty: 'FULL MATCH' as any
             } as AnalysisReport);
           });
@@ -1425,6 +1429,25 @@ export default function AIAnalysis() {
                       <Text style={styles.subStatSubText}>중심점 안정성</Text>
                   </View>
                 </View>
+              )}
+
+              {/* ✅ 분석 내역 리스트에서도 심층 분석 결과 확인 가능 */}
+              {selectedReport.aiEvaluation && (
+                  <View style={styles.sectionContainer}>
+                    <Text style={styles.sectionTitle}>🤖 AI 정밀 역학 분석</Text>
+                    <View style={styles.listItem}>
+                        <Activity size={20} color="#60A5FA" />
+                        <Text style={styles.listText}>{selectedReport.aiEvaluation.swingDetail}</Text>
+                    </View>
+                    <View style={styles.listItem}>
+                        <Move size={20} color="#34D399" />
+                        <Text style={styles.listText}>{selectedReport.aiEvaluation.footworkDetail}</Text>
+                    </View>
+                    <View style={styles.listItem}>
+                        <User size={20} color="#FBBF24" />
+                        <Text style={styles.listText}>{selectedReport.aiEvaluation.proComparison}</Text>
+                    </View>
+                  </View>
               )}
 
               <View style={styles.sectionContainer}>
