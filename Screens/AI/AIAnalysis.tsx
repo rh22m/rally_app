@@ -75,7 +75,7 @@ export interface AnalysisReport {
   averageRecoveryMs?: number;
   courtCoveragePct?: number;
   postureScore?: number;
-  aiEvaluation?: any; // ✅ 정밀 역학 분석 객체 타입 추가
+  aiEvaluation?: any;
 }
 
 export interface StyleRecord {
@@ -87,18 +87,12 @@ export interface StyleRecord {
   image: any;
 }
 
-// ✅ 어떠한 환경 포맷(MM/DD/YYYY 또는 YYYY.MM.DD)이든 년.월.일로 완벽하게 통일해주는 함수
 const formatYMD = (dateStr: string) => {
   if (!dateStr) return '';
-  // 1) YYYY.MM.DD 또는 YYYY-MM-DD 형태 처리
   let match = dateStr.match(/(\d{4})[./-]\s*(\d{1,2})[./-]\s*(\d{1,2})/);
   if (match) return `${match[1]}. ${match[2]}. ${match[3]}.`;
-
-  // 2) MM/DD/YYYY 형태 처리 (예: 6/15/2026, 4:30 PM)
   match = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (match) return `${match[3]}. ${match[1]}. ${match[2]}.`;
-
-  // 3) 최후의 보루 (시간 잘라내기)
   return dateStr.split(',')[0].replace(/(오전|오후).*/, '').trim();
 };
 
@@ -246,7 +240,6 @@ const GENERAL_GUIDE_DATA = [
   { mode: 'LUNGE', title: '준비 자세 안정성', icon: <Activity size={24} color="#60A5FA" />, desc: ['수비 리시브 자세의 유지 시간을 측정합니다.', '분석 지표: 시선 흔들림, 무릎 각도 유지력', '버티는 동안 머리가 기울어지지 않도록 주의하세요.'] },
   { mode: 'FOOTWORK', title: '민첩성 훈련', icon: <Move size={24} color="#FCD34D" />, desc: ['화면에 표시되는 방향으로 빠르게 이동하세요.', '중앙 복귀 후 다음 지시를 기다려야 합니다.', '반응 속도(초)와 스텝의 정확도를 평가합니다.'] },
   { mode: 'RHYTHM', title: '나와의 랠리', icon: <Music size={24} color="#10B981" />, desc: ['타인의 시선 부담 없이 혼자서 훈련하는 랠리 모드입니다.', '날아오는 궤적의 리듬에 맞춰 올바른 폼을 구사하세요.', '분석 후 폼이 붕괴된 근본적인 원인을 짚어줍니다.'] },
-  // ✅ 실전 반코트 정밀 분석 가이드 항목 추가
   { mode: 'REALTIME_MATCH', title: '실전 랠리 (반코트)', icon: <Flame size={24} color="#EF4444" />, desc: ['실제 랠리 중의 이동과 스윙을 종합적으로 추적합니다.', '분석 지표: 스플릿 스텝 타이밍, 홈 포지션 복귀 속도, 기동 중 자세 안정성', 'AI가 나의 움직임을 프로 선수 패턴과 역학적으로 비교하여 자연어로 알려줍니다.'] }
 ];
 
@@ -348,6 +341,13 @@ export default function AIAnalysis() {
       } else { setHasPermission(true); }
     };
     requestPermission();
+
+    // [개선] 앱 화면을 벗어나거나 언마운트 시 WebView 내부의 카메라 강제 정지 시그널 전달
+    return () => {
+      if (webviewRef.current) {
+         webviewRef.current.postMessage(JSON.stringify({ type: 'stopCamera' }));
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -403,7 +403,7 @@ export default function AIAnalysis() {
               averageRecoveryMs: data.summary?.averageRecoveryMs || 0,
               courtCoveragePct: data.summary?.courtCoveragePct || 0,
               postureScore: data.summary?.postureScore || 0,
-              aiEvaluation: data.aiEvaluation || null, // ✅ 역학 분석 결과 병합
+              aiEvaluation: data.aiEvaluation || null,
               difficulty: 'FULL MATCH' as any
             } as AnalysisReport);
           });
@@ -551,6 +551,8 @@ export default function AIAnalysis() {
     setIsTimerRunning(false);
     setCountdown(null);
     if(mode === 'RHYTHM') webviewRef.current?.postMessage(JSON.stringify({ type: 'stopRhythm' }));
+    // [개선] 분석 모드 종료 시 카메라 자원 해제
+    webviewRef.current?.postMessage(JSON.stringify({ type: 'stopCamera' }));
 
     const newReport = createReport();
 
@@ -808,7 +810,6 @@ export default function AIAnalysis() {
     return report;
   };
 
-  // ✅ 삭제 기능 (로컬 상태 및 Firestore 모두 삭제 처리)
   const deleteHistoryItem = (id: string, docId: string | undefined, itemMode: string) => {
     Alert.alert('기록 삭제', '이 기록을 정말 삭제하시겠습니까?', [
       { text: '취소', style: 'cancel' },
@@ -878,6 +879,16 @@ export default function AIAnalysis() {
     try {
       const parsed = JSON.parse(event.nativeEvent.data);
       if (parsed.type === 'log') return;
+
+      // [개선] 프레임 이탈 타임아웃 처리: 상태 고착 방지
+      if (parsed.type === 'POSE_TIMEOUT') {
+          if (isTimerRunning) {
+              isSwingingRef.current = false;
+              isLungingRef.current = false;
+              setCountdown(null);
+          }
+          return;
+      }
 
       if (parsed.type === 'rhythmHit') {
           if (parsed.timing === 'PERFECT' || parsed.timing === 'GREAT') {
@@ -1312,7 +1323,6 @@ export default function AIAnalysis() {
                 >
                   <Image source={item.image} style={styles.styleHistoryImg} />
                   <View>
-                    {/* ✅ 스타일 기록에도 formatYMD 적용 */}
                     <Text style={styles.styleHistoryDate}>{formatYMD(item.date)}</Text>
                     <Text style={styles.styleHistoryName}>{item.name}</Text>
                   </View>
@@ -1346,7 +1356,6 @@ export default function AIAnalysis() {
                       </View>
                       <View>
                         <Text style={styles.historyModeName}>{getModeName(item.mode)}</Text>
-                        {/* ✅ 일반 기록 목록에 formatYMD 적용 */}
                         <Text style={styles.historyDate}>{formatYMD(item.date)}</Text>
                       </View>
                     </View>
@@ -1390,7 +1399,6 @@ export default function AIAnalysis() {
             <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
               <View style={styles.reportHeader}>
                 <Text style={styles.reportTitle}>AI 분석 리포트</Text>
-                {/* ✅ 상세 분석 모달에도 formatYMD 적용 */}
                 <Text style={styles.reportDate}>
                   {formatYMD(selectedReport.date)} ({getModeName(selectedReport.mode)})
                 </Text>
@@ -1431,7 +1439,6 @@ export default function AIAnalysis() {
                 </View>
               )}
 
-              {/* ✅ 분석 내역 리스트에서도 심층 분석 결과 확인 가능 */}
               {selectedReport.aiEvaluation && (
                   <View style={styles.sectionContainer}>
                     <Text style={styles.sectionTitle}>🤖 AI 정밀 역학 분석</Text>

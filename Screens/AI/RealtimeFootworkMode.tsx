@@ -21,8 +21,8 @@ import { getApp } from 'firebase/app';
 
 import { footworkSetHtml } from './realtimeFootworkHtml';
 import { summarizeFootworkSet, StepEvent } from './realtimeFootworkEngine';
-import { evaluateBadmintonAiSet, PoseSnapshot } from './badmintonAiEvaluator';
-// ✅ 통합된 원근감 구역 판별 로직 임포트
+// [개선] DEFAULT_PRO_REFERENCE 임포트 추가 (동적 설정 대응)
+import { evaluateBadmintonAiSet, PoseSnapshot, DEFAULT_PRO_REFERENCE } from './badmintonAiEvaluator';
 import { getPerspectiveZone } from './badmintonKinematicAnalyzer';
 
 const LANDMARK_NAMES = [
@@ -42,9 +42,11 @@ function mapLandmarks(arr: any[]) {
 
 function distance(a: any, b: any) {
   if (!a || !b) return 0;
+  // [개선] RN 단에서도 혹시 모를 거리 연산 시 Z축 고려
   const dx = (a.x || 0) - (b.x || 0);
   const dy = (a.y || 0) - (b.y || 0);
-  return Math.sqrt(dx * dx + dy * dy);
+  const dz = (a.z || 0) - (b.z || 0);
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
 function midpoint(a: any, b: any) {
@@ -81,6 +83,8 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
   const [currentDisplayZone, setCurrentDisplayZone] = useState('CENTER');
 
   const [showGuideModal, setShowGuideModal] = useState(false);
+  // [개선] Firebase Remote Config 데이터를 담을 상태 변수 추가
+  const [proReferenceConfig, setProReferenceConfig] = useState(DEFAULT_PRO_REFERENCE);
 
   const webviewRef = useRef<WebView>(null);
   const infiniteEventsRef = useRef<StepEvent[]>([]);
@@ -95,9 +99,16 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
   const lastCenterStableAtRef = useRef(0);
 
   useEffect(() => {
+    // [개선] 추후 Firebase Remote Config 연동 시 여기서 fetch하여 setProReferenceConfig에 주입
+    // fetchRemoteConfig('ai_pro_reference').then(val => setProReferenceConfig(val));
+
     const parent = navigation.getParent();
     if (parent) parent.setOptions({ tabBarStyle: { display: 'none' } });
+
     return () => {
+      // [개선] 메모리 누수 방지: 컴포넌트 언마운트 시 WebView 내부의 카메라 트랙 강제 종료
+      webviewRef.current?.injectJavaScript('window.__RECO_STOP_CAMERA();');
+
       if (parent) parent.setOptions({ tabBarStyle: undefined });
       Orientation.lockToPortrait();
     };
@@ -112,6 +123,16 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
     try {
       const parsed = JSON.parse(event.nativeEvent.data);
 
+      // [개선] 프레임 이탈 타임아웃 처리: 상태 기계 초기화
+      if (parsed.type === 'POSE_TIMEOUT') {
+          if (cameraState === 'RUNNING') {
+              setStatus('선수 인식 지연: 코트 중앙에서 다시 자세를 잡아주세요.');
+              lastZoneRef.current = 'CENTER'; // 고착된 상태 강제 해제
+              setCurrentDisplayZone('CENTER');
+          }
+          return;
+      }
+
       if (parsed.type === 'CAMERA_READY') {
         setCameraState('READY');
         setStatus('시작 버튼을 누르고 코트 안으로 이동해 자세를 잡으세요.');
@@ -125,8 +146,6 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
 
            if (parsed.landmarks) {
                const mappedLandmarks = mapLandmarks(parsed.landmarks);
-
-               // ✅ AI 역학 엔진의 통합된 원근감 로직으로 구역(Zone) 판별
                const perspectiveResult = getPerspectiveZone(mappedLandmarks);
                zone = perspectiveResult.zone;
 
@@ -217,6 +236,9 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
   const stopSet = async () => {
     setCameraState('FINISHED');
     webviewRef.current?.injectJavaScript('window.__RECO_FOOTWORK_STOP();');
+    // 측정 종료 시 카메라 트랙 해제하여 리소스 반환
+    webviewRef.current?.injectJavaScript('window.__RECO_STOP_CAMERA();');
+
     setStatus('초정밀 랠리 데이터를 분석하고 있습니다...');
 
     const localSummary = summarizeFootworkSet({
@@ -228,10 +250,12 @@ export default function RealtimeFootworkMode({ onBack }: { onBack: () => void })
       events: infiniteEventsRef.current
     });
 
+    // [개선] 원격 설정(Remote Config)이 적용된 proReferenceConfig 주입
     const aiResult = evaluateBadmintonAiSet({
       snapshots: poseSnapshotsRef.current,
       events: infiniteEventsRef.current,
-      courtConfidence: 0.8
+      courtConfidence: 0.8,
+      proReference: proReferenceConfig
     });
 
     setReport({ ...localSummary, aiEvaluation: aiResult });
