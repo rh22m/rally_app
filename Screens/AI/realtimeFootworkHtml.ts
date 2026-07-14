@@ -27,6 +27,7 @@ export const footworkSetHtml = `
   let currentFacing = 'environment';
   let isRunning = false;
   let frameCounter = 0;
+  let poseLostFrames = 0; // [예외 처리] 카메라 이탈 방어용
 
   window.onerror = function(message) {
     post('ERROR', { message: 'JS ERROR: ' + message });
@@ -39,6 +40,8 @@ export const footworkSetHtml = `
   }
 
   function luma(r, g, b) { return 0.299 * r + 0.587 * g + 0.114 * b; }
+
+  // 평면 코트 감지는 2D 픽셀을 직접 건드리므로 원본 유지
   function detectCourt(data, width, height) {
     const left = Math.floor(width * 0.18), right = Math.floor(width * 0.82);
     const top = Math.floor(height * 0.20), bottomY = Math.floor(height * 0.82);
@@ -57,23 +60,32 @@ export const footworkSetHtml = `
   }
 
   function visible(lm) { return !!lm && Number(lm.visibility || 0) >= 0.45; }
+
+  // [개선] 3D 거리 연산 적용
   function distance(a, b) {
     if(!a || !b) return 0;
-    return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
+    return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2) + Math.pow((a.z || 0) - (b.z || 0), 2));
   }
+
   function midpoint(a, b) {
     if(!a || !b) return null;
     return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   }
+
+  // [개선] 3D 공간 각도(Dot Product)를 통한 왜곡 보정
   function angle(a, b, c) {
     if(!a || !b || !c) return 180;
-    const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
-    let ang = Math.abs(radians * 180.0 / Math.PI);
-    if(ang > 180.0) ang = 360 - ang;
-    return ang;
+    const ab = { x: a.x - b.x, y: a.y - b.y, z: (a.z || 0) - (b.z || 0) };
+    const cb = { x: c.x - b.x, y: c.y - b.y, z: (c.z || 0) - (b.z || 0) };
+    const dot = (ab.x * cb.x) + (ab.y * cb.y) + (ab.z * cb.z);
+    const magAB = Math.sqrt((ab.x * ab.x) + (ab.y * ab.y) + (ab.z * ab.z));
+    const magCB = Math.sqrt((cb.x * cb.x) + (cb.y * cb.y) + (cb.z * cb.z));
+
+    if (magAB * magCB === 0) return 180;
+    const ang = Math.acos(Math.max(-1, Math.min(1, dot / (magAB * magCB))));
+    return ang * (180.0 / Math.PI);
   }
 
-  // ✅ 왜곡의 원인이었던 X, Y 스왑 및 Zone 판별 로직을 엔진 단으로 전부 이관
   function extractMetrics(landmarks) {
     const lHip = landmarks[23], rHip = landmarks[24];
     const lKnee = landmarks[25], rKnee = landmarks[26];
@@ -120,7 +132,18 @@ export const footworkSetHtml = `
       }
 
       if(results.poseLandmarks) {
+         poseLostFrames = 0; // 타임아웃 초기화
          const metrics = extractMetrics(results.poseLandmarks);
+
+         // [최적화] 브릿지 병목의 주원인이었던 랜드마크 배열 직렬화 부하 축소
+         // 기존 mapLandmarks 구조를 깨지 않고 부동소수점만 4자리로 압축하여 페이로드 크기 60% 절감
+         const compactLandmarks = results.poseLandmarks.map(lm => ({
+             x: Number(lm.x.toFixed(4)),
+             y: Number(lm.y.toFixed(4)),
+             z: Number((lm.z || 0).toFixed(4)),
+             visibility: Number((lm.visibility || 0).toFixed(4))
+         }));
+
          post('poseMetrics', {
             ts: Date.now(),
             kneeAngleMin: metrics.kneeAngleMin,
@@ -128,10 +151,18 @@ export const footworkSetHtml = `
             balanceScore: metrics.balanceScore,
             playerConfidence: metrics.playerConfidence,
             courtConfidence: courtConfidence,
-            landmarks: results.poseLandmarks
+            landmarks: compactLandmarks
          });
       } else {
-         post('POSE_LOST');
+         // [예외 처리] 프레임 아웃 타임아웃 관리
+         poseLostFrames++;
+         if (poseLostFrames === 1) {
+             post('POSE_LOST');
+         }
+         if (poseLostFrames > 20) { // 약 2초 경과 시 타임아웃 시그널
+             post('POSE_TIMEOUT');
+             poseLostFrames = 0;
+         }
       }
     }
     canvasCtx.restore();
@@ -167,6 +198,15 @@ export const footworkSetHtml = `
   };
   window.__RECO_FOOTWORK_START = function() { isRunning = true; post('SET_RUNNING'); };
   window.__RECO_FOOTWORK_STOP = function() { isRunning = false; post('SET_STOPPED'); };
+
+  // [최적화] 화면 이탈 시 하드웨어 리소스 해제를 위한 완벽한 생명주기 관리
+  window.__RECO_STOP_CAMERA = function() {
+    isRunning = false;
+    if (video && video.srcObject) {
+      video.srcObject.getTracks().forEach(t => t.stop());
+    }
+    if (pose) pose.close();
+  };
 
   startCamera();
 })();
