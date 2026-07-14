@@ -45,7 +45,8 @@ export type AiFootworkEvaluation = {
   recommendedDrill: string;
 };
 
-const PRO_REFERENCE = {
+// [개선] 외부에서 Firebase Remote Config를 통해 덮어씌울 수 있도록 기본(Default) 값으로 활용
+export const DEFAULT_PRO_REFERENCE = {
   readyKneeAngle: { min: 105, max: 145 },
   lungeKneeAngle: { min: 80, max: 125 },
   trunkLean: { min: 8, max: 26 },
@@ -59,26 +60,29 @@ function avg(values: number[]) {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 }
 
+// [개선] 2D 평면 투영 각도를 3D 벡터 내적(Dot Product) 연산으로 교체하여 Z축 깊이 왜곡 방지
 function angle(a?: PoseLandmark, b?: PoseLandmark, c?: PoseLandmark) {
   if (!a || !b || !c) return undefined;
 
-  const ab = { x: a.x - b.x, y: a.y - b.y };
-  const cb = { x: c.x - b.x, y: c.y - b.y };
-  const dot = ab.x * cb.x + ab.y * cb.y;
-  const abLen = Math.sqrt(ab.x * ab.x + ab.y * ab.y);
-  const cbLen = Math.sqrt(cb.x * cb.x + cb.y * cb.y);
+  const ab = { x: a.x - b.x, y: a.y - b.y, z: (a.z || 0) - (b.z || 0) };
+  const cb = { x: c.x - b.x, y: c.y - b.y, z: (c.z || 0) - (b.z || 0) };
+  const dot = ab.x * cb.x + ab.y * cb.y + ab.z * cb.z;
+  const magAB = Math.sqrt(ab.x * ab.x + ab.y * ab.y + ab.z * ab.z);
+  const magCB = Math.sqrt(cb.x * cb.x + cb.y * cb.y + cb.z * cb.z);
 
-  if (!abLen || !cbLen) return undefined;
+  if (magAB * magCB === 0) return undefined;
 
-  const cos = Math.max(-1, Math.min(1, dot / (abLen * cbLen)));
+  const cos = Math.max(-1, Math.min(1, dot / (magAB * magCB)));
   return (Math.acos(cos) * 180) / Math.PI;
 }
 
+// [개선] Z축 깊이를 포함한 3D 유클리디안 거리 연산으로 교체
 function distance(a?: PoseLandmark, b?: PoseLandmark) {
   if (!a || !b) return undefined;
   const dx = a.x - b.x;
   const dy = a.y - b.y;
-  return Math.sqrt(dx * dx + dy * dy);
+  const dz = (a.z || 0) - (b.z || 0);
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
 function midpoint(a?: PoseLandmark, b?: PoseLandmark): PoseLandmark | undefined {
@@ -117,7 +121,8 @@ function playerVisibilityScore(snapshot: PoseSnapshot) {
   return clamp((visible / required.length) * 100);
 }
 
-function estimatePostureScore(snapshots: PoseSnapshot[]) {
+// [개선] 동적 레퍼런스를 인자로 받아 평가
+function estimatePostureScore(snapshots: PoseSnapshot[], proRef: any) {
   const kneeScores: number[] = [];
   const trunkScores: number[] = [];
   const balanceScores: number[] = [];
@@ -146,11 +151,11 @@ function estimatePostureScore(snapshots: PoseSnapshot[]) {
 
     kneeScores.push(
       Math.max(
-        rangeScore(kneeMin, PRO_REFERENCE.readyKneeAngle.min, PRO_REFERENCE.readyKneeAngle.max),
-        rangeScore(kneeMin, PRO_REFERENCE.lungeKneeAngle.min, PRO_REFERENCE.lungeKneeAngle.max),
+        rangeScore(kneeMin, proRef.readyKneeAngle.min, proRef.readyKneeAngle.max),
+        rangeScore(kneeMin, proRef.lungeKneeAngle.min, proRef.lungeKneeAngle.max),
       ),
     );
-    trunkScores.push(rangeScore(trunkLean, PRO_REFERENCE.trunkLean.min, PRO_REFERENCE.trunkLean.max));
+    trunkScores.push(rangeScore(trunkLean, proRef.trunkLean.min, proRef.trunkLean.max));
     balanceScores.push(balanceScore);
     visibilityScores.push(playerVisibilityScore(snapshot));
   }
@@ -173,16 +178,19 @@ function fallbackPostureScore(events: any[]) {
   return Math.round(clamp(balanceAvg || 70));
 }
 
+// [개선] proReference 선택적 인자 추가 (추후 Firebase Remote Config 대응)
 export function evaluateBadmintonAiSet(params: {
   snapshots?: PoseSnapshot[];
   events?: any[];
   courtConfidence?: number;
+  proReference?: any;
 }): AiFootworkEvaluation {
   const snapshots = params.snapshots ?? [];
   const events = params.events ?? [];
   const courtConfidence = params.courtConfidence ?? 0.76;
+  const currentProReference = params.proReference || DEFAULT_PRO_REFERENCE;
 
-  const posture = estimatePostureScore(snapshots);
+  const posture = estimatePostureScore(snapshots, currentProReference);
   const court = analyzeCourtPosition(snapshots, courtConfidence);
   const footwork = analyzeFootwork(snapshots, events, courtConfidence);
   const swing = analyzeSwing(snapshots, footwork);
@@ -219,7 +227,6 @@ export function evaluateBadmintonAiSet(params: {
         ? '전체적인 경기 흐름은 좋지만 프로 선수들과 비교하면 중앙 복귀 후 라켓 준비와 스플릿스텝 타이밍의 일관성이 더 필요합니다.'
         : '현재는 풋워크, 중앙 복귀, 스윙 준비가 분리되는 경향이 있습니다. 먼저 코트 중앙 복귀와 라켓 준비 동작을 함께 묶는 연습이 필요합니다.';
 
-  // ✅ 점수 언급 및 기술적 수치를 완전히 제거한 자연어 피드백 생성
   const postureDetail =
     postureScore >= 75
       ? '기동 중에도 무릎 굽힘과 상체 기울기가 적절히 유지되며, 타구 후 착지 시 하체 밸런스가 매우 단단하게 고정되어 있습니다.'

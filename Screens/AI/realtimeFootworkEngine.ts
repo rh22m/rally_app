@@ -49,8 +49,9 @@ export function summarizeFootworkSet(input: FootworkSetInput): FootworkSetSummar
   const durationSec = Math.max(1, Math.round((input.endedAt - input.startedAt) / 1000));
   const eventCount = input.events.length;
 
-  const reactionList = input.events.map(e => e.reactionMs).filter((v): v is number => typeof v === 'number');
-  const recoveryList = input.events.map(e => e.recoveryToCenterMs).filter((v): v is number => typeof v === 'number');
+  // [예외 처리] 4000ms 이상의 반응/복귀는 카메라 이탈(Timeout) 등 비정상 동작이므로 필터링
+  const reactionList = input.events.map(e => e.reactionMs).filter((v): v is number => typeof v === 'number' && v < 4000);
+  const recoveryList = input.events.map(e => e.recoveryToCenterMs).filter((v): v is number => typeof v === 'number' && v < 4000);
   const balanceList = input.events.map(e => e.balanceScore).filter((v): v is number => typeof v === 'number');
   const kneeList = input.events.map(e => e.kneeAngleMin).filter((v): v is number => typeof v === 'number');
   const trunkList = input.events.map(e => e.trunkLeanDeg).filter((v): v is number => typeof v === 'number');
@@ -73,7 +74,6 @@ export function summarizeFootworkSet(input: FootworkSetInput): FootworkSetSummar
   const trunkScore = trunkList.length > 0 ? average(trunkList.map(scoreTrunkLean)) : 75;
 
   const postureScore = Math.round(kneeDepthScore * 0.4 + trunkScore * 0.3 + balanceScore * 0.3);
-  // ✅ 반코트 버전의 정교한 점수 계산법 통합
   const footworkScore = Math.round(recoveryScore * 0.35 + courtCoveragePct * 0.3 + reactionScore * 0.2 + splitScore * 0.15);
   const totalScore = Math.round(postureScore * 0.4 + footworkScore * 0.6);
 

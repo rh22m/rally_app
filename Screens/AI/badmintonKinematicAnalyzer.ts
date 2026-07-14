@@ -52,11 +52,13 @@ function avg(values: number[]) {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 }
 
+// [개선] 3D 벡터를 고려한 Z축 결합 유클리디안 거리
 function distance(a?: PoseLandmark, b?: PoseLandmark) {
   if (!a || !b) return 0;
   const dx = a.x - b.x;
   const dy = a.y - b.y;
-  return Math.sqrt(dx * dx + dy * dy);
+  const dz = (a.z || 0) - (b.z || 0);
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
 function midpoint(a?: PoseLandmark, b?: PoseLandmark): PoseLandmark | undefined {
@@ -72,7 +74,6 @@ function visible(point?: PoseLandmark, minVisibility = 0.35) {
   return !!point && (point.visibility ?? 0) >= minVisibility;
 }
 
-// ✅ 사다리꼴 원근감 공식을 단일 모듈로 완벽히 통합 (가로 모드 기반)
 export function getPerspectiveZone(landmarks: Record<string, any>): { zone: CourtArea, nx: number, ny: number } {
   const l = landmarks;
   const lAnkle = l.left_ankle;
@@ -82,7 +83,6 @@ export function getPerspectiveZone(landmarks: Record<string, any>): { zone: Cour
 
   let footCenter = midpoint(lFoot, rFoot);
 
-  // 하체가 잘렸을 경우 골반을 기준으로 유추 (Fallback)
   if (!footCenter) {
       const hipMid = midpoint(l.left_hip, l.right_hip);
       if (hipMid) {
@@ -95,20 +95,17 @@ export function getPerspectiveZone(landmarks: Record<string, any>): { zone: Cour
   const x = footCenter.x;
   const y = footCenter.y;
 
-  // 카메라가 플레이어 뒤에 있을 때: 상단(0.30) = 네트(FRONT), 하단(0.95) = 베이스라인(BACK)
   const courtTopY = 0.30;
   const courtBottomY = 0.95;
 
   let ny = clamp((y - courtTopY) / (courtBottomY - courtTopY), 0, 1);
 
-  // 멀어질수록(위로 갈수록) 좁아지는 원근감 맵핑 적용
   let currentLeft = 0.36 - (0.34 * ny);
   let currentRight = 0.64 + (0.34 * ny);
   let nx = clamp((x - currentLeft) / (currentRight - currentLeft), 0, 1);
 
   let zone: CourtArea = 'CENTER';
 
-  // 가로 모드 좌표계에 맞게 정상적으로 존 판별
   if (ny < 0.35) {
       zone = nx < 0.5 ? 'FRONT_LEFT' : 'FRONT_RIGHT';
   } else if (ny > 0.70) {
@@ -143,7 +140,6 @@ function estimatePlayerScore(snapshot: PoseSnapshot) {
 export function analyzeCourtPosition(snapshots: PoseSnapshot[], courtConfidence = 0.76): CourtMetrics {
   const normalizedPositions = snapshots
     .map(snapshot => {
-      // ✅ 하드코딩 사각형 대신 통합된 Perspective Zone 함수 사용
       const { zone, nx, ny } = getPerspectiveZone(snapshot.landmarks);
       if (zone === 'UNKNOWN') return null;
 
@@ -313,6 +309,10 @@ export function analyzeSwing(snapshots: PoseSnapshot[], footwork: FootworkMetric
     const prevWrist = wristPoint(snapshots[i - 1]);
     const curWrist = wristPoint(snapshots[i]);
     const dt = Math.max(1, snapshots[i].ts - snapshots[i - 1].ts);
+
+    // [예외 처리] 프레임 타임아웃 발생 시 스윙 속도 왜곡(Anomaly) 방지
+    if (dt > 2000) continue;
+
     const speed = distance(prevWrist, curWrist) / dt * 1000;
     wristSpeeds.push({ ts: snapshots[i].ts, speed });
 
